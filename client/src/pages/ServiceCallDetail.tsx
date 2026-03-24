@@ -116,19 +116,21 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     updateMutation.mutate(updateFields);
   };
 
-  const handlePhotoAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { compressImage } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
+    for (const file of files) {
+      try {
+        const dataUrl = await compressImage(file);
         setNewPhotoFiles(prev => [...prev, {
-          dataUrl: ev.target?.result as string,
+          dataUrl,
           caption: "",
           photoType: "Other",
         }]);
-      };
-      reader.readAsDataURL(file);
-    });
+      } catch (err) {
+        console.error("Failed to compress image:", err);
+      }
+    }
   };
 
   const handlePDF = async () => {

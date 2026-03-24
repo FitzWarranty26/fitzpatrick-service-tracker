@@ -137,24 +137,26 @@ export default function NewServiceCall() {
 
   const onSubmit = (values: FormValues) => createMutation.mutate(values);
 
-  // Photo handling
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Photo handling — compress iPhone photos before storing
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { compressImage } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
+    for (const file of files) {
+      try {
+        const dataUrl = await compressImage(file);
         setPhotos((prev) => [
           ...prev,
           {
-            dataUrl: ev.target?.result as string,
+            dataUrl,
             caption: "",
             photoType: "Other",
             name: file.name,
           },
         ]);
-      };
-      reader.readAsDataURL(file);
-    });
+      } catch (err) {
+        console.error("Failed to compress image:", err);
+      }
+    }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
