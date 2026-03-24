@@ -54,8 +54,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const { data: call, isLoading } = useQuery<ServiceCallFull>({
     queryKey: ["/api/service-calls", callId],
     queryFn: async () => {
-      const res = await fetch(`/api/service-calls/${callId}`);
-      if (!res.ok) throw new Error("Not found");
+      const res = await apiRequest("GET", `/api/service-calls/${callId}`);
       return res.json();
     },
   });

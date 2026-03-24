@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
 import { StatusBadge, ClaimBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -42,7 +43,7 @@ export default function ServiceCallList() {
     queryKey: ["/api/service-calls", queryString],
     queryFn: async () => {
       const url = queryString ? `/api/service-calls?${queryString}` : "/api/service-calls";
-      const res = await fetch(url);
+      const res = await apiRequest("GET", url);
       return res.json();
     },
   });
