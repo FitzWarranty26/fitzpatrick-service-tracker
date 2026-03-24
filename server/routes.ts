@@ -1,8 +1,51 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema } from "@shared/schema";
 import { z } from "zod";
+
+// ─── Rate Limiter (in-memory, no dependencies) ──────────────────────────────
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
+
+function getClientIP(req: any): string {
+  return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+}
+
+function isRateLimited(ip: string): boolean {
+  const record = loginAttempts.get(ip);
+  if (!record) return false;
+  if (Date.now() > record.resetAt) {
+    loginAttempts.delete(ip);
+    return false;
+  }
+  return record.count >= MAX_LOGIN_ATTEMPTS;
+}
+
+function recordFailedLogin(ip: string) {
+  const record = loginAttempts.get(ip);
+  if (!record || Date.now() > record.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: Date.now() + LOCKOUT_MINUTES * 60 * 1000 });
+  } else {
+    record.count++;
+  }
+}
+
+function clearFailedLogins(ip: string) {
+  loginAttempts.delete(ip);
+}
+
+// Timing-safe string comparison to prevent timing attacks
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    // Still do the comparison to keep constant time, but result is false
+    crypto.timingSafeEqual(Buffer.from(a.padEnd(256, "\0")), Buffer.from(b.padEnd(256, "\0")));
+    return false;
+  }
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 export function registerRoutes(httpServer: Server, app: Express) {
   // ─── Authentication ─────────────────────────────────────────────────────────
@@ -10,16 +53,34 @@ export function registerRoutes(httpServer: Server, app: Express) {
   const APP_PASSWORD = process.env.APP_PASSWORD || "fitzpatrick2026";
 
   app.post("/api/auth/login", (req, res) => {
+    const ip = getClientIP(req);
+
+    // Rate limiting: block after too many failed attempts
+    if (isRateLimited(ip)) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many login attempts. Try again in ${LOCKOUT_MINUTES} minutes.`,
+      });
+    }
+
     const { password } = req.body;
-    if (password === APP_PASSWORD) {
+    if (typeof password !== "string" || !password) {
+      return res.status(400).json({ success: false, error: "Password required" });
+    }
+
+    if (safeCompare(password, APP_PASSWORD)) {
+      clearFailedLogins(ip);
       return res.json({ success: true });
     }
+
+    recordFailedLogin(ip);
+    // Intentionally vague error message
     return res.status(401).json({ success: false, error: "Incorrect password" });
   });
 
   app.get("/api/auth/verify", (req, res) => {
-    const authHeader = req.headers["x-app-password"];
-    if (authHeader === APP_PASSWORD) {
+    const authHeader = req.headers["x-app-password"] as string | undefined;
+    if (authHeader && safeCompare(authHeader, APP_PASSWORD)) {
       return res.json({ authenticated: true });
     }
     return res.status(401).json({ authenticated: false });
@@ -27,8 +88,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // Middleware to protect all other API routes
   const requireAuth = (req: any, res: any, next: any) => {
-    const authHeader = req.headers["x-app-password"];
-    if (authHeader === APP_PASSWORD) {
+    const authHeader = req.headers["x-app-password"] as string | undefined;
+    if (authHeader && safeCompare(authHeader, APP_PASSWORD)) {
       return next();
     }
     return res.status(401).json({ error: "Unauthorized" });
@@ -228,7 +289,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  // ─── Seed Data ──────────────────────────────────────────────────────────────
+  // ─── Seed Data (development only) ────────────────────────────────────────────
 
   app.post("/api/seed", (_req, res) => {
     try {
