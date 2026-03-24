@@ -169,6 +169,7 @@ export default function Dashboard() {
                       <tr
                         key={call.id}
                         className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors cursor-pointer"
+                        style={{ borderBottomWidth: '5px', borderBottomColor: 'transparent' }}
                         onClick={() => window.location.hash = `/calls/${call.id}`}
                         data-testid={`row-call-${call.id}`}
                       >
@@ -191,12 +192,12 @@ export default function Dashboard() {
               </div>
 
               {/* Mobile card list */}
-              <div className="md:hidden divide-y divide-border">
+              <div className="md:hidden" style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 {recent.map((call) => (
                   <Link
                     key={call.id}
                     href={`/calls/${call.id}`}
-                    className="flex items-start gap-3 p-4 hover:bg-muted/40 transition-colors"
+                    className="flex items-start gap-3 p-4 hover:bg-muted/40 transition-colors border-b border-border last:border-0"
                     data-testid={`card-call-${call.id}`}
                   >
                     <div className="flex-1 min-w-0">

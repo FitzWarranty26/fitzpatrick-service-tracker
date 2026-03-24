@@ -201,6 +201,7 @@ export default function ServiceCallList() {
                       <tr
                         key={call.id}
                         className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                        style={{ borderBottomWidth: '5px', borderBottomColor: 'transparent' }}
                         onClick={() => window.location.hash = `/calls/${call.id}`}
                         data-testid={`row-call-${call.id}`}
                       >
@@ -240,7 +241,7 @@ export default function ServiceCallList() {
           </div>
 
           {/* Mobile card list */}
-          <div className="md:hidden space-y-2">
+          <div className="md:hidden" style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             {calls.map((call) => (
               <Link
                 key={call.id}
