@@ -5,6 +5,41 @@ import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema } from "@s
 import { z } from "zod";
 
 export function registerRoutes(httpServer: Server, app: Express) {
+  // ─── Authentication ─────────────────────────────────────────────────────────
+
+  const APP_PASSWORD = process.env.APP_PASSWORD || "fitzpatrick2026";
+
+  app.post("/api/auth/login", (req, res) => {
+    const { password } = req.body;
+    if (password === APP_PASSWORD) {
+      return res.json({ success: true });
+    }
+    return res.status(401).json({ success: false, error: "Incorrect password" });
+  });
+
+  app.get("/api/auth/verify", (req, res) => {
+    const authHeader = req.headers["x-app-password"];
+    if (authHeader === APP_PASSWORD) {
+      return res.json({ authenticated: true });
+    }
+    return res.status(401).json({ authenticated: false });
+  });
+
+  // Middleware to protect all other API routes
+  const requireAuth = (req: any, res: any, next: any) => {
+    const authHeader = req.headers["x-app-password"];
+    if (authHeader === APP_PASSWORD) {
+      return next();
+    }
+    return res.status(401).json({ error: "Unauthorized" });
+  };
+
+  // Apply auth middleware to all API routes except auth endpoints
+  app.use("/api", (req, res, next) => {
+    if (req.path.startsWith("/auth")) return next();
+    return requireAuth(req, res, next);
+  });
+
   // ─── Dashboard ──────────────────────────────────────────────────────────────
 
   app.get("/api/dashboard/stats", (_req, res) => {
