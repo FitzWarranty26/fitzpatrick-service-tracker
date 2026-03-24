@@ -1,0 +1,10 @@
+services:
+  - type: web
+    runtime: node
+    name: fitzpatrick-service-tracker
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: NODE_ENV=production node dist/index.cjs
+    envVars:
+      - key: NODE_ENV
+        value: production

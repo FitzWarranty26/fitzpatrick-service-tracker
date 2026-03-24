@@ -1,0 +1,155 @@
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&f[]=general-sans@400,500,600,700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Steel blue industrial palette — light mode */
+    --background: 216 20% 97%;
+    --foreground: 217 32% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 217 32% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 217 32% 12%;
+    --primary: 217 91% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 16% 92%;
+    --secondary-foreground: 217 32% 20%;
+    --muted: 215 16% 92%;
+    --muted-foreground: 215 14% 48%;
+    --accent: 215 16% 92%;
+    --accent-foreground: 217 32% 20%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 20% 85%;
+    --input: 215 20% 85%;
+    --ring: 217 91% 40%;
+    --radius: 0.5rem;
+
+    /* Chart colors */
+    --chart-1: 217 91% 40%;
+    --chart-2: 199 89% 38%;
+    --chart-3: 142 71% 35%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 356 72% 47%;
+
+    /* Sidebar — slightly darker panel */
+    --sidebar-background: 217 32% 15%;
+    --sidebar-foreground: 215 20% 88%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 28% 22%;
+    --sidebar-accent-foreground: 215 20% 92%;
+    --sidebar-border: 217 28% 20%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    /* Steel blue — dark mode */
+    --background: 220 17% 9%;
+    --foreground: 215 20% 88%;
+    --card: 220 17% 12%;
+    --card-foreground: 215 20% 88%;
+    --popover: 220 17% 12%;
+    --popover-foreground: 215 20% 88%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 22% 18%;
+    --secondary-foreground: 215 20% 80%;
+    --muted: 217 22% 18%;
+    --muted-foreground: 215 14% 55%;
+    --accent: 217 22% 18%;
+    --accent-foreground: 215 20% 80%;
+    --destructive: 0 62% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217 22% 22%;
+    --input: 217 22% 22%;
+    --ring: 217 91% 60%;
+
+    --chart-1: 217 91% 60%;
+    --chart-2: 199 89% 56%;
+    --chart-3: 142 71% 55%;
+    --chart-4: 38 92% 66%;
+    --chart-5: 356 72% 62%;
+
+    --sidebar-background: 220 17% 8%;
+    --sidebar-foreground: 215 20% 85%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 22% 15%;
+    --sidebar-accent-foreground: 215 20% 88%;
+    --sidebar-border: 217 22% 14%;
+    --sidebar-ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Satoshi', 'Inter', system-ui, sans-serif;
+    font-size: 1rem;
+    line-height: 1.6;
+    min-height: 100dvh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'General Sans', 'Satoshi', system-ui, sans-serif;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+
+  p, li { text-wrap: pretty; }
+}
+
+/* Status badge colors */
+.status-scheduled { @apply bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300; }
+.status-in-progress { @apply bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300; }
+.status-completed { @apply bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300; }
+.status-pending-parts { @apply bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300; }
+.status-escalated { @apply bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300; }
+
+/* Claim status badge colors */
+.claim-not-filed { @apply bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400; }
+.claim-submitted { @apply bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300; }
+.claim-approved { @apply bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300; }
+.claim-denied { @apply bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300; }
+.claim-pending-review { @apply bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300; }
+
+/* PDF print styles */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; color: black !important; }
+  .print-page { page-break-after: always; }
+}
+
+/* Mobile touch improvements */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important; /* prevent iOS zoom */
+  }
+}
+
+/* Photo upload area */
+.photo-drop-zone {
+  @apply border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer transition-colors;
+}
+.photo-drop-zone:hover {
+  @apply border-primary/60 bg-primary/5;
+}
+
+/* Sidebar active link */
+.nav-link-active {
+  @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
+}
