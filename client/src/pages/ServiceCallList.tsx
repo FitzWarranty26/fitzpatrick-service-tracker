@@ -22,13 +22,29 @@ interface ServiceCallWithCounts extends ServiceCall {
   partCount: number;
 }
 
+function getInitialFilter(): { status?: string; claimStatus?: string; preset?: string } {
+  try {
+    const hash = window.location.hash; // e.g. #/calls?filter=open
+    const qIndex = hash.indexOf("?");
+    if (qIndex === -1) return {};
+    const params = new URLSearchParams(hash.slice(qIndex + 1));
+    const filter = params.get("filter");
+    if (filter === "open") return { preset: "open" };
+    if (filter === "completed-month") return { preset: "completed-month" };
+    if (filter === "pending-claims") return { preset: "pending-claims" };
+    return {};
+  } catch { return {}; }
+}
+
 export default function ServiceCallList() {
+  const initial = getInitialFilter();
   const [search, setSearch] = useState("");
   const [filterManufacturer, setFilterManufacturer] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterClaimStatus, setFilterClaimStatus] = useState("");
   const [filterState, setFilterState] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [presetFilter, setPresetFilter] = useState(initial.preset || "");
 
   const params = new URLSearchParams();
   if (search) params.set("search", search);
@@ -48,7 +64,32 @@ export default function ServiceCallList() {
     },
   });
 
-  const activeFilters = [filterManufacturer, filterStatus, filterClaimStatus, filterState].filter(Boolean).length;
+  // Apply preset filters client-side
+  const filteredCalls = (() => {
+    if (!calls) return undefined;
+    if (!presetFilter) return calls;
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-31`;
+    switch (presetFilter) {
+      case "open":
+        return calls.filter(c => c.status !== "Completed");
+      case "completed-month":
+        return calls.filter(c => c.status === "Completed" && c.callDate >= monthStart && c.callDate <= monthEnd);
+      case "pending-claims":
+        return calls.filter(c => c.claimStatus === "Submitted" || c.claimStatus === "Pending Review");
+      default:
+        return calls;
+    }
+  })();
+
+  const presetLabels: Record<string, string> = {
+    "open": "Open Calls",
+    "completed-month": "Completed This Month",
+    "pending-claims": "Pending Claims",
+  };
+
+  const activeFilters = [filterManufacturer, filterStatus, filterClaimStatus, filterState, presetFilter].filter(Boolean).length;
 
   const clearFilters = () => {
     setFilterManufacturer("");
@@ -56,6 +97,7 @@ export default function ServiceCallList() {
     setFilterClaimStatus("");
     setFilterState("");
     setSearch("");
+    setPresetFilter("");
   };
 
   return (
@@ -65,7 +107,7 @@ export default function ServiceCallList() {
         <div>
           <h1 className="text-xl font-bold">Service Calls</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {calls ? `${calls.length} call${calls.length !== 1 ? "s" : ""}` : "Loading…"}
+            {filteredCalls ? `${filteredCalls.length} call${filteredCalls.length !== 1 ? "s" : ""}${presetFilter ? ` — ${presetLabels[presetFilter]}` : ""}` : "Loading…"}
           </p>
         </div>
         <Button asChild size="sm" data-testid="button-new-call">
@@ -162,7 +204,7 @@ export default function ServiceCallList() {
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
         </div>
-      ) : !calls || calls.length === 0 ? (
+      ) : !filteredCalls || filteredCalls.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <ClipboardList className="w-12 h-12 text-muted-foreground/30 mb-3" />
           <p className="text-sm font-medium text-muted-foreground">No service calls found.</p>
@@ -198,7 +240,7 @@ export default function ServiceCallList() {
                     </tr>
                   </thead>
                   <tbody>
-                    {calls.map((call) => (
+                    {filteredCalls.map((call) => (
                       <tr
                         key={call.id}
                         className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
@@ -243,7 +285,7 @@ export default function ServiceCallList() {
 
           {/* Mobile card list */}
           <div className="md:hidden" style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-            {calls.map((call) => (
+            {filteredCalls.map((call) => (
               <Link
                 key={call.id}
                 href={`/calls/${call.id}`}

@@ -50,6 +50,7 @@ export default function Dashboard() {
       color: "text-blue-600 dark:text-blue-400",
       bg: "bg-blue-50 dark:bg-blue-900/20",
       testId: "stat-total",
+      href: "/calls",
     },
     {
       title: "Open Calls",
@@ -58,6 +59,7 @@ export default function Dashboard() {
       color: "text-amber-600 dark:text-amber-400",
       bg: "bg-amber-50 dark:bg-amber-900/20",
       testId: "stat-open",
+      href: "/calls?filter=open",
     },
     {
       title: "Completed This Month",
@@ -66,6 +68,7 @@ export default function Dashboard() {
       color: "text-green-600 dark:text-green-400",
       bg: "bg-green-50 dark:bg-green-900/20",
       testId: "stat-completed",
+      href: "/calls?filter=completed-month",
     },
     {
       title: "Pending Claims",
@@ -74,6 +77,7 @@ export default function Dashboard() {
       color: "text-purple-600 dark:text-purple-400",
       bg: "bg-purple-50 dark:bg-purple-900/20",
       testId: "stat-claims",
+      href: "/calls?filter=pending-claims",
     },
   ];
 
@@ -100,25 +104,27 @@ export default function Dashboard() {
         {summaryCards.map((card) => {
           const Icon = card.icon;
           return (
-            <Card key={card.title} className="overflow-hidden" data-testid={card.testId}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium leading-tight mb-1">{card.title}</p>
-                    {statsLoading ? (
-                      <Skeleton className="h-8 w-12 mt-1" />
-                    ) : (
-                      <p className="text-2xl font-bold text-foreground" data-testid={`${card.testId}-value`}>
-                        {card.value}
-                      </p>
-                    )}
+            <Link key={card.title} href={card.href}>
+              <Card className="overflow-hidden cursor-pointer hover:shadow-md hover:border-primary/30 transition-all" data-testid={card.testId}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground font-medium leading-tight mb-1">{card.title}</p>
+                      {statsLoading ? (
+                        <Skeleton className="h-8 w-12 mt-1" />
+                      ) : (
+                        <p className="text-2xl font-bold text-foreground" data-testid={`${card.testId}-value`}>
+                          {card.value}
+                        </p>
+                      )}
+                    </div>
+                    <div className={`p-2 rounded-lg ${card.bg}`}>
+                      <Icon className={`w-4 h-4 ${card.color}`} />
+                    </div>
                   </div>
-                  <div className={`p-2 rounded-lg ${card.bg}`}>
-                    <Icon className={`w-4 h-4 ${card.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </Link>
           );
         })}
       </div>
