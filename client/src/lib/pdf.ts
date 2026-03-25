@@ -1,5 +1,4 @@
 import type { ServiceCall, Photo, Part } from "@shared/schema";
-import { LOGO_DARK_DATA_URL } from "./logo-data";
 
 interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
@@ -16,6 +15,9 @@ function formatDate(dateStr: string | null | undefined): string {
 }
 
 export async function generatePDF(call: ServiceCallFull): Promise<void> {
+  // Lazy-load logo data only when generating a PDF (saves ~450KB from main bundle)
+  const { LOGO_DARK_DATA_URL } = await import("./logo-data");
+
   // Build an HTML report and open in a new window for print-to-PDF
   const manufacturerDisplay = call.manufacturer === "Other"
     ? (call.manufacturerOther ?? "Other")

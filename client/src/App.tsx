@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { Switch, Route, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -11,8 +11,10 @@ import Dashboard from "@/pages/Dashboard";
 import ServiceCallList from "@/pages/ServiceCallList";
 import NewServiceCall from "@/pages/NewServiceCall";
 import ServiceCallDetail from "@/pages/ServiceCallDetail";
-import Analytics from "@/pages/Analytics";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
+
+// Lazy-load Analytics page (pulls in recharts — large dependency)
+const Analytics = lazy(() => import("@/pages/Analytics"));
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
@@ -32,7 +34,13 @@ function AppRouter() {
         <Route path="/" component={Dashboard} />
         <Route path="/calls" component={ServiceCallList} />
         <Route path="/new" component={NewServiceCall} />
-        <Route path="/analytics" component={Analytics} />
+        <Route path="/analytics">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading analytics...</div>}>
+              <Analytics />
+            </Suspense>
+          )}
+        </Route>
         <Route path="/calls/:id">
           {(params) => <ServiceCallDetail id={params.id} />}
         </Route>

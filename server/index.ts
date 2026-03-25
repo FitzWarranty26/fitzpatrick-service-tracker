@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import compression from "compression";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -38,6 +39,9 @@ app.use((_req, res, next) => {
   }
   next();
 });
+
+// ─── Gzip Compression ──────────────────────────────────────────────────────────
+app.use(compression());
 
 // ─── Body Parsing ──────────────────────────────────────────────────────────────
 // 20mb limit — enough for compressed photos, but not unlimited
