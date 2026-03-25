@@ -27,8 +27,8 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
   // Each row is ~200px tall (180px image + 20px label/gap)
   // A letter page has ~900px usable height, so we can fit ~4 rows per page
   const PHOTOS_PER_ROW = 3;
-  const ROWS_PER_PAGE = 4;
-  const PHOTOS_PER_PAGE = PHOTOS_PER_ROW * ROWS_PER_PAGE; // 12 photos per page
+  const ROWS_PER_PAGE = 3;
+  const PHOTOS_PER_PAGE = PHOTOS_PER_ROW * ROWS_PER_PAGE; // 9 photos per page
 
   const photosHtml = call.photos.length > 0
     ? (() => {
@@ -196,8 +196,7 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
     .photo-item { overflow: hidden; }
     .photo-item img { 
       width: 100%; 
-      height: 180px;
-      object-fit: cover;
+      height: auto;
       border-radius: 6px; 
       border: 1px solid #e2e8f0; 
       display: block; 
