@@ -78,11 +78,11 @@ function isValidSession(token: string): boolean {
 setInterval(() => {
   const now = Date.now();
   const maxAge = SESSION_EXPIRY_HOURS * 60 * 60 * 1000;
-  for (const [token, session] of activeSessions) {
+  activeSessions.forEach((session, token) => {
     if (now - session.createdAt > maxAge) {
       activeSessions.delete(token);
     }
-  }
+  });
 }, 60 * 60 * 1000);
 
 // ─── Geocoding Helper ─────────────────────────────────────────────────────

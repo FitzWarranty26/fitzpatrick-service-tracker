@@ -22,9 +22,10 @@ import type { ServiceCall, Photo, Part } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Package,
   MapPin, Phone, User, Wrench, Calendar, Hash, Building, AlertCircle, CheckCircle2,
-  Image as ImageIcon, Mail, ArrowUp, ArrowDown
+  Image as ImageIcon, Mail
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
+import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 
 interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
@@ -518,42 +519,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   </div>
                 </div>
               ))}
-              {newPhotoFiles.map((p, i) => (
-                <div key={`new-${i}`} className="relative rounded-lg overflow-hidden border border-primary/40">
-                  <img src={p.dataUrl} alt="New" className="w-full aspect-[4/3] object-cover" />
-                  <div className="absolute top-1.5 right-1.5 flex gap-1">
-                    {i > 0 && (
-                      <button type="button" onClick={() => setNewPhotoFiles(prev => { const arr = [...prev]; [arr[i], arr[i-1]] = [arr[i-1], arr[i]]; return arr; })} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/80">
-                        <ArrowUp className="w-3 h-3" />
-                      </button>
-                    )}
-                    {i < newPhotoFiles.length - 1 && (
-                      <button type="button" onClick={() => setNewPhotoFiles(prev => { const arr = [...prev]; [arr[i], arr[i+1]] = [arr[i+1], arr[i]]; return arr; })} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/80">
-                        <ArrowDown className="w-3 h-3" />
-                      </button>
-                    )}
-                    <button type="button" onClick={() => setNewPhotoFiles(prev => prev.filter((_, j) => j !== i))} className="bg-black/60 rounded-full p-1 text-white hover:bg-red-600/80">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <div className="p-1.5 bg-background/90">
-                    <select
-                      value={p.photoType}
-                      onChange={e => setNewPhotoFiles(prev => prev.map((ph, j) => j === i ? { ...ph, photoType: e.target.value } : ph))}
-                      className="w-full text-xs border border-input rounded px-1 py-0.5 bg-background mb-1"
-                    >
-                      {PHOTO_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <input
-                      type="text"
-                      value={p.caption}
-                      onChange={e => setNewPhotoFiles(prev => prev.map((ph, j) => j === i ? { ...ph, caption: e.target.value } : ph))}
-                      placeholder="Caption…"
-                      className="w-full text-xs border border-input rounded px-1 py-0.5 bg-background"
-                    />
-                  </div>
-                </div>
-              ))}
+              {newPhotoFiles.length > 0 && (
+                <SortablePhotoGrid photos={newPhotoFiles} onChange={setNewPhotoFiles} />
+              )}
             </div>
           )}
         </CardContent>

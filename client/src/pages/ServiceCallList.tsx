@@ -209,7 +209,7 @@ export default function ServiceCallList() {
           <ClipboardList className="w-12 h-12 text-muted-foreground/30 mb-3" />
           <p className="text-sm font-medium text-muted-foreground">No service calls found.</p>
           {(activeFilters > 0 || search) && (
-            <Button variant="link" size="sm" onClick={clearFilters} className="mt-2">
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="mt-2 text-primary">
               Clear filters
             </Button>
           )}

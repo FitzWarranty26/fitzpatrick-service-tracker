@@ -61,7 +61,7 @@ interface PhotoEntry {
   dataUrl: string;
   caption: string;
   photoType: string;
-  name: string;
+  name?: string;
 }
 
 interface PartEntry {
