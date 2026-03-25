@@ -257,20 +257,38 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
       </div>
       ${call.contactName ? `
       <div class="field">
-        <label>On-Site Contact</label>
+        <label>Installing Contractor</label>
         <span class="value">${call.contactName}</span>
       </div>
       ` : ""}
       ${call.contactPhone ? `
       <div class="field">
-        <label>Contact Phone</label>
+        <label>Contractor Phone</label>
         <span class="value">${call.contactPhone}</span>
       </div>
       ` : ""}
       ${call.contactEmail ? `
       <div class="field">
-        <label>Contact Email</label>
+        <label>Contractor Email</label>
         <span class="value">${call.contactEmail}</span>
+      </div>
+      ` : ""}
+      ${call.siteContactName ? `
+      <div class="field">
+        <label>On-Site Contact</label>
+        <span class="value">${call.siteContactName}</span>
+      </div>
+      ` : ""}
+      ${call.siteContactPhone ? `
+      <div class="field">
+        <label>Site Contact Phone</label>
+        <span class="value">${call.siteContactPhone}</span>
+      </div>
+      ` : ""}
+      ${call.siteContactEmail ? `
+      <div class="field">
+        <label>Site Contact Email</label>
+        <span class="value">${call.siteContactEmail}</span>
       </div>
       ` : ""}
     </div>

@@ -37,6 +37,9 @@ const formSchema = z.object({
   contactName: z.string().optional().nullable(),
   contactPhone: z.string().optional().nullable(),
   contactEmail: z.string().optional().nullable(),
+  siteContactName: z.string().optional().nullable(),
+  siteContactPhone: z.string().optional().nullable(),
+  siteContactEmail: z.string().optional().nullable(),
   productModel: z.string().min(1, "Required"),
   productSerial: z.string().optional().nullable(),
   installationDate: z.string().optional().nullable(),
@@ -86,6 +89,9 @@ export default function NewServiceCall() {
       contactName: "",
       contactPhone: "",
       contactEmail: "",
+      siteContactName: "",
+      siteContactPhone: "",
+      siteContactEmail: "",
       productModel: "",
       productSerial: "",
       installationDate: "",
@@ -320,25 +326,53 @@ export default function NewServiceCall() {
                 )} />
               </div>
 
+              {/* Installing Contractor */}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-2">Installing Contractor</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField control={form.control} name="contactName" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>On-Site Contact</FormLabel>
-                    <FormControl><Input placeholder="Contact name" {...field} value={field.value ?? ""} data-testid="input-contact-name" /></FormControl>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl><Input placeholder="Contractor name" {...field} value={field.value ?? ""} data-testid="input-contact-name" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="contactPhone" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Contact Phone</FormLabel>
+                    <FormLabel>Phone</FormLabel>
                     <FormControl><Input type="tel" placeholder="801-555-0000" {...field} value={field.value ?? ""} data-testid="input-contact-phone" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="contactEmail" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Contact Email</FormLabel>
+                    <FormLabel>Email</FormLabel>
                     <FormControl><Input type="email" placeholder="email@example.com" {...field} value={field.value ?? ""} data-testid="input-contact-email" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+
+              {/* On-Site Contact */}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-2">On-Site Contact</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField control={form.control} name="siteContactName" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl><Input placeholder="Homeowner / facility contact" {...field} value={field.value ?? ""} data-testid="input-site-contact-name" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="siteContactPhone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl><Input type="tel" placeholder="801-555-0000" {...field} value={field.value ?? ""} data-testid="input-site-contact-phone" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="siteContactEmail" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl><Input type="email" placeholder="email@example.com" {...field} value={field.value ?? ""} data-testid="input-site-contact-email" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />

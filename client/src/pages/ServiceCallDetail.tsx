@@ -286,22 +286,52 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <p className="text-sm">{call.jobSiteAddress}, {call.jobSiteCity}, {call.jobSiteState}</p>
                 </div>
-                {call.contactName && (
-                  <div className="flex items-center gap-2">
-                    <User className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                    <p className="text-sm">{call.contactName}</p>
+                {/* Installing Contractor */}
+                {(call.contactName || call.contactPhone || call.contactEmail) && (
+                  <div className="pt-1">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Installing Contractor</p>
+                    {call.contactName && (
+                      <div className="flex items-center gap-2 mb-1">
+                        <User className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <p className="text-sm">{call.contactName}</p>
+                      </div>
+                    )}
+                    {call.contactPhone && (
+                      <div className="flex items-center gap-2 mb-1">
+                        <Phone className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <a href={`tel:${call.contactPhone}`} className="text-sm text-primary">{call.contactPhone}</a>
+                      </div>
+                    )}
+                    {call.contactEmail && (
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <a href={`mailto:${call.contactEmail}`} className="text-sm text-primary">{call.contactEmail}</a>
+                      </div>
+                    )}
                   </div>
                 )}
-                {call.contactPhone && (
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                    <a href={`tel:${call.contactPhone}`} className="text-sm text-primary">{call.contactPhone}</a>
-                  </div>
-                )}
-                {call.contactEmail && (
-                  <div className="flex items-center gap-2">
-                    <Mail className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                    <a href={`mailto:${call.contactEmail}`} className="text-sm text-primary">{call.contactEmail}</a>
+                {/* On-Site Contact */}
+                {(call.siteContactName || call.siteContactPhone || call.siteContactEmail) && (
+                  <div className="pt-1">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">On-Site Contact</p>
+                    {call.siteContactName && (
+                      <div className="flex items-center gap-2 mb-1">
+                        <User className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <p className="text-sm">{call.siteContactName}</p>
+                      </div>
+                    )}
+                    {call.siteContactPhone && (
+                      <div className="flex items-center gap-2 mb-1">
+                        <Phone className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <a href={`tel:${call.siteContactPhone}`} className="text-sm text-primary">{call.siteContactPhone}</a>
+                      </div>
+                    )}
+                    {call.siteContactEmail && (
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <a href={`mailto:${call.siteContactEmail}`} className="text-sm text-primary">{call.siteContactEmail}</a>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -312,9 +342,12 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   { key: "jobSiteName", label: "Site Name" },
                   { key: "jobSiteAddress", label: "Address" },
                   { key: "jobSiteCity", label: "City" },
-                  { key: "contactName", label: "Contact" },
-                  { key: "contactPhone", label: "Phone" },
-                  { key: "contactEmail", label: "Email" },
+                  { key: "contactName", label: "Contractor Name" },
+                  { key: "contactPhone", label: "Contractor Phone" },
+                  { key: "contactEmail", label: "Contractor Email" },
+                  { key: "siteContactName", label: "Site Contact Name" },
+                  { key: "siteContactPhone", label: "Site Contact Phone" },
+                  { key: "siteContactEmail", label: "Site Contact Email" },
                 ].map(({ key, label }) => (
                   <div key={key}>
                     <label className="text-xs text-muted-foreground">{label}</label>

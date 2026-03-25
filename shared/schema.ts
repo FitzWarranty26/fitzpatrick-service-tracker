@@ -14,9 +14,14 @@ export const serviceCalls = sqliteTable("service_calls", {
   jobSiteAddress: text("job_site_address").notNull(),
   jobSiteCity: text("job_site_city").notNull(),
   jobSiteState: text("job_site_state").notNull(), // "UT" | "ID"
+  // Installing Contractor
   contactName: text("contact_name"),
   contactPhone: text("contact_phone"),
   contactEmail: text("contact_email"),
+  // On-Site Contact (homeowner, facility manager, etc.)
+  siteContactName: text("site_contact_name"),
+  siteContactPhone: text("site_contact_phone"),
+  siteContactEmail: text("site_contact_email"),
   productModel: text("product_model").notNull(),
   productSerial: text("product_serial"),
   installationDate: text("installation_date"),

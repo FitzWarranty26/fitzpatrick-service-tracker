@@ -34,6 +34,9 @@ sqlite.exec(`
     contact_name TEXT,
     contact_phone TEXT,
     contact_email TEXT,
+    site_contact_name TEXT,
+    site_contact_phone TEXT,
+    site_contact_email TEXT,
     product_model TEXT NOT NULL,
     product_serial TEXT,
     installation_date TEXT,
@@ -79,6 +82,14 @@ function columnExists(table: string, column: string): boolean {
 if (!columnExists("service_calls", "contact_email")) {
   sqlite.exec(`ALTER TABLE service_calls ADD COLUMN contact_email TEXT`);
   console.log("Migration: added contact_email column to service_calls");
+}
+
+// Migration 2: Add site contact fields to service_calls
+if (!columnExists("service_calls", "site_contact_name")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN site_contact_name TEXT`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN site_contact_phone TEXT`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN site_contact_email TEXT`);
+  console.log("Migration: added site contact columns to service_calls");
 }
 
 export interface ServiceCallWithCounts extends ServiceCall {
