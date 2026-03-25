@@ -68,7 +68,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <img
             src={logoWhite}
             alt="Fitzpatrick Warranty Service, LLC"
-            className="h-12 w-auto object-contain"
+            className="h-16 w-auto object-contain"
           />
         </div>
 
@@ -108,7 +108,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <img
             src={logoWhite}
             alt="Fitzpatrick Warranty Service, LLC"
-            className="h-8 w-auto object-contain"
+            className="h-10 w-auto object-contain"
           />
         </div>
         <div className="flex items-center gap-1">

@@ -43,7 +43,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           <img
             src={logoWhite}
             alt="Fitzpatrick Warranty Service, LLC"
-            className="h-16 w-auto"
+            className="h-20 w-auto"
           />
         </div>
 
