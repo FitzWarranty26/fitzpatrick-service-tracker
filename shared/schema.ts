@@ -16,6 +16,7 @@ export const serviceCalls = sqliteTable("service_calls", {
   jobSiteState: text("job_site_state").notNull(), // "UT" | "ID"
   contactName: text("contact_name"),
   contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
   productModel: text("product_model").notNull(),
   productSerial: text("product_serial"),
   installationDate: text("installation_date"),

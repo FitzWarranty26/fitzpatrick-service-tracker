@@ -22,7 +22,7 @@ import {
   MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, JOB_STATES
 } from "@shared/schema";
 import {
-  Camera, Plus, Trash2, ChevronLeft, Upload, X, Save
+  Camera, Plus, Trash2, ChevronLeft, Upload, X, Save, ArrowUp, ArrowDown
 } from "lucide-react";
 
 const formSchema = z.object({
@@ -36,6 +36,7 @@ const formSchema = z.object({
   jobSiteState: z.string().min(1, "Required"),
   contactName: z.string().optional().nullable(),
   contactPhone: z.string().optional().nullable(),
+  contactEmail: z.string().optional().nullable(),
   productModel: z.string().min(1, "Required"),
   productSerial: z.string().optional().nullable(),
   installationDate: z.string().optional().nullable(),
@@ -84,6 +85,7 @@ export default function NewServiceCall() {
       jobSiteState: "UT",
       contactName: "",
       contactPhone: "",
+      contactEmail: "",
       productModel: "",
       productSerial: "",
       installationDate: "",
@@ -163,6 +165,15 @@ export default function NewServiceCall() {
   const removePhoto = (idx: number) => setPhotos((p) => p.filter((_, i) => i !== idx));
   const updatePhoto = (idx: number, field: keyof PhotoEntry, value: string) => {
     setPhotos((p) => p.map((ph, i) => (i === idx ? { ...ph, [field]: value } : ph)));
+  };
+  const movePhoto = (idx: number, direction: "up" | "down") => {
+    setPhotos((prev) => {
+      const arr = [...prev];
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= arr.length) return prev;
+      [arr[idx], arr[targetIdx]] = [arr[targetIdx], arr[idx]];
+      return arr;
+    });
   };
 
   // Parts handling
@@ -309,7 +320,7 @@ export default function NewServiceCall() {
                 )} />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <FormField control={form.control} name="contactName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>On-Site Contact</FormLabel>
@@ -321,6 +332,13 @@ export default function NewServiceCall() {
                   <FormItem>
                     <FormLabel>Contact Phone</FormLabel>
                     <FormControl><Input type="tel" placeholder="801-555-0000" {...field} value={field.value ?? ""} data-testid="input-contact-phone" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="contactEmail" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Contact Email</FormLabel>
+                    <FormControl><Input type="email" placeholder="email@example.com" {...field} value={field.value ?? ""} data-testid="input-contact-email" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -466,15 +484,22 @@ export default function NewServiceCall() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {photos.map((photo, idx) => (
                     <div key={idx} className="relative rounded-lg overflow-hidden border border-border" data-testid={`photo-entry-${idx}`}>
-                      <img src={photo.dataUrl} alt={photo.caption || "Photo"} className="w-full aspect-square object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => removePhoto(idx)}
-                        className="absolute top-1.5 right-1.5 bg-black/60 rounded-full p-0.5 text-white hover:bg-black/80"
-                        data-testid={`button-remove-photo-${idx}`}
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      <img src={photo.dataUrl} alt={photo.caption || "Photo"} className="w-full aspect-[4/3] object-cover" />
+                      <div className="absolute top-1.5 right-1.5 flex gap-1">
+                        {idx > 0 && (
+                          <button type="button" onClick={() => movePhoto(idx, "up")} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/80" title="Move left">
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {idx < photos.length - 1 && (
+                          <button type="button" onClick={() => movePhoto(idx, "down")} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/80" title="Move right">
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button type="button" onClick={() => removePhoto(idx)} className="bg-black/60 rounded-full p-1 text-white hover:bg-red-600/80" data-testid={`button-remove-photo-${idx}`}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                       <div className="p-2 space-y-1.5 bg-background">
                         <select
                           value={photo.photoType}

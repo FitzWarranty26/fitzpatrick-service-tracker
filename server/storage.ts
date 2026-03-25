@@ -30,6 +30,7 @@ sqlite.exec(`
     job_site_state TEXT NOT NULL,
     contact_name TEXT,
     contact_phone TEXT,
+    contact_email TEXT,
     product_model TEXT NOT NULL,
     product_serial TEXT,
     installation_date TEXT,

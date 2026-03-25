@@ -22,7 +22,7 @@ import type { ServiceCall, Photo, Part } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Package,
   MapPin, Phone, User, Wrench, Calendar, Hash, Building, AlertCircle, CheckCircle2,
-  Image as ImageIcon
+  Image as ImageIcon, Mail, ArrowUp, ArrowDown
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 
@@ -298,6 +298,12 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     <a href={`tel:${call.contactPhone}`} className="text-sm text-primary">{call.contactPhone}</a>
                   </div>
                 )}
+                {call.contactEmail && (
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    <a href={`mailto:${call.contactEmail}`} className="text-sm text-primary">{call.contactEmail}</a>
+                  </div>
+                )}
               </>
             ) : (
               <div className="space-y-2">
@@ -308,6 +314,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   { key: "jobSiteCity", label: "City" },
                   { key: "contactName", label: "Contact" },
                   { key: "contactPhone", label: "Phone" },
+                  { key: "contactEmail", label: "Email" },
                 ].map(({ key, label }) => (
                   <div key={key}>
                     <label className="text-xs text-muted-foreground">{label}</label>
@@ -468,14 +475,22 @@ export default function ServiceCallDetail({ id }: { id: string }) {
               ))}
               {newPhotoFiles.map((p, i) => (
                 <div key={`new-${i}`} className="relative rounded-lg overflow-hidden border border-primary/40">
-                  <img src={p.dataUrl} alt="New" className="w-full aspect-square object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setNewPhotoFiles(prev => prev.filter((_, j) => j !== i))}
-                    className="absolute top-1.5 right-1.5 bg-black/60 rounded-full p-0.5 text-white"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  <img src={p.dataUrl} alt="New" className="w-full aspect-[4/3] object-cover" />
+                  <div className="absolute top-1.5 right-1.5 flex gap-1">
+                    {i > 0 && (
+                      <button type="button" onClick={() => setNewPhotoFiles(prev => { const arr = [...prev]; [arr[i], arr[i-1]] = [arr[i-1], arr[i]]; return arr; })} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/80">
+                        <ArrowUp className="w-3 h-3" />
+                      </button>
+                    )}
+                    {i < newPhotoFiles.length - 1 && (
+                      <button type="button" onClick={() => setNewPhotoFiles(prev => { const arr = [...prev]; [arr[i], arr[i+1]] = [arr[i+1], arr[i]]; return arr; })} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/80">
+                        <ArrowDown className="w-3 h-3" />
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setNewPhotoFiles(prev => prev.filter((_, j) => j !== i))} className="bg-black/60 rounded-full p-1 text-white hover:bg-red-600/80">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
                   <div className="p-1.5 bg-background/90">
                     <select
                       value={p.photoType}

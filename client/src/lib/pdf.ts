@@ -173,8 +173,9 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
     code { font-family: monospace; font-size: 9pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
     
     /* Photos */
-    .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    .photo-item img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0; }
+    .photo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .photo-item { break-inside: avoid; page-break-inside: avoid; margin-bottom: 8px; }
+    .photo-item img { width: 100%; height: auto; border-radius: 6px; border: 1px solid #e2e8f0; display: block; }
     .photo-label { font-size: 8pt; color: #64748b; margin-top: 4px; }
     
     /* Footer */
@@ -188,7 +189,8 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
     
     @media print {
       .page { padding: 20px; }
-      .photo-grid { grid-template-columns: repeat(2, 1fr); }
+      .section { break-inside: avoid; page-break-inside: avoid; }
+      .photo-item { break-inside: avoid; page-break-inside: avoid; }
     }
   </style>
 </head>
@@ -263,6 +265,12 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
       <div class="field">
         <label>Contact Phone</label>
         <span class="value">${call.contactPhone}</span>
+      </div>
+      ` : ""}
+      ${call.contactEmail ? `
+      <div class="field">
+        <label>Contact Email</label>
+        <span class="value">${call.contactEmail}</span>
       </div>
       ` : ""}
     </div>
