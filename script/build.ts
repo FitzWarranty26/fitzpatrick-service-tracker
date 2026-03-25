@@ -1,6 +1,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { rm, readFile, copyFile, mkdir } from "fs/promises";
+import { existsSync } from "fs";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -35,6 +36,22 @@ async function buildAll() {
 
   console.log("building client...");
   await viteBuild();
+
+  // Copy PWA assets to dist/public
+  const pwaAssets = [
+    ["manifest.json", "dist/public/manifest.json"],
+    ["attached_assets/apple-touch-icon.png", "dist/public/apple-touch-icon.png"],
+    ["attached_assets/favicon-32.png", "dist/public/favicon-32.png"],
+    ["attached_assets/icon-192.png", "dist/public/icon-192.png"],
+    ["attached_assets/icon-512.png", "dist/public/icon-512.png"],
+    ["attached_assets/icon-167.png", "dist/public/icon-167.png"],
+  ];
+  for (const [src, dest] of pwaAssets) {
+    if (existsSync(src)) {
+      await copyFile(src, dest);
+    }
+  }
+  console.log("copied PWA assets");
 
   console.log("building server...");
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));
