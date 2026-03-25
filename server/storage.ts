@@ -13,8 +13,11 @@ import {
   type InsertPart,
 } from "@shared/schema";
 
-const sqlite = new Database("warranty_tracker.db");
+// Use persistent disk path on Render if available, otherwise local
+const DB_PATH = process.env.DB_PATH || "warranty_tracker.db";
+const sqlite = new Database(DB_PATH);
 export const db = drizzle(sqlite);
+console.log(`Database: ${DB_PATH}`);
 
 // Create tables if they don't exist
 sqlite.exec(`
