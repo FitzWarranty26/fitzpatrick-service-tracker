@@ -24,8 +24,9 @@ import {
   MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, JOB_STATES
 } from "@shared/schema";
 import {
-  Camera, Plus, Trash2, ChevronLeft, Upload, X, Save, ArrowUp, ArrowDown, WifiOff
+  Camera, Plus, Trash2, ChevronLeft, Upload, X, Save, WifiOff
 } from "lucide-react";
+import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 
 const formSchema = z.object({
   callDate: z.string().min(1, "Required"),
@@ -209,19 +210,7 @@ export default function NewServiceCall() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const removePhoto = (idx: number) => setPhotos((p) => p.filter((_, i) => i !== idx));
-  const updatePhoto = (idx: number, field: keyof PhotoEntry, value: string) => {
-    setPhotos((p) => p.map((ph, i) => (i === idx ? { ...ph, [field]: value } : ph)));
-  };
-  const movePhoto = (idx: number, direction: "up" | "down") => {
-    setPhotos((prev) => {
-      const arr = [...prev];
-      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= arr.length) return prev;
-      [arr[idx], arr[targetIdx]] = [arr[targetIdx], arr[idx]];
-      return arr;
-    });
-  };
+  // Photo reordering/editing handled by SortablePhotoGrid component
 
   // Parts handling
   const addPart = () => setParts((p) => [...p, { partNumber: "", partDescription: "", quantity: 1, source: "" }]);
@@ -563,46 +552,10 @@ export default function NewServiceCall() {
               </button>
 
               {photos.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {photos.map((photo, idx) => (
-                    <div key={idx} className="relative rounded-lg overflow-hidden border border-border" data-testid={`photo-entry-${idx}`}>
-                      <img src={photo.dataUrl} alt={photo.caption || "Photo"} className="w-full aspect-[4/3] object-cover" />
-                      <div className="absolute top-1.5 right-1.5 flex gap-1">
-                        {idx > 0 && (
-                          <button type="button" onClick={() => movePhoto(idx, "up")} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/80" title="Move left">
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {idx < photos.length - 1 && (
-                          <button type="button" onClick={() => movePhoto(idx, "down")} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/80" title="Move right">
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        <button type="button" onClick={() => removePhoto(idx)} className="bg-black/60 rounded-full p-1 text-white hover:bg-red-600/80" data-testid={`button-remove-photo-${idx}`}>
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="p-2 space-y-1.5 bg-background">
-                        <select
-                          value={photo.photoType}
-                          onChange={(e) => updatePhoto(idx, "photoType", e.target.value)}
-                          className="w-full text-xs border border-input rounded px-2 py-1 bg-background text-foreground"
-                          data-testid={`select-photo-type-${idx}`}
-                        >
-                          {PHOTO_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                        <input
-                          type="text"
-                          value={photo.caption}
-                          onChange={(e) => updatePhoto(idx, "caption", e.target.value)}
-                          placeholder="Caption…"
-                          className="w-full text-xs border border-input rounded px-2 py-1 bg-background text-foreground placeholder:text-muted-foreground"
-                          data-testid={`input-photo-caption-${idx}`}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <p className="text-xs text-muted-foreground">Drag photos to reorder</p>
+                  <SortablePhotoGrid photos={photos} onChange={setPhotos} />
+                </>
               )}
             </CardContent>
           </Card>
