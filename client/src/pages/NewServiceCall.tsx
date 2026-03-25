@@ -209,7 +209,7 @@ export default function NewServiceCall() {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">Call Information</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="callDate" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Call Date *</FormLabel>
@@ -268,7 +268,7 @@ export default function NewServiceCall() {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">Customer & Job Site</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="customerName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Customer Name *</FormLabel>
@@ -293,7 +293,7 @@ export default function NewServiceCall() {
                 </FormItem>
               )} />
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="jobSiteCity" render={({ field }) => (
                   <FormItem>
                     <FormLabel>City *</FormLabel>
@@ -320,7 +320,7 @@ export default function NewServiceCall() {
                 )} />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField control={form.control} name="contactName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>On-Site Contact</FormLabel>
@@ -350,7 +350,7 @@ export default function NewServiceCall() {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">Product Information</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="productModel" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Model Number *</FormLabel>
@@ -481,7 +481,7 @@ export default function NewServiceCall() {
               </button>
 
               {photos.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {photos.map((photo, idx) => (
                     <div key={idx} className="relative rounded-lg overflow-hidden border border-border" data-testid={`photo-entry-${idx}`}>
                       <img src={photo.dataUrl} alt={photo.caption || "Photo"} className="w-full aspect-[4/3] object-cover" />

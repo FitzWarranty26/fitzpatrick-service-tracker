@@ -210,7 +210,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       {isEditing && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Status</label>
                 <Select
