@@ -5,6 +5,7 @@ import {
   LayoutDashboard, ClipboardList, PlusCircle, Sun, Moon, Menu, X, ChevronRight, Wrench, BarChart3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { OfflineIndicatorDesktop, OfflineIndicatorMobile } from "@/components/OfflineIndicator";
 import logoWhite from "@assets/logo-white.jpg";
 import logoDark from "@assets/logo-dark.jpg";
 
@@ -96,9 +97,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Bottom */}
-        <div className="p-4 border-t border-[hsl(217,28%,20%)] flex items-center justify-between">
-          <span className="text-xs text-slate-300 font-medium">kevin@fitzpatricksales.com</span>
-          <ThemeToggle />
+        <div className="p-4 border-t border-[hsl(217,28%,20%)] space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-300 font-medium">kevin@fitzpatricksales.com</span>
+            <ThemeToggle />
+          </div>
+          <OfflineIndicatorDesktop />
         </div>
       </aside>
 
@@ -112,6 +116,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           />
         </div>
         <div className="flex items-center gap-1">
+          <OfflineIndicatorMobile />
           <ThemeToggle />
           <Button
             variant="ghost"

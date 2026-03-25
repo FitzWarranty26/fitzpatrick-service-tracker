@@ -1,13 +1,19 @@
+import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
 import { StatusBadge, ClaimBadge } from "@/components/StatusBadge";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import { getPendingCount } from "@/lib/offline-queue";
+import { syncPendingCalls } from "@/lib/sync-service";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  PlusCircle, ClipboardCheck, Clock, PackageSearch, FileCheck, ArrowRight, ChevronRight
+  PlusCircle, ClipboardCheck, Clock, PackageSearch, FileCheck, ArrowRight, ChevronRight,
+  CloudOff, RefreshCw
 } from "lucide-react";
 import type { ServiceCall } from "@shared/schema";
 
@@ -24,6 +30,62 @@ interface ServiceCallWithCounts extends ServiceCall {
 }
 
 export default function Dashboard() {
+  const isOnline = useOnlineStatus();
+  const { toast } = useToast();
+  const [pendingCount, setPendingCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+
+  const refreshPendingCount = useCallback(async () => {
+    try {
+      const count = await getPendingCount();
+      setPendingCount(count);
+    } catch {
+      // IndexedDB may not be available
+    }
+  }, []);
+
+  // Poll pending count
+  useEffect(() => {
+    refreshPendingCount();
+    const interval = setInterval(refreshPendingCount, 5000);
+    return () => clearInterval(interval);
+  }, [refreshPendingCount]);
+
+  // Auto-sync when coming back online
+  useEffect(() => {
+    if (isOnline && pendingCount > 0) {
+      handleSync();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline]);
+
+  const handleSync = async () => {
+    if (syncing || !isOnline) return;
+    setSyncing(true);
+    try {
+      const result = await syncPendingCalls();
+      await refreshPendingCount();
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent"] });
+      if (result.synced > 0) {
+        toast({
+          title: "Synced",
+          description: `${result.synced} service call${result.synced > 1 ? "s" : ""} synced.`,
+        });
+      }
+      if (result.failed > 0) {
+        toast({
+          title: "Sync issue",
+          description: `${result.failed} call${result.failed > 1 ? "s" : ""} failed to sync.`,
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
   });
@@ -98,6 +160,38 @@ export default function Dashboard() {
           </Link>
         </Button>
       </div>
+
+      {/* Pending Sync Card */}
+      {pendingCount > 0 && (
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20" data-testid="pending-sync-card">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/40">
+                <CloudOff className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                  {pendingCount} pending service call{pendingCount > 1 ? "s" : ""}
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {isOnline ? "Ready to sync" : "Will sync when back online"}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!isOnline || syncing}
+              onClick={handleSync}
+              className="border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+              data-testid="button-sync-dashboard"
+            >
+              <RefreshCw className={`w-4 h-4 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing…" : "Sync Now"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">

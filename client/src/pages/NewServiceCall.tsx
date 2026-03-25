@@ -7,6 +7,8 @@ import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import { todayISO } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import { savePendingCall } from "@/lib/offline-queue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,7 +24,7 @@ import {
   MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, JOB_STATES
 } from "@shared/schema";
 import {
-  Camera, Plus, Trash2, ChevronLeft, Upload, X, Save, ArrowUp, ArrowDown
+  Camera, Plus, Trash2, ChevronLeft, Upload, X, Save, ArrowUp, ArrowDown, WifiOff
 } from "lucide-react";
 
 const formSchema = z.object({
@@ -75,6 +77,8 @@ export default function NewServiceCall() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [parts, setParts] = useState<PartEntry[]>([]);
+  const isOnline = useOnlineStatus();
+  const [savingOffline, setSavingOffline] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -143,7 +147,44 @@ export default function NewServiceCall() {
     },
   });
 
-  const onSubmit = (values: FormValues) => createMutation.mutate(values);
+  const onSubmit = async (values: FormValues) => {
+    if (isOnline) {
+      createMutation.mutate(values);
+    } else {
+      // Save to IndexedDB for later sync
+      setSavingOffline(true);
+      try {
+        await savePendingCall({
+          formData: values as unknown as Record<string, unknown>,
+          photos: photos.map((p) => ({
+            dataUrl: p.dataUrl,
+            caption: p.caption,
+            photoType: p.photoType,
+          })),
+          parts: parts.map((p) => ({
+            partNumber: p.partNumber,
+            partDescription: p.partDescription,
+            quantity: p.quantity,
+            source: p.source,
+          })),
+          savedAt: new Date().toISOString(),
+        });
+        toast({
+          title: "Saved offline",
+          description: "Will sync when back online.",
+        });
+        navigate("/");
+      } catch (err: any) {
+        toast({
+          title: "Error",
+          description: err?.message ?? "Failed to save offline.",
+          variant: "destructive",
+        });
+      } finally {
+        setSavingOffline(false);
+      }
+    }
+  };
 
   // Photo handling — compress iPhone photos before storing
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,6 +248,13 @@ export default function NewServiceCall() {
           <p className="text-sm text-muted-foreground">Fill out all required fields</p>
         </div>
       </div>
+
+      {!isOnline && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-4 flex items-center gap-2" data-testid="offline-banner">
+          <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <p className="text-sm text-amber-700 dark:text-amber-400">You're offline. Service calls will be saved locally and synced when you reconnect.</p>
+        </div>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -637,11 +685,11 @@ export default function NewServiceCall() {
           <div className="flex gap-3 pb-4">
             <Button
               type="submit"
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || savingOffline}
               className="flex-1"
               data-testid="button-submit"
             >
-              {createMutation.isPending ? (
+              {(createMutation.isPending || savingOffline) ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                   Saving…
@@ -649,7 +697,7 @@ export default function NewServiceCall() {
               ) : (
                 <span className="flex items-center gap-2">
                   <Save className="w-4 h-4" />
-                  Save Service Call
+                  {isOnline ? "Save Service Call" : "Save Offline"}
                 </span>
               )}
             </Button>
