@@ -17,7 +17,9 @@ import {
 const DB_PATH = process.env.DB_PATH || "warranty_tracker.db";
 const sqlite = new Database(DB_PATH);
 export const db = drizzle(sqlite);
-console.log(`Database: ${DB_PATH}`);
+if (process.env.NODE_ENV !== "production") {
+  console.log(`Database: ${DB_PATH}`);
+}
 
 // Create tables if they don't exist
 sqlite.exec(`

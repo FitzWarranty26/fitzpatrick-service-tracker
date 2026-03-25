@@ -5,6 +5,13 @@ import { storage } from "./storage";
 import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema } from "@shared/schema";
 import { z } from "zod";
 
+// Safe error response — never leak internal error details to the client
+function safeError(e: any): string {
+  if (e instanceof z.ZodError) return "Validation failed";
+  if (process.env.NODE_ENV === "production") return "An error occurred";
+  return e?.message || "An error occurred";
+}
+
 // ─── Rate Limiter (in-memory, no dependencies) ──────────────────────────────
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -128,24 +135,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (token && isValidSession(token)) {
       return res.json({ authenticated: true });
     }
-    // Also support legacy x-app-password for backward compatibility during transition
-    const legacyHeader = req.headers["x-app-password"] as string | undefined;
-    if (legacyHeader && safeCompare(legacyHeader, APP_PASSWORD)) {
-      return res.json({ authenticated: true });
-    }
     return res.status(401).json({ authenticated: false });
   });
 
-  // Middleware to protect all other API routes
+  // Middleware to protect all other API routes — Bearer token only
   const requireAuth = (req: any, res: any, next: any) => {
-    // Check Bearer token first (new method)
-    const authHeader = (req.headers.authorization || "").replace("Bearer ", "");
-    if (authHeader && isValidSession(authHeader)) {
-      return next();
-    }
-    // Fallback to legacy x-app-password header
-    const legacyHeader = req.headers["x-app-password"] as string | undefined;
-    if (legacyHeader && safeCompare(legacyHeader, APP_PASSWORD)) {
+    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    if (token && isValidSession(token)) {
       return next();
     }
     return res.status(401).json({ error: "Unauthorized" });
@@ -164,7 +160,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const stats = storage.getDashboardStats();
       res.json(stats);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -173,7 +169,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const calls = storage.getRecentServiceCalls(10);
       res.json(calls);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -198,7 +194,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
       res.json(calls);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -210,7 +206,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (!call) return res.status(404).json({ error: "Not found" });
       res.json(call);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -229,7 +225,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (e instanceof z.ZodError) {
         return res.status(400).json({ error: "Validation failed", details: e.errors });
       }
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -245,7 +241,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (e instanceof z.ZodError) {
         return res.status(400).json({ error: "Validation failed", details: e.errors });
       }
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -256,7 +252,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       storage.deleteServiceCall(id);
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -269,7 +265,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const callPhotos = storage.getPhotosByServiceCallId(id);
       res.json(callPhotos);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -284,7 +280,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (e instanceof z.ZodError) {
         return res.status(400).json({ error: "Validation failed", details: e.errors });
       }
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -295,7 +291,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       storage.deletePhoto(id);
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -308,7 +304,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const parts = storage.getPartsByServiceCallId(id);
       res.json(parts);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -323,7 +319,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (e instanceof z.ZodError) {
         return res.status(400).json({ error: "Validation failed", details: e.errors });
       }
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -336,7 +332,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (!part) return res.status(404).json({ error: "Not found" });
       res.json(part);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -347,7 +343,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       storage.deletePart(id);
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -383,7 +379,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         dateRange: { from: dateFrom || null, to: dateTo || null },
       });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -415,7 +411,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -466,7 +462,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -500,7 +496,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -547,7 +543,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -596,7 +592,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       res.setHeader("Content-Disposition", "attachment; filename=service-calls-export.csv");
       res.send(csv);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -619,7 +615,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
       res.json({ geocoded, total: calls.length });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -654,7 +650,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }));
       res.json(mapData);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 
@@ -746,7 +742,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       res.json({ message: "Seeded successfully", count: 3 });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: safeError(e) });
     }
   });
 }
