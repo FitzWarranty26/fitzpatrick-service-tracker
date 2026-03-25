@@ -250,21 +250,33 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Call Information</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <DetailRow label="Date" value={formatDate(call.callDate)} />
-            <DetailRow label="Manufacturer" value={call.manufacturer === "Other" ? (call.manufacturerOther ?? "Other") : call.manufacturer} />
             {!isEditing ? (
               <>
+                <DetailRow label="Date" value={formatDate(call.callDate)} />
+                <DetailRow label="Manufacturer" value={call.manufacturer === "Other" ? (call.manufacturerOther ?? "Other") : call.manufacturer} />
                 <DetailRow label="Status" value={call.status} />
                 <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
               </>
             ) : (
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Manufacturer</label>
-                <Select value={editData.manufacturer ?? call.manufacturer} onValueChange={v => setEditData(d => ({ ...d, manufacturer: v }))}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>{MANUFACTURERS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+              <>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Call Date</label>
+                  <Input
+                    type="date"
+                    value={(editData.callDate ?? call.callDate) as string}
+                    onChange={e => setEditData(d => ({ ...d, callDate: e.target.value }))}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Manufacturer</label>
+                  <Select value={editData.manufacturer ?? call.manufacturer} onValueChange={v => setEditData(d => ({ ...d, manufacturer: v }))}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>{MANUFACTURERS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
+              </>
             )}
           </CardContent>
         </Card>
