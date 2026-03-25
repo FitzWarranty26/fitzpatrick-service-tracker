@@ -174,10 +174,23 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
     td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; font-size: 10pt; }
     code { font-family: monospace; font-size: 9pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
     
-    /* Photos */
-    .photo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-    .photo-item { break-inside: avoid; page-break-inside: avoid; margin-bottom: 8px; }
-    .photo-item img { width: 100%; height: auto; border-radius: 6px; border: 1px solid #e2e8f0; display: block; }
+    /* Photos — single column to prevent page-break clipping */
+    .photo-grid { display: flex; flex-direction: column; gap: 20px; }
+    .photo-item { 
+      page-break-inside: avoid; 
+      break-inside: avoid; 
+      page-break-before: auto;
+    }
+    .photo-item img { 
+      width: 100%; 
+      max-width: 500px;
+      height: auto; 
+      max-height: 500px;
+      object-fit: contain;
+      border-radius: 6px; 
+      border: 1px solid #e2e8f0; 
+      display: block; 
+    }
     .photo-label { font-size: 8pt; color: #64748b; margin-top: 4px; }
     
     /* Footer */
@@ -191,8 +204,16 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
     
     @media print {
       .page { padding: 20px; }
-      .section { break-inside: avoid; page-break-inside: avoid; }
-      .photo-item { break-inside: avoid; page-break-inside: avoid; }
+      .section { page-break-inside: avoid; break-inside: avoid; }
+      .photo-item { 
+        page-break-inside: avoid; 
+        break-inside: avoid;
+        /* If a photo won't fit on the remaining page, start a new page */
+        page-break-before: auto;
+      }
+      .photo-item img {
+        max-height: 450px;
+      }
     }
   </style>
 </head>
