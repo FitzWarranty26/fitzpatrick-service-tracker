@@ -23,23 +23,40 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
     ? (call.manufacturerOther ?? "Other")
     : call.manufacturer;
 
+  // Group photos into rows of 3, with page breaks between groups
+  // Each row is ~200px tall (180px image + 20px label/gap)
+  // A letter page has ~900px usable height, so we can fit ~4 rows per page
+  const PHOTOS_PER_ROW = 3;
+  const ROWS_PER_PAGE = 4;
+  const PHOTOS_PER_PAGE = PHOTOS_PER_ROW * ROWS_PER_PAGE; // 12 photos per page
+
   const photosHtml = call.photos.length > 0
-    ? `
-      <div class="section">
-        <h2>Photos (${call.photos.length})</h2>
-        <div class="photo-grid">
-          ${call.photos.map(p => `
+    ? (() => {
+        let html = `<div class="page-break"></div><div class="section"><h2>Photos (${call.photos.length})</h2>`;
+        
+        for (let i = 0; i < call.photos.length; i++) {
+          // Start a new grid for each page-worth of photos
+          if (i % PHOTOS_PER_PAGE === 0) {
+            if (i > 0) {
+              html += `</div><div class="page-break"></div>`; // close previous grid, page break
+            }
+            html += `<div class="photo-grid">`;
+          }
+          
+          const p = call.photos[i];
+          html += `
             <div class="photo-item">
               <img src="${p.photoUrl}" alt="${p.caption || "Photo"}" />
               <div class="photo-label">
                 <strong>${p.photoType}</strong>
                 ${p.caption ? `<br/>${p.caption}` : ""}
               </div>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-    `
+            </div>`;
+        }
+        
+        html += `</div></div>`; // close last grid and section
+        return html;
+      })()
     : "";
 
   const partsHtml = call.parts.length > 0
@@ -174,24 +191,19 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
     td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; font-size: 10pt; }
     code { font-family: monospace; font-size: 9pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
     
-    /* Photos — single column to prevent page-break clipping */
-    .photo-grid { display: flex; flex-direction: column; gap: 20px; }
-    .photo-item { 
-      page-break-inside: avoid; 
-      break-inside: avoid; 
-      page-break-before: auto;
-    }
+    /* Photos — 3-column grid, small thumbnails */
+    .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .photo-item { overflow: hidden; }
     .photo-item img { 
       width: 100%; 
-      max-width: 500px;
-      height: auto; 
-      max-height: 500px;
-      object-fit: contain;
+      height: 180px;
+      object-fit: cover;
       border-radius: 6px; 
       border: 1px solid #e2e8f0; 
       display: block; 
     }
-    .photo-label { font-size: 8pt; color: #64748b; margin-top: 4px; }
+    .photo-label { font-size: 7pt; color: #64748b; margin-top: 3px; }
+    .page-break { page-break-before: always; break-before: page; height: 0; margin: 0; padding: 0; }
     
     /* Footer */
     .footer {
@@ -204,16 +216,7 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
     
     @media print {
       .page { padding: 20px; }
-      .section { page-break-inside: avoid; break-inside: avoid; }
-      .photo-item { 
-        page-break-inside: avoid; 
-        break-inside: avoid;
-        /* If a photo won't fit on the remaining page, start a new page */
-        page-break-before: auto;
-      }
-      .photo-item img {
-        max-height: 450px;
-      }
+      .page-break { page-break-before: always; break-before: page; }
     }
   </style>
 </head>
