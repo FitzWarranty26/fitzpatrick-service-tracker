@@ -62,6 +62,22 @@ sqlite.exec(`
   );
 `);
 
+// ─── Migrations (safe to re-run) ─────────────────────────────────────────────
+// Add new columns to existing tables without losing data.
+// SQLite's ALTER TABLE ADD COLUMN is safe — it adds the column if missing.
+// We check first to avoid errors on tables that already have the column.
+
+function columnExists(table: string, column: string): boolean {
+  const info = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return info.some(col => col.name === column);
+}
+
+// Migration 1: Add contact_email to service_calls
+if (!columnExists("service_calls", "contact_email")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN contact_email TEXT`);
+  console.log("Migration: added contact_email column to service_calls");
+}
+
 export interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;
