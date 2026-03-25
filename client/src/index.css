@@ -141,6 +141,16 @@
   }
 }
 
+/* Fix iOS date inputs overflowing containers */
+input[type="date"],
+input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 /* Photo upload area */
 .photo-drop-zone {
   @apply border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer transition-colors;
