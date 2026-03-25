@@ -155,42 +155,42 @@ export default function ServiceCallList() {
 
         {showFilters && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 border border-border rounded-lg bg-muted/30">
-            <Select value={filterManufacturer} onValueChange={setFilterManufacturer}>
+            <Select value={filterManufacturer || "__all__"} onValueChange={v => setFilterManufacturer(v === "__all__" ? "" : v)}>
               <SelectTrigger className="h-8 text-xs" data-testid="filter-manufacturer">
                 <SelectValue placeholder="Manufacturer" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Manufacturers</SelectItem>
+                <SelectItem value="__all__">All Manufacturers</SelectItem>
                 {MANUFACTURERS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
               </SelectContent>
             </Select>
 
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <Select value={filterStatus || "__all__"} onValueChange={v => setFilterStatus(v === "__all__" ? "" : v)}>
               <SelectTrigger className="h-8 text-xs" data-testid="filter-status">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Statuses</SelectItem>
+                <SelectItem value="__all__">All Statuses</SelectItem>
                 {SERVICE_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
 
-            <Select value={filterClaimStatus} onValueChange={setFilterClaimStatus}>
+            <Select value={filterClaimStatus || "__all__"} onValueChange={v => setFilterClaimStatus(v === "__all__" ? "" : v)}>
               <SelectTrigger className="h-8 text-xs" data-testid="filter-claim-status">
                 <SelectValue placeholder="Claim Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Claim Statuses</SelectItem>
+                <SelectItem value="__all__">All Claim Statuses</SelectItem>
                 {CLAIM_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
 
-            <Select value={filterState} onValueChange={setFilterState}>
+            <Select value={filterState || "__all__"} onValueChange={v => setFilterState(v === "__all__" ? "" : v)}>
               <SelectTrigger className="h-8 text-xs" data-testid="filter-state">
                 <SelectValue placeholder="State" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All States</SelectItem>
+                <SelectItem value="__all__">All States</SelectItem>
                 <SelectItem value="UT">Utah</SelectItem>
                 <SelectItem value="ID">Idaho</SelectItem>
               </SelectContent>
