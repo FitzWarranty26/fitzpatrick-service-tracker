@@ -11,6 +11,7 @@ import Dashboard from "@/pages/Dashboard";
 import ServiceCallList from "@/pages/ServiceCallList";
 import NewServiceCall from "@/pages/NewServiceCall";
 import ServiceCallDetail from "@/pages/ServiceCallDetail";
+import Analytics from "@/pages/Analytics";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
@@ -31,6 +32,7 @@ function AppRouter() {
         <Route path="/" component={Dashboard} />
         <Route path="/calls" component={ServiceCallList} />
         <Route path="/new" component={NewServiceCall} />
+        <Route path="/analytics" component={Analytics} />
         <Route path="/calls/:id">
           {(params) => <ServiceCallDetail id={params.id} />}
         </Route>

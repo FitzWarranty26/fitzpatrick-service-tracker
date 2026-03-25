@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, ClipboardList, PlusCircle, Sun, Moon, Menu, X, ChevronRight, Wrench
+  LayoutDashboard, ClipboardList, PlusCircle, Sun, Moon, Menu, X, ChevronRight, Wrench, BarChart3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logoWhite from "@assets/logo-white.jpg";
@@ -12,6 +12,7 @@ const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/calls", icon: ClipboardList, label: "Service Calls" },
   { href: "/new", icon: PlusCircle, label: "New Call" },
+  { href: "/analytics", icon: BarChart3, label: "Analytics" },
 ];
 
 // Export logo paths for use in other components (e.g. PDF reports)

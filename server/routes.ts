@@ -289,6 +289,255 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── Analytics ──────────────────────────────────────────────────────────────
+
+  app.get("/api/analytics/summary", (req, res) => {
+    try {
+      const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
+      const filters: any = {};
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      if (manufacturer) filters.manufacturer = manufacturer;
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+
+      const totalByStatus: Record<string, number> = {};
+      const totalByClaimStatus: Record<string, number> = {};
+      const models = new Set<string>();
+      const customers = new Set<string>();
+
+      for (const c of calls) {
+        totalByStatus[c.status] = (totalByStatus[c.status] || 0) + 1;
+        totalByClaimStatus[c.claimStatus] = (totalByClaimStatus[c.claimStatus] || 0) + 1;
+        models.add(c.productModel);
+        customers.add(c.customerName);
+      }
+
+      res.json({
+        totalCalls: calls.length,
+        totalByStatus,
+        totalByClaimStatus,
+        uniqueModels: models.size,
+        uniqueCustomers: customers.size,
+        dateRange: { from: dateFrom || null, to: dateTo || null },
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/analytics/by-manufacturer", (req, res) => {
+    try {
+      const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
+      const filters: any = {};
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      if (manufacturer) filters.manufacturer = manufacturer;
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+
+      const mfgMap = new Map<string, { count: number; models: Map<string, number> }>();
+      for (const c of calls) {
+        if (!mfgMap.has(c.manufacturer)) {
+          mfgMap.set(c.manufacturer, { count: 0, models: new Map() });
+        }
+        const entry = mfgMap.get(c.manufacturer)!;
+        entry.count++;
+        entry.models.set(c.productModel, (entry.models.get(c.productModel) || 0) + 1);
+      }
+
+      const result = Array.from(mfgMap.entries()).map(([manufacturer, data]) => ({
+        manufacturer,
+        count: data.count,
+        models: Array.from(data.models.entries()).map(([model, count]) => ({ model, count })),
+      }));
+      result.sort((a, b) => b.count - a.count);
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/analytics/by-model", (req, res) => {
+    try {
+      const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
+      const filters: any = {};
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      if (manufacturer) filters.manufacturer = manufacturer;
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+
+      const modelMap = new Map<string, {
+        manufacturer: string;
+        count: number;
+        serialNumbers: Set<string>;
+        lastServiceDate: string;
+        customers: Set<string>;
+      }>();
+
+      for (const c of calls) {
+        const key = `${c.manufacturer}||${c.productModel}`;
+        if (!modelMap.has(key)) {
+          modelMap.set(key, {
+            manufacturer: c.manufacturer,
+            count: 0,
+            serialNumbers: new Set(),
+            lastServiceDate: c.callDate,
+            customers: new Set(),
+          });
+        }
+        const entry = modelMap.get(key)!;
+        entry.count++;
+        if (c.productSerial) entry.serialNumbers.add(c.productSerial);
+        if (c.callDate > entry.lastServiceDate) entry.lastServiceDate = c.callDate;
+        entry.customers.add(c.customerName);
+      }
+
+      const result = Array.from(modelMap.entries()).map(([key, data]) => ({
+        manufacturer: data.manufacturer,
+        model: key.split("||")[1] || "",
+        count: data.count,
+        serialNumbers: Array.from(data.serialNumbers),
+        lastServiceDate: data.lastServiceDate,
+        customers: Array.from(data.customers),
+      }));
+      result.sort((a, b) => b.count - a.count);
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/analytics/trends", (req, res) => {
+    try {
+      const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
+      const filters: any = {};
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      if (manufacturer) filters.manufacturer = manufacturer;
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+
+      const monthMap = new Map<string, { count: number; completed: number; open: number }>();
+      for (const c of calls) {
+        const month = c.callDate.slice(0, 7); // "2026-03"
+        if (!monthMap.has(month)) {
+          monthMap.set(month, { count: 0, completed: 0, open: 0 });
+        }
+        const entry = monthMap.get(month)!;
+        entry.count++;
+        if (c.status === "Completed") {
+          entry.completed++;
+        } else {
+          entry.open++;
+        }
+      }
+
+      const result = Array.from(monthMap.entries())
+        .map(([month, data]) => ({ month, ...data }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/analytics/repeat-failures", (req, res) => {
+    try {
+      const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
+      const filters: any = {};
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      if (manufacturer) filters.manufacturer = manufacturer;
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+
+      const modelMap = new Map<string, {
+        model: string;
+        manufacturer: string;
+        count: number;
+        serialNumbers: Set<string>;
+      }>();
+
+      for (const c of calls) {
+        const key = `${c.manufacturer}||${c.productModel}`;
+        if (!modelMap.has(key)) {
+          modelMap.set(key, {
+            model: c.productModel,
+            manufacturer: c.manufacturer,
+            count: 0,
+            serialNumbers: new Set(),
+          });
+        }
+        const entry = modelMap.get(key)!;
+        entry.count++;
+        if (c.productSerial) entry.serialNumbers.add(c.productSerial);
+      }
+
+      const result = Array.from(modelMap.values())
+        .filter(e => e.count > 1)
+        .map(e => ({
+          model: e.model,
+          manufacturer: e.manufacturer,
+          count: e.count,
+          serialNumbers: Array.from(e.serialNumbers),
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/analytics/export", (req, res) => {
+    try {
+      const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
+      const filters: any = {};
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      if (manufacturer) filters.manufacturer = manufacturer;
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+
+      // Build CSV
+      const headers = [
+        "Call ID", "Date", "Manufacturer", "Customer", "Job Site", "Address", "City", "State",
+        "Contractor Name", "Contractor Phone", "Site Contact", "Model", "Serial", "Install Date",
+        "Status", "Claim Status", "Issue", "Diagnosis", "Resolution", "Parts Used", "Tech Notes"
+      ];
+
+      const escapeCSV = (val: string | null | undefined): string => {
+        if (val == null) return "";
+        const s = String(val);
+        if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      };
+
+      const rows = calls.map(c => {
+        // Get full call with parts
+        const full = storage.getServiceCallById(c.id);
+        const partsStr = full?.parts?.map(p => `${p.partDescription} (${p.partNumber}) x${p.quantity}`).join("; ") || "";
+        return [
+          c.id, c.callDate, c.manufacturer, c.customerName, c.jobSiteName,
+          c.jobSiteAddress, c.jobSiteCity, c.jobSiteState,
+          c.contactName, c.contactPhone, c.siteContactName,
+          c.productModel, c.productSerial, c.installationDate,
+          c.status, c.claimStatus, c.issueDescription, c.diagnosis, c.resolution,
+          partsStr, c.techNotes
+        ].map(v => escapeCSV(v as any)).join(",");
+      });
+
+      const csv = [headers.join(","), ...rows].join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=service-calls-export.csv");
+      res.send(csv);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Seed Data (development only) ────────────────────────────────────────────
 
   app.post("/api/seed", (_req, res) => {
