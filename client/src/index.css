@@ -163,3 +163,10 @@ input[type="datetime-local"] {
 .nav-link-active {
   @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
 }
+
+/* Leaflet map */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  font-family: inherit;
+}

@@ -78,6 +78,21 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 
+// ─── Geocoding Helper ─────────────────────────────────────────────────────
+async function geocodeAddress(address: string, city: string, state: string): Promise<{lat: string, lng: string} | null> {
+  try {
+    const query = encodeURIComponent(`${address}, ${city}, ${state}`);
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`, {
+      headers: { "User-Agent": "FitzpatrickServiceTracker/1.0" }
+    });
+    const data = await res.json();
+    if (data && data.length > 0) {
+      return { lat: data[0].lat, lng: data[0].lon };
+    }
+    return null;
+  } catch { return null; }
+}
+
 export function registerRoutes(httpServer: Server, app: Express) {
   // ─── Authentication ─────────────────────────────────────────────────────────
 
@@ -203,6 +218,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const data = insertServiceCallSchema.parse(req.body);
       const call = storage.createServiceCall(data);
+      // Geocode in background (don't block the response)
+      geocodeAddress(data.jobSiteAddress, data.jobSiteCity, data.jobSiteState).then(coords => {
+        if (coords) {
+          storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
+        }
+      });
       res.status(201).json(call);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
@@ -574,6 +595,64 @@ export function registerRoutes(httpServer: Server, app: Express) {
       res.setHeader("Content-Type", "text/csv");
       res.setHeader("Content-Disposition", "attachment; filename=service-calls-export.csv");
       res.send(csv);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Map & Geocoding ───────────────────────────────────────────────────────
+
+  app.post("/api/geocode-all", async (_req, res) => {
+    try {
+      const calls = storage.getAllServiceCalls();
+      let geocoded = 0;
+      for (const call of calls) {
+        if (!call.latitude && call.jobSiteAddress) {
+          const coords = await geocodeAddress(call.jobSiteAddress, call.jobSiteCity, call.jobSiteState);
+          if (coords) {
+            storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
+            geocoded++;
+          }
+          // Respect Nominatim rate limit: 1 request per second
+          await new Promise(r => setTimeout(r, 1100));
+        }
+      }
+      res.json({ geocoded, total: calls.length });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/analytics/map-data", (req, res) => {
+    try {
+      const { dateFrom, dateTo, manufacturer, status } = req.query as {
+        dateFrom?: string;
+        dateTo?: string;
+        manufacturer?: string;
+        status?: string;
+      };
+      const filters: any = {};
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      if (manufacturer) filters.manufacturer = manufacturer;
+      if (status) filters.status = status;
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+      const mapData = calls
+        .filter(c => c.latitude && c.longitude)
+        .map(c => ({
+          id: c.id,
+          lat: parseFloat(c.latitude!),
+          lng: parseFloat(c.longitude!),
+          manufacturer: c.manufacturer,
+          status: c.status,
+          customerName: c.customerName,
+          jobSiteName: c.jobSiteName,
+          jobSiteCity: c.jobSiteCity,
+          jobSiteState: c.jobSiteState,
+          productModel: c.productModel,
+          callDate: c.callDate,
+        }));
+      res.json(mapData);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

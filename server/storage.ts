@@ -47,6 +47,8 @@ sqlite.exec(`
     claim_status TEXT NOT NULL DEFAULT 'Not Filed',
     claim_notes TEXT,
     tech_notes TEXT,
+    latitude TEXT,
+    longitude TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -90,6 +92,13 @@ if (!columnExists("service_calls", "site_contact_name")) {
   sqlite.exec(`ALTER TABLE service_calls ADD COLUMN site_contact_phone TEXT`);
   sqlite.exec(`ALTER TABLE service_calls ADD COLUMN site_contact_email TEXT`);
   console.log("Migration: added site contact columns to service_calls");
+}
+
+// Migration 3: Add latitude/longitude to service_calls
+if (!columnExists("service_calls", "latitude")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN latitude TEXT`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN longitude TEXT`);
+  console.log("Migration: added latitude/longitude columns to service_calls");
 }
 
 export interface ServiceCallWithCounts extends ServiceCall {

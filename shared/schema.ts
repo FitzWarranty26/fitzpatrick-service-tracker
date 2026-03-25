@@ -32,6 +32,8 @@ export const serviceCalls = sqliteTable("service_calls", {
   claimStatus: text("claim_status").notNull().default("Not Filed"), // Not Filed | Submitted | Approved | Denied | Pending Review
   claimNotes: text("claim_notes"),
   techNotes: text("tech_notes"),
+  latitude: text("latitude"),
+  longitude: text("longitude"),
   createdAt: text("created_at").notNull(),
 });
 
