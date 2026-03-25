@@ -40,12 +40,43 @@ function clearFailedLogins(ip: string) {
 // Timing-safe string comparison to prevent timing attacks
 function safeCompare(a: string, b: string): boolean {
   if (a.length !== b.length) {
-    // Still do the comparison to keep constant time, but result is false
     crypto.timingSafeEqual(Buffer.from(a.padEnd(256, "\0")), Buffer.from(b.padEnd(256, "\0")));
     return false;
   }
   return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
+
+// ─── Session Token Management ─────────────────────────────────────────────
+const SESSION_EXPIRY_HOURS = 24;
+const activeSessions = new Map<string, { createdAt: number; ip: string }>();
+
+function createSessionToken(ip: string): string {
+  const token = crypto.randomBytes(32).toString("hex");
+  activeSessions.set(token, { createdAt: Date.now(), ip });
+  return token;
+}
+
+function isValidSession(token: string): boolean {
+  const session = activeSessions.get(token);
+  if (!session) return false;
+  const age = Date.now() - session.createdAt;
+  if (age > SESSION_EXPIRY_HOURS * 60 * 60 * 1000) {
+    activeSessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+// Clean expired sessions every hour
+setInterval(() => {
+  const now = Date.now();
+  const maxAge = SESSION_EXPIRY_HOURS * 60 * 60 * 1000;
+  for (const [token, session] of activeSessions) {
+    if (now - session.createdAt > maxAge) {
+      activeSessions.delete(token);
+    }
+  }
+}, 60 * 60 * 1000);
 
 export function registerRoutes(httpServer: Server, app: Express) {
   // ─── Authentication ─────────────────────────────────────────────────────────
@@ -55,7 +86,6 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.post("/api/auth/login", (req, res) => {
     const ip = getClientIP(req);
 
-    // Rate limiting: block after too many failed attempts
     if (isRateLimited(ip)) {
       return res.status(429).json({
         success: false,
@@ -70,17 +100,22 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
     if (safeCompare(password, APP_PASSWORD)) {
       clearFailedLogins(ip);
-      return res.json({ success: true });
+      const token = createSessionToken(ip);
+      return res.json({ success: true, token });
     }
 
     recordFailedLogin(ip);
-    // Intentionally vague error message
     return res.status(401).json({ success: false, error: "Incorrect password" });
   });
 
   app.get("/api/auth/verify", (req, res) => {
-    const authHeader = req.headers["x-app-password"] as string | undefined;
-    if (authHeader && safeCompare(authHeader, APP_PASSWORD)) {
+    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    if (token && isValidSession(token)) {
+      return res.json({ authenticated: true });
+    }
+    // Also support legacy x-app-password for backward compatibility during transition
+    const legacyHeader = req.headers["x-app-password"] as string | undefined;
+    if (legacyHeader && safeCompare(legacyHeader, APP_PASSWORD)) {
       return res.json({ authenticated: true });
     }
     return res.status(401).json({ authenticated: false });
@@ -88,8 +123,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // Middleware to protect all other API routes
   const requireAuth = (req: any, res: any, next: any) => {
-    const authHeader = req.headers["x-app-password"] as string | undefined;
-    if (authHeader && safeCompare(authHeader, APP_PASSWORD)) {
+    // Check Bearer token first (new method)
+    const authHeader = (req.headers.authorization || "").replace("Bearer ", "");
+    if (authHeader && isValidSession(authHeader)) {
+      return next();
+    }
+    // Fallback to legacy x-app-password header
+    const legacyHeader = req.headers["x-app-password"] as string | undefined;
+    if (legacyHeader && safeCompare(legacyHeader, APP_PASSWORD)) {
       return next();
     }
     return res.status(401).json({ error: "Unauthorized" });
@@ -541,6 +582,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // ─── Seed Data (development only) ────────────────────────────────────────────
 
   app.post("/api/seed", (_req, res) => {
+    // Disabled in production — no sample data injection
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).json({ error: "Not found" });
+    }
     try {
       const calls = storage.getAllServiceCalls();
       if (calls.length > 0) {

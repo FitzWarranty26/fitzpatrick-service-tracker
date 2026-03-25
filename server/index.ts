@@ -14,6 +14,17 @@ declare module "http" {
   }
 }
 
+// ─── HTTPS Redirect (production) ───────────────────────────────────────────────
+if (process.env.NODE_ENV === "production") {
+  app.use((req, res, next) => {
+    if (req.headers["x-forwarded-proto"] === "http") {
+      return res.redirect(301, `https://${req.headers.host}${req.url}`);
+    }
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    next();
+  });
+}
+
 // ─── Security Headers ──────────────────────────────────────────────────────────
 // Applied to every response — protects against XSS, clickjacking, MIME sniffing
 app.use((_req, res, next) => {

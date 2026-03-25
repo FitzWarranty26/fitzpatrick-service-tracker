@@ -1,31 +1,32 @@
 /**
- * Simple password-based auth.
- * Password is stored in a module-level variable (survives SPA navigation).
- * Since localStorage is blocked in sandboxed iframes, we use a global variable
- * and React state for persistence during the session.
+ * Session token-based auth.
+ * On login, the server returns a random session token (not the password).
+ * The token is sent as a Bearer token on every API request.
+ * The actual password is never stored client-side after login.
+ * Token expires after 24 hours server-side.
  */
 
-let _password: string | null = null;
+let _token: string | null = null;
 
-export function getPassword(): string | null {
-  return _password;
+export function getToken(): string | null {
+  return _token;
 }
 
-export function setPassword(pw: string) {
-  _password = pw;
+export function setToken(token: string) {
+  _token = token;
 }
 
-export function clearPassword() {
-  _password = null;
+export function clearToken() {
+  _token = null;
 }
 
 export function isAuthenticated(): boolean {
-  return _password !== null;
+  return _token !== null;
 }
 
 export function getAuthHeaders(): Record<string, string> {
-  if (_password) {
-    return { "x-app-password": _password };
+  if (_token) {
+    return { "Authorization": `Bearer ${_token}` };
   }
   return {};
 }

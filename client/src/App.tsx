@@ -6,7 +6,7 @@ import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { AppLayout } from "@/components/Layout";
 import { LoginScreen } from "@/components/LoginScreen";
-import { setPassword, isAuthenticated, getAuthHeaders } from "@/lib/auth";
+import { setToken, isAuthenticated } from "@/lib/auth";
 import Dashboard from "@/pages/Dashboard";
 import ServiceCallList from "@/pages/ServiceCallList";
 import NewServiceCall from "@/pages/NewServiceCall";
@@ -70,10 +70,9 @@ function App() {
         body: JSON.stringify({ password: pw }),
       });
       const data = await res.json();
-      if (data.success) {
-        setPassword(pw);
+      if (data.success && data.token) {
+        setToken(data.token);
         setAuthed(true);
-        // Reset query client so all queries refetch with auth headers
         queryClient.clear();
         return true;
       }
