@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, getWarrantyStatus } from "@shared/schema";
+import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, PRODUCT_TYPES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Package,
@@ -91,8 +91,8 @@ function SuggestDropdown({ suggestions, onSelect, onClose }: {
   );
 }
 
-function WarrantyBadge({ installationDate, manufacturer }: { installationDate: string | null | undefined; manufacturer: string }) {
-  const warranty = getWarrantyStatus(installationDate, manufacturer);
+function WarrantyBadge({ installationDate, manufacturer, productType }: { installationDate: string | null | undefined; manufacturer: string; productType?: string | null }) {
+  const warranty = getWarrantyStatus(installationDate, manufacturer, productType);
 
   if (warranty.status === "unknown") {
     return (
@@ -620,10 +620,14 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   <p className="text-sm font-mono">{call.productSerial || "—"}</p>
                 </div>
                 <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Product Type</p>
+                  <p className="text-sm">{call.productType || "—"}</p>
+                </div>
+                <div>
                   <p className="text-xs text-muted-foreground mb-0.5">Install Date</p>
                   <p className="text-sm">{formatDate(call.installationDate)}</p>
                   <div className="mt-1">
-                    <WarrantyBadge installationDate={call.installationDate} manufacturer={call.manufacturer} />
+                    <WarrantyBadge installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
                   </div>
                 </div>
               </>
@@ -632,18 +636,40 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 {[
                   { key: "productModel", label: "Model #" },
                   { key: "productSerial", label: "Serial #" },
-                  { key: "installationDate", label: "Install Date", type: "date" },
-                ].map(({ key, label, type }) => (
+                ].map(({ key, label }) => (
                   <div key={key}>
                     <label className="text-xs text-muted-foreground">{label}</label>
                     <Input
-                      type={type}
                       value={(editData[key as keyof typeof editData] ?? call[key as keyof ServiceCall]) as string ?? ""}
                       onChange={e => setEditData(d => ({ ...d, [key]: e.target.value }))}
                       className="h-8 text-sm mt-0.5"
                     />
                   </div>
                 ))}
+                <div>
+                  <label className="text-xs text-muted-foreground">Product Type</label>
+                  <Select
+                    value={(editData.productType ?? call.productType) || "__none__"}
+                    onValueChange={v => setEditData(d => ({ ...d, productType: v === "__none__" ? "" : v }))}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-0.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Not specified</SelectItem>
+                      {PRODUCT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Install Date</label>
+                  <Input
+                    type="date"
+                    value={(editData.installationDate ?? call.installationDate ?? "") as string}
+                    onChange={e => setEditData(d => ({ ...d, installationDate: e.target.value }))}
+                    className="h-8 text-sm mt-0.5"
+                  />
+                </div>
               </>
             )}
           </div>

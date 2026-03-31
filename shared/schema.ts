@@ -24,6 +24,7 @@ export const serviceCalls = sqliteTable("service_calls", {
   siteContactEmail: text("site_contact_email"),
   productModel: text("product_model").notNull(),
   productSerial: text("product_serial"),
+  productType: text("product_type"), // "Residential" | "Commercial" | "Tankless"
   installationDate: text("installation_date"),
   issueDescription: text("issue_description").notNull(),
   diagnosis: text("diagnosis"),
@@ -141,34 +142,57 @@ export const PHOTO_TYPES = [
 
 export const JOB_STATES = ["UT", "ID"] as const;
 
-export const WARRANTY_PERIODS: Record<string, number> = {
-  "A.O. Smith Water Heaters": 6,
-  "American Water Heaters": 6,
-  "State Water Heaters": 6,
-  "Powers Controls": 5,
-  "Sloan Valve Company": 5,
-  "Watts Water Technologies": 5,
-  "Watts ACV": 5,
-  "Watts Leak Defense": 5,
-  "Other": 1,
-};
+export const PRODUCT_TYPES = ["Residential", "Commercial", "Tankless"] as const;
 
-export function getWarrantyStatus(installationDate: string | null | undefined, manufacturer: string): {
+// Water heater manufacturers
+const WATER_HEATER_MANUFACTURERS = new Set([
+  "A.O. Smith Water Heaters",
+  "American Water Heaters",
+  "State Water Heaters",
+]);
+
+// Warranty periods in years by manufacturer + product type
+function getWarrantyYears(manufacturer: string, productType: string | null | undefined): number {
+  // Water heater brands — warranty depends on product type
+  if (WATER_HEATER_MANUFACTURERS.has(manufacturer)) {
+    if (productType === "Tankless") return 15;
+    if (productType === "Commercial") return 3;
+    return 6; // Residential (default for water heaters)
+  }
+  // Sloan Valve Company — 3 year
+  if (manufacturer === "Sloan Valve Company") return 3;
+  // Watts brands & Powers Controls — 1 year
+  if (
+    manufacturer === "Watts Water Technologies" ||
+    manufacturer === "Watts ACV" ||
+    manufacturer === "Watts Leak Defense" ||
+    manufacturer === "Powers Controls"
+  ) return 1;
+  // Other / unknown — 1 year
+  return 1;
+}
+
+export function getWarrantyStatus(
+  installationDate: string | null | undefined,
+  manufacturer: string,
+  productType?: string | null,
+): {
   status: "in-warranty" | "out-of-warranty" | "unknown";
   expiresDate: string | null;
   daysRemaining: number | null;
+  warrantyYears: number;
 } {
-  if (!installationDate) return { status: "unknown", expiresDate: null, daysRemaining: null };
-  const years = WARRANTY_PERIODS[manufacturer] ?? 1;
+  const years = getWarrantyYears(manufacturer, productType);
+  if (!installationDate) return { status: "unknown", expiresDate: null, daysRemaining: null, warrantyYears: years };
   const install = new Date(installationDate);
-  if (isNaN(install.getTime())) return { status: "unknown", expiresDate: null, daysRemaining: null };
+  if (isNaN(install.getTime())) return { status: "unknown", expiresDate: null, daysRemaining: null, warrantyYears: years };
   const expiry = new Date(install);
   expiry.setFullYear(expiry.getFullYear() + years);
   const now = new Date();
   const daysRemaining = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   const expiresDate = expiry.toISOString().split("T")[0];
   if (daysRemaining > 0) {
-    return { status: "in-warranty", expiresDate, daysRemaining };
+    return { status: "in-warranty", expiresDate, daysRemaining, warrantyYears: years };
   }
-  return { status: "out-of-warranty", expiresDate, daysRemaining };
+  return { status: "out-of-warranty", expiresDate, daysRemaining, warrantyYears: years };
 }

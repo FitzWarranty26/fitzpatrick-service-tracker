@@ -21,7 +21,7 @@ import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import {
-  MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, JOB_STATES
+  MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, JOB_STATES, PRODUCT_TYPES
 } from "@shared/schema";
 import type { ServiceCall, Contact } from "@shared/schema";
 import {
@@ -46,6 +46,7 @@ const formSchema = z.object({
   siteContactEmail: z.string().optional().nullable(),
   productModel: z.string().min(1, "Required"),
   productSerial: z.string().optional().nullable(),
+  productType: z.string().optional().nullable(),
   installationDate: z.string().optional().nullable(),
   issueDescription: z.string().min(1, "Required"),
   diagnosis: z.string().optional().nullable(),
@@ -167,6 +168,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       siteContactEmail: "",
       productModel: "",
       productSerial: "",
+      productType: "",
       installationDate: "",
       issueDescription: "",
       diagnosis: "",
@@ -203,6 +205,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
         manufacturerOther: parentCall.manufacturerOther ?? "",
         productModel: parentCall.productModel,
         productSerial: parentCall.productSerial ?? "",
+        productType: parentCall.productType ?? "",
         installationDate: parentCall.installationDate ?? "",
         parentCallId: followUpId,
       });
@@ -669,13 +672,32 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                   </FormItem>
                 )} />
               </div>
-              <FormField control={form.control} name="installationDate" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Installation Date</FormLabel>
-                  <FormControl><Input type="date" {...field} value={field.value ?? ""} data-testid="input-install-date" /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField control={form.control} name="productType" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Product Type</FormLabel>
+                    <Select value={field.value || "__none__"} onValueChange={v => field.onChange(v === "__none__" ? "" : v)}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-product-type">
+                          <SelectValue placeholder="Select type…" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__none__">Not specified</SelectItem>
+                        {PRODUCT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="installationDate" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Installation Date</FormLabel>
+                    <FormControl><Input type="date" {...field} value={field.value ?? ""} data-testid="input-install-date" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
             </CardContent>
           </Card>
 

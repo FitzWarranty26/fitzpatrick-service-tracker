@@ -105,7 +105,7 @@ export default function Dashboard() {
   });
 
   const outOfWarrantyCount = allCalls
-    ? allCalls.filter(c => c.status !== "Completed" && getWarrantyStatus(c.installationDate, c.manufacturer).status === "out-of-warranty").length
+    ? allCalls.filter(c => c.status !== "Completed" && getWarrantyStatus(c.installationDate, c.manufacturer, c.productType).status === "out-of-warranty").length
     : 0;
 
   // Seed on first load

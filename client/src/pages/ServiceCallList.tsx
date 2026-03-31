@@ -22,8 +22,8 @@ interface ServiceCallWithCounts extends ServiceCall {
   partCount: number;
 }
 
-function WarrantyDot({ installationDate, manufacturer }: { installationDate: string | null | undefined; manufacturer: string }) {
-  const warranty = getWarrantyStatus(installationDate, manufacturer);
+function WarrantyDot({ installationDate, manufacturer, productType }: { installationDate: string | null | undefined; manufacturer: string; productType?: string | null }) {
+  const warranty = getWarrantyStatus(installationDate, manufacturer, productType);
   if (warranty.status === "in-warranty") {
     return <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" title="In Warranty" data-testid="warranty-dot-in" />;
   }
@@ -261,7 +261,7 @@ export default function ServiceCallList() {
                       >
                         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">
                           <span className="inline-flex items-center gap-1.5">
-                            <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} />
+                            <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
                             {formatDate(call.callDate)}
                           </span>
                         </td>
@@ -312,7 +312,7 @@ export default function ServiceCallList() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                          <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} />
+                          <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
                           <StatusBadge status={call.status} />
                           <span className="text-xs text-muted-foreground">{formatDate(call.callDate)}</span>
                         </div>
