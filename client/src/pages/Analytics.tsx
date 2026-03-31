@@ -32,6 +32,8 @@ import {
   Download,
   Search,
   DollarSign,
+  Clock,
+  Car,
 } from "lucide-react";
 import { subDays, format, parseISO } from "date-fns";
 import { MANUFACTURERS } from "@shared/schema";
@@ -50,6 +52,11 @@ interface SummaryData {
     totalOtherCost: number;
     totalClaimAmount: number;
     totalCosts: number;
+  };
+  logistics?: {
+    totalHours: number;
+    totalMiles: number;
+    monthlyBreakdown: Array<{ month: string; hours: number; miles: number; calls: number }>;
   };
 }
 
@@ -410,6 +417,65 @@ export default function Analytics() {
                 <p className="text-lg font-bold text-green-600 dark:text-green-400">${summary.financials.totalClaimAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Hours & Miles Summary */}
+      {summary?.logistics && (summary.logistics.totalHours > 0 || summary.logistics.totalMiles > 0) && (
+        <Card data-testid="analytics-logistics">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              </div>
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Hours & Mileage Summary</p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Total Hours</p>
+                <p className="text-lg font-bold">{summary.logistics.totalHours} hrs</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Total Miles</p>
+                <p className="text-lg font-bold">{summary.logistics.totalMiles.toLocaleString()} mi</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">IRS Rate (2026)</p>
+                <p className="text-lg font-bold text-green-600 dark:text-green-400">${(summary.logistics.totalMiles * 0.70).toFixed(2)}</p>
+                <p className="text-[10px] text-muted-foreground">@ $0.70/mi</p>
+              </div>
+            </div>
+            {summary.logistics.monthlyBreakdown.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 text-xs font-medium text-muted-foreground">Month</th>
+                      <th className="text-right py-2 text-xs font-medium text-muted-foreground">Calls</th>
+                      <th className="text-right py-2 text-xs font-medium text-muted-foreground">Hours</th>
+                      <th className="text-right py-2 text-xs font-medium text-muted-foreground">Miles</th>
+                      <th className="text-right py-2 text-xs font-medium text-muted-foreground">Mileage $</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.logistics.monthlyBreakdown.map((row) => {
+                      const [y, m] = row.month.split("-");
+                      const label = new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+                      return (
+                        <tr key={row.month} className="border-b border-border last:border-0">
+                          <td className="py-2 font-medium">{label}</td>
+                          <td className="py-2 text-right text-muted-foreground">{row.calls}</td>
+                          <td className="py-2 text-right">{row.hours}</td>
+                          <td className="py-2 text-right">{row.miles}</td>
+                          <td className="py-2 text-right text-green-600 dark:text-green-400">${(row.miles * 0.70).toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

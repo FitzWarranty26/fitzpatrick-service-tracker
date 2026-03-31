@@ -22,7 +22,7 @@ import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
-  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion
+  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -30,6 +30,7 @@ import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
   parts: Part[];
+  activities: Array<{ id: number; serviceCallId: number; note: string; createdAt: string }>;
 }
 
 function DetailRow({ label, value }: { label: string; value?: string | null }) {
@@ -233,6 +234,26 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
   const [isUploading, setIsUploading] = useState(false);
   const directPhotoInputRef = useRef<HTMLInputElement>(null);
+
+  // Activity log
+  const [newNote, setNewNote] = useState("");
+  const addActivityMutation = useMutation({
+    mutationFn: async (note: string) => {
+      const res = await apiRequest("POST", `/api/service-calls/${callId}/activities`, { note });
+      return res.json();
+    },
+    onSuccess: () => {
+      setNewNote("");
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+  const deleteActivityMutation = useMutation({
+    mutationFn: (activityId: number) => apiRequest("DELETE", `/api/activities/${activityId}`).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+    },
+  });
 
   const handleDirectPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!call) return;
@@ -768,6 +789,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
             <ClaimBadge status={displayCall.claimStatus ?? call.claimStatus} />
             {(displayCall.claimStatus === "Approved") && <CheckCircle2 className="w-4 h-4 text-green-500" />}
             {(displayCall.claimStatus === "Denied") && <AlertCircle className="w-4 h-4 text-red-500" />}
+            {call.claimNumber && (
+              <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded" data-testid="claim-number-display">#{call.claimNumber}</span>
+            )}
           </div>
           {!isEditing ? (
             <>
@@ -803,11 +827,21 @@ export default function ServiceCallDetail({ id }: { id: string }) {
             </>
           ) : (
             <>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Claim / Reference Number</label>
+                <Input
+                  value={(editData.claimNumber ?? call.claimNumber ?? "") as string}
+                  onChange={e => setEditData(d => ({ ...d, claimNumber: e.target.value }))}
+                  placeholder="e.g. WC-2026-04512"
+                  className="h-8 text-sm font-mono"
+                  data-testid="edit-claim-number"
+                />
+              </div>
               <Textarea
                 rows={2}
                 value={(editData.claimNotes ?? call.claimNotes) as string ?? ""}
                 onChange={e => setEditData(d => ({ ...d, claimNotes: e.target.value }))}
-                placeholder="Claim reference numbers, notes…"
+                placeholder="Claim notes…"
                 className="text-sm"
                 data-testid="edit-claim-notes"
               />
@@ -836,6 +870,67 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 ))}
               </div>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Activity Log */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            <span className="flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> Activity Log ({call.activities?.length || 0})</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Add note input */}
+          <div className="flex gap-2">
+            <Input
+              value={newNote}
+              onChange={e => setNewNote(e.target.value)}
+              placeholder="Add a note… e.g. Left voicemail, Parts shipped"
+              className="text-sm"
+              onKeyDown={e => {
+                if (e.key === "Enter" && newNote.trim()) {
+                  addActivityMutation.mutate(newNote.trim());
+                }
+              }}
+              data-testid="input-activity-note"
+            />
+            <Button
+              size="sm"
+              disabled={!newNote.trim() || addActivityMutation.isPending}
+              onClick={() => newNote.trim() && addActivityMutation.mutate(newNote.trim())}
+              data-testid="button-add-activity"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+          {/* Activity timeline */}
+          {call.activities && call.activities.length > 0 ? (
+            <div className="space-y-2">
+              {[...call.activities].reverse().map((activity) => {
+                const date = new Date(activity.createdAt);
+                const timeStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " at " + date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                return (
+                  <div key={activity.id} className="flex items-start gap-2 group" data-testid={`activity-${activity.id}`}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground">{activity.note}</p>
+                      <p className="text-[10px] text-muted-foreground">{timeStr}</p>
+                    </div>
+                    <button
+                      onClick={() => deleteActivityMutation.mutate(activity.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"
+                      title="Delete note"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-2">No activity notes yet.</p>
           )}
         </CardContent>
       </Card>

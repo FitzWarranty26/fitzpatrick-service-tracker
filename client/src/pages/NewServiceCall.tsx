@@ -54,6 +54,7 @@ const formSchema = z.object({
   status: z.string().min(1),
   claimStatus: z.string().min(1),
   claimNotes: z.string().optional().nullable(),
+  claimNumber: z.string().optional().nullable(),
   partsCost: z.string().optional().nullable(),
   laborCost: z.string().optional().nullable(),
   otherCost: z.string().optional().nullable(),
@@ -180,6 +181,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       status: "Scheduled",
       claimStatus: "Not Filed",
       claimNotes: "",
+      claimNumber: "",
       partsCost: "",
       laborCost: "",
       otherCost: "",
@@ -795,11 +797,20 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                   <FormMessage />
                 </FormItem>
               )} />
+              <FormField control={form.control} name="claimNumber" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Claim / Reference Number</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. WC-2026-04512" {...field} value={field.value ?? ""} className="font-mono" data-testid="input-claim-number" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={form.control} name="claimNotes" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Claim Notes</FormLabel>
                   <FormControl>
-                    <Textarea rows={2} placeholder="Claim reference numbers, notes…" {...field} value={field.value ?? ""} data-testid="textarea-claim-notes" />
+                    <Textarea rows={2} placeholder="Claim notes…" {...field} value={field.value ?? ""} data-testid="textarea-claim-notes" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

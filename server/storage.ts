@@ -6,6 +6,7 @@ import {
   photos,
   partsUsed,
   contacts,
+  activityLog,
   type ServiceCall,
   type InsertServiceCall,
   type Photo,
@@ -14,6 +15,8 @@ import {
   type InsertPart,
   type Contact,
   type InsertContact,
+  type ActivityLog,
+  type InsertActivityLog,
 } from "@shared/schema";
 
 // Use persistent disk path on Render if available, otherwise local
@@ -87,6 +90,13 @@ sqlite.exec(`
     notes TEXT,
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    service_call_id INTEGER NOT NULL,
+    note TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // ─── Indexes for query performance ──────────────────────────────────────────
@@ -95,6 +105,7 @@ sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_parts_service_call_id ON parts_used(service_call_id);
   CREATE INDEX IF NOT EXISTS idx_service_calls_call_date ON service_calls(call_date);
   CREATE INDEX IF NOT EXISTS idx_service_calls_status ON service_calls(status);
+  CREATE INDEX IF NOT EXISTS idx_activity_log_service_call_id ON activity_log(service_call_id);
 `);
 
 // ─── Migrations (safe to re-run) ─────────────────────────────────────────────
@@ -103,7 +114,7 @@ sqlite.exec(`
 // We check first to avoid errors on tables that already have the column.
 
 // Allow only known table names to prevent SQL injection
-const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts"]);
+const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log"]);
 
 function columnExists(table: string, column: string): boolean {
   if (!ALLOWED_TABLES.has(table)) throw new Error(`Unknown table: ${table}`);
@@ -162,6 +173,12 @@ if (!columnExists("service_calls", "parts_cost")) {
   console.log("Migration: added claim financial columns");
 }
 
+// Migration 8: Add claim_number field
+if (!columnExists("service_calls", "claim_number")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN claim_number TEXT`);
+  console.log("Migration: added claim_number column");
+}
+
 export interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;
@@ -170,6 +187,7 @@ export interface ServiceCallWithCounts extends ServiceCall {
 export interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
   parts: Part[];
+  activities: ActivityLog[];
 }
 
 export interface DashboardStats {
@@ -323,6 +341,7 @@ export class SQLiteStorage implements IStorage {
       status: row.status,
       claimStatus: row.claim_status,
       claimNotes: row.claim_notes,
+      claimNumber: row.claim_number,
       partsCost: row.parts_cost,
       laborCost: row.labor_cost,
       otherCost: row.other_cost,
@@ -346,7 +365,8 @@ export class SQLiteStorage implements IStorage {
     if (!call) return undefined;
     const callPhotos = db.select().from(photos).where(eq(photos.serviceCallId, id)).all();
     const callParts = db.select().from(partsUsed).where(eq(partsUsed.serviceCallId, id)).all();
-    return { ...call, photos: callPhotos, parts: callParts };
+    const callActivities = db.select().from(activityLog).where(eq(activityLog.serviceCallId, id)).all();
+    return { ...call, photos: callPhotos, parts: callParts, activities: callActivities };
   }
 
   createServiceCall(call: InsertServiceCall): ServiceCall {
@@ -361,6 +381,7 @@ export class SQLiteStorage implements IStorage {
   deleteServiceCall(id: number): void {
     db.delete(photos).where(eq(photos.serviceCallId, id)).run();
     db.delete(partsUsed).where(eq(partsUsed.serviceCallId, id)).run();
+    db.delete(activityLog).where(eq(activityLog.serviceCallId, id)).run();
     db.delete(serviceCalls).where(eq(serviceCalls.id, id)).run();
   }
 
@@ -456,6 +477,7 @@ export class SQLiteStorage implements IStorage {
       status: row.status,
       claimStatus: row.claim_status,
       claimNotes: row.claim_notes,
+      claimNumber: row.claim_number,
       partsCost: row.parts_cost,
       laborCost: row.labor_cost,
       otherCost: row.other_cost,
@@ -541,6 +563,7 @@ export class SQLiteStorage implements IStorage {
       status: row.status,
       claimStatus: row.claim_status,
       claimNotes: row.claim_notes,
+      claimNumber: row.claim_number,
       partsCost: row.parts_cost,
       laborCost: row.labor_cost,
       otherCost: row.other_cost,
@@ -671,6 +694,21 @@ export class SQLiteStorage implements IStorage {
       notes: row.notes,
       createdAt: row.created_at,
     }));
+  }
+
+  // ─── Activity Log ──────────────────────────────────────────────────────────
+
+  getActivitiesByServiceCallId(serviceCallId: number): ActivityLog[] {
+    return db.select().from(activityLog).where(eq(activityLog.serviceCallId, serviceCallId)).all();
+  }
+
+  createActivity(data: InsertActivityLog): ActivityLog {
+    const now = new Date().toISOString();
+    return db.insert(activityLog).values({ ...data, createdAt: now }).returning().get();
+  }
+
+  deleteActivity(id: number): void {
+    db.delete(activityLog).where(eq(activityLog.id, id)).run();
   }
 }
 

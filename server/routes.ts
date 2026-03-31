@@ -506,6 +506,34 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── Activity Log ──────────────────────────────────────────────────────────
+
+  app.post("/api/service-calls/:id/activities", (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const { note } = req.body;
+      if (typeof note !== "string" || !note.trim()) {
+        return res.status(400).json({ error: "Note is required" });
+      }
+      const activity = storage.createActivity({ serviceCallId: id, note: note.trim() });
+      res.status(201).json(activity);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.delete("/api/activities/:id", (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      storage.deleteActivity(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   // ─── Analytics ──────────────────────────────────────────────────────────────
 
   app.get("/api/analytics/summary", (req, res) => {
@@ -526,6 +554,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
       let totalLaborCost = 0;
       let totalOtherCost = 0;
       let totalClaimAmount = 0;
+      let totalHours = 0;
+      let totalMiles = 0;
+
+      // Monthly breakdown for hours/miles
+      const monthlyLogistics = new Map<string, { hours: number; miles: number; calls: number }>();
 
       for (const c of calls) {
         totalByStatus[c.status] = (totalByStatus[c.status] || 0) + 1;
@@ -536,7 +569,27 @@ export function registerRoutes(httpServer: Server, app: Express) {
         if (c.laborCost) totalLaborCost += parseFloat(c.laborCost) || 0;
         if (c.otherCost) totalOtherCost += parseFloat(c.otherCost) || 0;
         if (c.claimAmount) totalClaimAmount += parseFloat(c.claimAmount) || 0;
+        const hrs = c.hoursOnJob ? parseFloat(c.hoursOnJob) || 0 : 0;
+        const mi = c.milesTraveled ? parseFloat(c.milesTraveled) || 0 : 0;
+        totalHours += hrs;
+        totalMiles += mi;
+        // Group by month
+        const month = c.callDate.slice(0, 7); // "2026-03"
+        if (!monthlyLogistics.has(month)) monthlyLogistics.set(month, { hours: 0, miles: 0, calls: 0 });
+        const entry = monthlyLogistics.get(month)!;
+        entry.hours += hrs;
+        entry.miles += mi;
+        entry.calls++;
       }
+
+      const monthlyBreakdown = Array.from(monthlyLogistics.entries())
+        .map(([month, data]) => ({
+          month,
+          hours: Math.round(data.hours * 100) / 100,
+          miles: Math.round(data.miles * 100) / 100,
+          calls: data.calls,
+        }))
+        .sort((a, b) => a.month.localeCompare(b.month));
 
       res.json({
         totalCalls: calls.length,
@@ -551,6 +604,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
           totalOtherCost: Math.round(totalOtherCost * 100) / 100,
           totalClaimAmount: Math.round(totalClaimAmount * 100) / 100,
           totalCosts: Math.round((totalPartsCost + totalLaborCost + totalOtherCost) * 100) / 100,
+        },
+        logistics: {
+          totalHours: Math.round(totalHours * 100) / 100,
+          totalMiles: Math.round(totalMiles * 100) / 100,
+          monthlyBreakdown,
         },
       });
     } catch (e: any) {
@@ -736,7 +794,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         "Call ID", "Date", "Scheduled Date", "Scheduled Time", "Manufacturer", "Customer", "Job Site",
         "Address", "City", "State", "Contractor Name", "Contractor Phone", "Site Contact",
         "Model", "Serial", "Install Date", "Status", "Claim Status",
-        "Hours on Job", "Miles Traveled",
+        "Hours on Job", "Miles Traveled", "Claim Number",
         "Parts Cost", "Labor Cost", "Other Cost", "Claim Amount",
         "Issue", "Diagnosis", "Resolution", "Parts Used", "Tech Notes"
       ];
@@ -766,7 +824,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           c.contactName, c.contactPhone, c.siteContactName,
           c.productModel, c.productSerial, c.installationDate,
           c.status, c.claimStatus,
-          c.hoursOnJob, c.milesTraveled,
+          c.hoursOnJob, c.milesTraveled, c.claimNumber,
           c.partsCost, c.laborCost, c.otherCost, c.claimAmount,
           c.issueDescription, c.diagnosis, c.resolution,
           partsStr, c.techNotes

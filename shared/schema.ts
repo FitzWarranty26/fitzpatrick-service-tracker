@@ -32,6 +32,7 @@ export const serviceCalls = sqliteTable("service_calls", {
   status: text("status").notNull().default("Scheduled"), // Scheduled | In Progress | Completed | Pending Parts | Escalated
   claimStatus: text("claim_status").notNull().default("Not Filed"), // Not Filed | Submitted | Approved | Denied | Pending Review
   claimNotes: text("claim_notes"),
+  claimNumber: text("claim_number"),     // manufacturer's claim/reference number
   // Claim financials (all optional, stored as text for decimal precision)
   partsCost: text("parts_cost"),         // e.g. "125.50"
   laborCost: text("labor_cost"),         // e.g. "200.00"
@@ -86,6 +87,19 @@ export const partsUsed = sqliteTable("parts_used", {
 export const insertPartSchema = createInsertSchema(partsUsed).omit({ id: true });
 export type InsertPart = z.infer<typeof insertPartSchema>;
 export type Part = typeof partsUsed.$inferSelect;
+
+// ─── Activity Log ──────────────────────────────────────────────────────────
+
+export const activityLog = sqliteTable("activity_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  serviceCallId: integer("service_call_id").notNull(),
+  note: text("note").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertActivityLogSchema = createInsertSchema(activityLog).omit({ id: true, createdAt: true });
+export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+export type ActivityLog = typeof activityLog.$inferSelect;
 
 // ─── Contacts ───────────────────────────────────────────────────────────
 
