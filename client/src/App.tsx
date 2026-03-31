@@ -34,7 +34,10 @@ function AppRouter() {
     <AppLayout>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/calls" component={ServiceCallList} />
+        <Route path="/calls">{() => <ServiceCallList />}</Route>
+        <Route path="/calls/filter/:preset">
+          {(params) => <ServiceCallList preset={params.preset} />}
+        </Route>
         <Route path="/new">{() => <NewServiceCall />}</Route>
         <Route path="/new/followup/:parentId">
           {(params) => <NewServiceCall followUpId={params.parentId} />}

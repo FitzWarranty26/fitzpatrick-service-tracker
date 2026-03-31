@@ -135,7 +135,7 @@ export default function Dashboard() {
       color: "text-amber-600 dark:text-amber-400",
       bg: "bg-amber-50 dark:bg-amber-900/20",
       testId: "stat-open",
-      href: "/calls?filter=open",
+      href: "/calls/filter/open",
     },
     {
       title: "Completed This Month",
@@ -144,7 +144,7 @@ export default function Dashboard() {
       color: "text-green-600 dark:text-green-400",
       bg: "bg-green-50 dark:bg-green-900/20",
       testId: "stat-completed",
-      href: "/calls?filter=completed-month",
+      href: "/calls/filter/completed-month",
     },
     {
       title: "Pending Claims",
@@ -153,7 +153,7 @@ export default function Dashboard() {
       color: "text-purple-600 dark:text-purple-400",
       bg: "bg-purple-50 dark:bg-purple-900/20",
       testId: "stat-claims",
-      href: "/calls?filter=pending-claims",
+      href: "/calls/filter/pending-claims",
     },
     ...(outOfWarrantyCount > 0 ? [{
       title: "Out of Warranty",
@@ -162,7 +162,7 @@ export default function Dashboard() {
       color: "text-red-600 dark:text-red-400",
       bg: "bg-red-50 dark:bg-red-900/20",
       testId: "stat-out-of-warranty",
-      href: "/calls",
+      href: "/calls/filter/out-of-warranty",
     }] : []),
   ];
 
@@ -221,8 +221,8 @@ export default function Dashboard() {
         {summaryCards.map((card) => {
           const Icon = card.icon;
           return (
-            <Link key={card.title} href={card.href}>
-              <Card className="overflow-hidden cursor-pointer hover:shadow-md hover:border-primary/30 transition-all" data-testid={card.testId}>
+            <div key={card.title} onClick={() => { window.location.hash = card.href; }} className="cursor-pointer">
+              <Card className="overflow-hidden hover:shadow-md hover:border-primary/30 transition-all" data-testid={card.testId}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between">
                     <div>
@@ -241,7 +241,7 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
-            </Link>
+            </div>
           );
         })}
       </div>

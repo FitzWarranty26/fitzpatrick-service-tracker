@@ -47,15 +47,14 @@ function getInitialFilter(): { status?: string; claimStatus?: string; preset?: s
   } catch { return {}; }
 }
 
-export default function ServiceCallList() {
-  const initial = getInitialFilter();
+export default function ServiceCallList({ preset: presetProp }: { preset?: string }) {
   const [search, setSearch] = useState("");
   const [filterManufacturer, setFilterManufacturer] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterClaimStatus, setFilterClaimStatus] = useState("");
   const [filterState, setFilterState] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [presetFilter, setPresetFilter] = useState(initial.preset || "");
+  const [presetFilter, setPresetFilter] = useState(presetProp || "");
 
   const params = new URLSearchParams();
   if (search) params.set("search", search);
@@ -89,6 +88,8 @@ export default function ServiceCallList() {
         return calls.filter(c => c.status === "Completed" && c.callDate >= monthStart && c.callDate <= monthEnd);
       case "pending-claims":
         return calls.filter(c => c.claimStatus === "Submitted" || c.claimStatus === "Pending Review");
+      case "out-of-warranty":
+        return calls.filter(c => c.status !== "Completed" && getWarrantyStatus(c.installationDate, c.manufacturer, c.productType).status === "out-of-warranty");
       default:
         return calls;
     }
@@ -98,6 +99,7 @@ export default function ServiceCallList() {
     "open": "Open Calls",
     "completed-month": "Completed This Month",
     "pending-claims": "Pending Claims",
+    "out-of-warranty": "Out of Warranty",
   };
 
   const activeFilters = [filterManufacturer, filterStatus, filterClaimStatus, filterState, presetFilter].filter(Boolean).length;
@@ -109,6 +111,10 @@ export default function ServiceCallList() {
     setFilterState("");
     setSearch("");
     setPresetFilter("");
+    // Navigate back to /calls if on a filtered route
+    if (presetProp) {
+      window.location.hash = "/calls";
+    }
   };
 
   return (
