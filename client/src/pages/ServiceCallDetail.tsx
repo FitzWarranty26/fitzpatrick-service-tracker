@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -17,12 +17,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES } from "@shared/schema";
-import type { ServiceCall, Photo, Part } from "@shared/schema";
+import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, getWarrantyStatus } from "@shared/schema";
+import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Package,
   MapPin, Phone, User, Wrench, Calendar, Hash, Building, AlertCircle, CheckCircle2,
-  Image as ImageIcon, Mail, Loader2, Clock, Car
+  Image as ImageIcon, Mail, Loader2, Clock, Car, CornerDownRight, Shield, ShieldAlert, ShieldQuestion
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -42,6 +42,85 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+// Contact suggest hook for edit mode
+function useContactSuggest(type: string, query: string, enabled: boolean) {
+  const [suggestions, setSuggestions] = useState<Contact[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (!enabled || !query || query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await apiRequest("GET", `/api/contacts/suggest?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setSuggestions(data);
+      } catch {
+        setSuggestions([]);
+      }
+    }, 300);
+    return () => clearTimeout(timerRef.current);
+  }, [type, query, enabled]);
+
+  return { suggestions, clear: () => setSuggestions([]) };
+}
+
+function SuggestDropdown({ suggestions, onSelect, onClose }: {
+  suggestions: Contact[];
+  onSelect: (c: Contact) => void;
+  onClose: () => void;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-popover border border-border rounded-md shadow-md max-h-48 overflow-y-auto" data-testid="suggest-dropdown">
+      {suggestions.map(c => (
+        <button
+          key={c.id}
+          type="button"
+          className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
+          onClick={() => { onSelect(c); onClose(); }}
+        >
+          <span className="font-medium">{c.contactName}</span>
+          {c.companyName && <span className="text-muted-foreground ml-1">({c.companyName})</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function WarrantyBadge({ installationDate, manufacturer }: { installationDate: string | null | undefined; manufacturer: string }) {
+  const warranty = getWarrantyStatus(installationDate, manufacturer);
+
+  if (warranty.status === "unknown") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" data-testid="warranty-badge-unknown">
+        <ShieldQuestion className="w-3 h-3" /> Unknown
+      </span>
+    );
+  }
+
+  if (warranty.status === "in-warranty") {
+    const expDate = warranty.expiresDate ? new Date(warranty.expiresDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" data-testid="warranty-badge-in">
+        <Shield className="w-3 h-3" /> In Warranty
+        {expDate && <span className="text-green-600 dark:text-green-500">(expires {expDate})</span>}
+      </span>
+    );
+  }
+
+  const expDate = warranty.expiresDate ? new Date(warranty.expiresDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+  return (
+    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" data-testid="warranty-badge-out">
+      <ShieldAlert className="w-3 h-3" /> Out of Warranty
+      {expDate && <span className="text-red-600 dark:text-red-500">(expired {expDate})</span>}
+    </span>
+  );
+}
+
 export default function ServiceCallDetail({ id }: { id: string }) {
   const callId = parseInt(id);
   const [, navigate] = useLocation();
@@ -52,10 +131,34 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
   const [newPhotoFiles, setNewPhotoFiles] = useState<Array<{ photoUrl: string; caption: string; photoType: string }>>([]);
 
+  // Contact suggest state for edit mode
+  const [showContractorSuggest, setShowContractorSuggest] = useState(false);
+  const [showSiteContactSuggest, setShowSiteContactSuggest] = useState(false);
+
+  const contractorSuggest = useContactSuggest(
+    "contractor",
+    (editData.contactName ?? "") as string,
+    isEditing && showContractorSuggest
+  );
+  const siteContactSuggest = useContactSuggest(
+    "site_contact",
+    (editData.siteContactName ?? "") as string,
+    isEditing && showSiteContactSuggest
+  );
+
   const { data: call, isLoading } = useQuery<ServiceCallFull>({
     queryKey: ["/api/service-calls", callId],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/service-calls/${callId}`);
+      return res.json();
+    },
+  });
+
+  // Fetch related calls for visit history
+  const { data: relatedCalls } = useQuery<ServiceCall[]>({
+    queryKey: ["/api/service-calls", callId, "related"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/service-calls/${callId}/related`);
       return res.json();
     },
   });
@@ -66,7 +169,6 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       return res.json();
     },
     onSuccess: async () => {
-      // Upload new photos
       for (const p of newPhotoFiles) {
         await apiRequest("POST", `/api/service-calls/${callId}/photos`, p);
       }
@@ -116,25 +218,19 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     updateMutation.mutate(updateFields);
   };
 
-  // Add photos while in edit mode (queued until save)
   const handlePhotoAddForEdit = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const { compressImage } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
     for (const file of files) {
       try {
         const dataUrl = await compressImage(file);
-        setNewPhotoFiles(prev => [...prev, {
-          photoUrl: dataUrl,
-          caption: "",
-          photoType: "Other",
-        }]);
+        setNewPhotoFiles(prev => [...prev, { photoUrl: dataUrl, caption: "", photoType: "Other" }]);
       } catch (err) {
         console.error("Failed to compress image:", err);
       }
     }
   };
 
-  // Direct photo upload — saves immediately without entering edit mode
   const [isUploading, setIsUploading] = useState(false);
   const directPhotoInputRef = useRef<HTMLInputElement>(null);
 
@@ -143,17 +239,12 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     const { compressImage } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
-
     setIsUploading(true);
     let uploaded = 0;
     for (const file of files) {
       try {
         const dataUrl = await compressImage(file);
-        await apiRequest("POST", `/api/service-calls/${call.id}/photos`, {
-          photoUrl: dataUrl,
-          caption: "",
-          photoType: "Other",
-        });
+        await apiRequest("POST", `/api/service-calls/${call.id}/photos`, { photoUrl: dataUrl, caption: "", photoType: "Other" });
         uploaded++;
       } catch (err) {
         console.error("Failed to upload photo:", err);
@@ -216,6 +307,10 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         <div className="flex items-center gap-2 flex-shrink-0">
           {!isEditing ? (
             <>
+              <Button variant="outline" size="sm" onClick={() => navigate(`/new/followup/${call.id}`)} data-testid="button-create-followup">
+                <CornerDownRight className="w-4 h-4 mr-1.5" />
+                <span className="hidden sm:inline">Follow-up</span>
+              </Button>
               <Button variant="outline" size="sm" onClick={handlePDF} data-testid="button-generate-pdf">
                 <FileText className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">PDF</span>
@@ -331,7 +426,6 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <p className="text-sm">{call.jobSiteAddress}, {call.jobSiteCity}, {call.jobSiteState}</p>
                 </div>
-                {/* Installing Contractor */}
                 {(call.contactName || call.contactPhone || call.contactEmail) && (
                   <div className="pt-1">
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Installing Contractor</p>
@@ -355,7 +449,6 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     )}
                   </div>
                 )}
-                {/* On-Site Contact */}
                 {(call.siteContactName || call.siteContactPhone || call.siteContactEmail) && (
                   <div className="pt-1">
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">On-Site Contact</p>
@@ -387,10 +480,68 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   { key: "jobSiteName", label: "Site Name" },
                   { key: "jobSiteAddress", label: "Address" },
                   { key: "jobSiteCity", label: "City" },
-                  { key: "contactName", label: "Contractor Name" },
+                ].map(({ key, label }) => (
+                  <div key={key}>
+                    <label className="text-xs text-muted-foreground">{label}</label>
+                    <Input
+                      value={(editData[key as keyof typeof editData] ?? call[key as keyof ServiceCall]) as string ?? ""}
+                      onChange={e => setEditData(d => ({ ...d, [key]: e.target.value }))}
+                      className="h-8 text-sm mt-0.5"
+                    />
+                  </div>
+                ))}
+                {/* Contractor fields with suggest */}
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide pt-1">Installing Contractor</p>
+                <div className="relative">
+                  <label className="text-xs text-muted-foreground">Contractor Name</label>
+                  <Input
+                    value={(editData.contactName ?? call.contactName) as string ?? ""}
+                    onChange={e => setEditData(d => ({ ...d, contactName: e.target.value }))}
+                    onFocus={() => setShowContractorSuggest(true)}
+                    onBlur={() => setTimeout(() => setShowContractorSuggest(false), 200)}
+                    className="h-8 text-sm mt-0.5"
+                  />
+                  <SuggestDropdown
+                    suggestions={contractorSuggest.suggestions}
+                    onSelect={(c) => {
+                      setEditData(d => ({ ...d, contactName: c.contactName, contactPhone: c.phone ?? "", contactEmail: c.email ?? "" }));
+                    }}
+                    onClose={() => { setShowContractorSuggest(false); contractorSuggest.clear(); }}
+                  />
+                </div>
+                {[
                   { key: "contactPhone", label: "Contractor Phone" },
                   { key: "contactEmail", label: "Contractor Email" },
-                  { key: "siteContactName", label: "Site Contact Name" },
+                ].map(({ key, label }) => (
+                  <div key={key}>
+                    <label className="text-xs text-muted-foreground">{label}</label>
+                    <Input
+                      value={(editData[key as keyof typeof editData] ?? call[key as keyof ServiceCall]) as string ?? ""}
+                      onChange={e => setEditData(d => ({ ...d, [key]: e.target.value }))}
+                      className="h-8 text-sm mt-0.5"
+                    />
+                  </div>
+                ))}
+                {/* Site contact fields with suggest */}
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide pt-1">On-Site Contact</p>
+                <div className="relative">
+                  <label className="text-xs text-muted-foreground">Site Contact Name</label>
+                  <Input
+                    value={(editData.siteContactName ?? call.siteContactName) as string ?? ""}
+                    onChange={e => setEditData(d => ({ ...d, siteContactName: e.target.value }))}
+                    onFocus={() => setShowSiteContactSuggest(true)}
+                    onBlur={() => setTimeout(() => setShowSiteContactSuggest(false), 200)}
+                    className="h-8 text-sm mt-0.5"
+                  />
+                  <SuggestDropdown
+                    suggestions={siteContactSuggest.suggestions}
+                    onSelect={(c) => {
+                      setEditData(d => ({ ...d, siteContactName: c.contactName, siteContactPhone: c.phone ?? "", siteContactEmail: c.email ?? "" }));
+                    }}
+                    onClose={() => { setShowSiteContactSuggest(false); siteContactSuggest.clear(); }}
+                  />
+                </div>
+                {[
                   { key: "siteContactPhone", label: "Site Contact Phone" },
                   { key: "siteContactEmail", label: "Site Contact Email" },
                 ].map(({ key, label }) => (
@@ -453,7 +604,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </Card>
       )}
 
-      {/* Product */}
+      {/* Product with Warranty Badge */}
       <Card>
         <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Product</CardTitle></CardHeader>
         <CardContent>
@@ -471,6 +622,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <div>
                   <p className="text-xs text-muted-foreground mb-0.5">Install Date</p>
                   <p className="text-sm">{formatDate(call.installationDate)}</p>
+                  <div className="mt-1">
+                    <WarrantyBadge installationDate={call.installationDate} manufacturer={call.manufacturer} />
+                  </div>
                 </div>
               </>
             ) : (
@@ -524,10 +678,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Hours on Job</label>
                     <Input
-                      type="number"
-                      step="0.25"
-                      min="0"
-                      placeholder="e.g. 2.5"
+                      type="number" step="0.25" min="0" placeholder="e.g. 2.5"
                       value={(editData.hoursOnJob ?? call.hoursOnJob ?? "") as string}
                       onChange={e => setEditData(d => ({ ...d, hoursOnJob: e.target.value }))}
                       className="h-8 text-sm"
@@ -536,10 +687,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Miles Traveled</label>
                     <Input
-                      type="number"
-                      step="1"
-                      min="0"
-                      placeholder="e.g. 45"
+                      type="number" step="1" min="0" placeholder="e.g. 45"
                       value={(editData.milesTraveled ?? call.milesTraveled ?? "") as string}
                       onChange={e => setEditData(d => ({ ...d, milesTraveled: e.target.value }))}
                       className="h-8 text-sm"
@@ -609,6 +757,55 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Visit History (Follow-up chain) */}
+      {relatedCalls && relatedCalls.length > 0 && (
+        <Card data-testid="visit-history-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Visit History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {call.parentCallId && (
+              <p className="text-xs text-muted-foreground mb-3">
+                Follow-up to{" "}
+                <Link href={`/calls/${call.parentCallId}`} className="text-primary font-medium underline" data-testid="parent-call-link">
+                  Call #{call.parentCallId}
+                </Link>
+              </p>
+            )}
+            <div className="space-y-2">
+              {relatedCalls.map((rc) => {
+                const isCurrent = rc.id === callId;
+                return (
+                  <div
+                    key={rc.id}
+                    className={`flex items-center gap-3 p-2 rounded-lg text-sm ${isCurrent ? "bg-primary/10 border border-primary/30" : "hover:bg-muted/30"}`}
+                    data-testid={`visit-${rc.id}`}
+                  >
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: isCurrent ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        {isCurrent ? (
+                          <span className="font-medium">Call #{rc.id} (current)</span>
+                        ) : (
+                          <Link href={`/calls/${rc.id}`} className="font-medium text-primary hover:underline">
+                            Call #{rc.id}
+                          </Link>
+                        )}
+                        <StatusBadge status={rc.status} />
+                        <span className="text-xs text-muted-foreground">{formatDate(rc.callDate)}</span>
+                      </div>
+                      {rc.issueDescription && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{rc.issueDescription.slice(0, 80)}{rc.issueDescription.length > 80 ? "…" : ""}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Photos */}
       <Card>

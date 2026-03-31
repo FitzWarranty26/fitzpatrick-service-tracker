@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, ClipboardList, PlusCircle, Sun, Moon, Menu, X, ChevronRight, Wrench, BarChart3, MapPin
+  LayoutDashboard, ClipboardList, PlusCircle, Sun, Moon, Menu, X, ChevronRight, Wrench, BarChart3, MapPin, Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OfflineIndicatorDesktop, OfflineIndicatorMobile } from "@/components/OfflineIndicator";
@@ -14,6 +14,7 @@ const navItems = [
   { href: "/calls", icon: ClipboardList, label: "Service Calls" },
   { href: "/new", icon: PlusCircle, label: "New Call" },
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
+  { href: "/contacts", icon: Users, label: "Contacts" },
   { href: "/map", icon: MapPin, label: "Map" },
 ];
 

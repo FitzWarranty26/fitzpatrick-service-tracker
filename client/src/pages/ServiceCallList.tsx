@@ -12,14 +12,25 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  PlusCircle, Search, Filter, X, ChevronRight, ClipboardList, Image, Package
+  PlusCircle, Search, Filter, X, ChevronRight, ClipboardList, Image, Package, Shield, ShieldAlert, ShieldQuestion
 } from "lucide-react";
-import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES } from "@shared/schema";
+import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall } from "@shared/schema";
 
 interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;
+}
+
+function WarrantyDot({ installationDate, manufacturer }: { installationDate: string | null | undefined; manufacturer: string }) {
+  const warranty = getWarrantyStatus(installationDate, manufacturer);
+  if (warranty.status === "in-warranty") {
+    return <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" title="In Warranty" data-testid="warranty-dot-in" />;
+  }
+  if (warranty.status === "out-of-warranty") {
+    return <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title="Out of Warranty" data-testid="warranty-dot-out" />;
+  }
+  return <span className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" title="Warranty Unknown" data-testid="warranty-dot-unknown" />;
 }
 
 function getInitialFilter(): { status?: string; claimStatus?: string; preset?: string } {
@@ -248,7 +259,12 @@ export default function ServiceCallList() {
                         onClick={() => window.location.hash = `/calls/${call.id}`}
                         data-testid={`row-call-${call.id}`}
                       >
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">{formatDate(call.callDate)}</td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">
+                          <span className="inline-flex items-center gap-1.5">
+                            <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} />
+                            {formatDate(call.callDate)}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 min-w-[180px]">
                           <p className="font-medium text-foreground">{call.customerName}</p>
                           <p className="text-xs text-muted-foreground truncate max-w-[200px]">{call.jobSiteName}</p>
@@ -296,6 +312,7 @@ export default function ServiceCallList() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                          <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} />
                           <StatusBadge status={call.status} />
                           <span className="text-xs text-muted-foreground">{formatDate(call.callDate)}</span>
                         </div>

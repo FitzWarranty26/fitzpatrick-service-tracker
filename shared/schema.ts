@@ -40,6 +40,7 @@ export const serviceCalls = sqliteTable("service_calls", {
   scheduledTime: text("scheduled_time"),  // e.g. "09:00" or "2:30 PM"
   latitude: text("latitude"),
   longitude: text("longitude"),
+  parentCallId: integer("parent_call_id"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -80,6 +81,26 @@ export const insertPartSchema = createInsertSchema(partsUsed).omit({ id: true })
 export type InsertPart = z.infer<typeof insertPartSchema>;
 export type Part = typeof partsUsed.$inferSelect;
 
+// ─── Contacts ───────────────────────────────────────────────────────────
+
+export const contacts = sqliteTable("contacts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  contactType: text("contact_type").notNull(), // "customer" | "contractor" | "site_contact"
+  companyName: text("company_name"),
+  contactName: text("contact_name").notNull(),
+  phone: text("phone"),
+  email: text("email"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });
+export type InsertContact = z.infer<typeof insertContactSchema>;
+export type Contact = typeof contacts.$inferSelect;
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const MANUFACTURERS = [
@@ -119,3 +140,35 @@ export const PHOTO_TYPES = [
 ] as const;
 
 export const JOB_STATES = ["UT", "ID"] as const;
+
+export const WARRANTY_PERIODS: Record<string, number> = {
+  "A.O. Smith Water Heaters": 6,
+  "American Water Heaters": 6,
+  "State Water Heaters": 6,
+  "Powers Controls": 5,
+  "Sloan Valve Company": 5,
+  "Watts Water Technologies": 5,
+  "Watts ACV": 5,
+  "Watts Leak Defense": 5,
+  "Other": 1,
+};
+
+export function getWarrantyStatus(installationDate: string | null | undefined, manufacturer: string): {
+  status: "in-warranty" | "out-of-warranty" | "unknown";
+  expiresDate: string | null;
+  daysRemaining: number | null;
+} {
+  if (!installationDate) return { status: "unknown", expiresDate: null, daysRemaining: null };
+  const years = WARRANTY_PERIODS[manufacturer] ?? 1;
+  const install = new Date(installationDate);
+  if (isNaN(install.getTime())) return { status: "unknown", expiresDate: null, daysRemaining: null };
+  const expiry = new Date(install);
+  expiry.setFullYear(expiry.getFullYear() + years);
+  const now = new Date();
+  const daysRemaining = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const expiresDate = expiry.toISOString().split("T")[0];
+  if (daysRemaining > 0) {
+    return { status: "in-warranty", expiresDate, daysRemaining };
+  }
+  return { status: "out-of-warranty", expiresDate, daysRemaining };
+}

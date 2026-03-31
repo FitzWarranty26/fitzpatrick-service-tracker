@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import crypto from "crypto";
 import { storage } from "./storage";
-import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema } from "@shared/schema";
+import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema } from "@shared/schema";
 import { z } from "zod";
 
 // Safe error response — never leak internal error details to the client
@@ -255,6 +255,93 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       storage.deleteServiceCall(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── Related Calls (Follow-up chain) ────────────────────────────────────────
+
+  app.get("/api/service-calls/:id/related", (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const related = storage.getRelatedCalls(id);
+      res.json(related);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── Contacts ──────────────────────────────────────────────────────────────
+
+  app.get("/api/contacts/suggest", (req, res) => {
+    try {
+      const type = req.query.type as string;
+      const q = req.query.q as string;
+      if (!type || !q) return res.json([]);
+      const results = storage.suggestContacts(type, q);
+      res.json(results);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.get("/api/contacts", (req, res) => {
+    try {
+      const filters: { type?: string; search?: string } = {};
+      if (req.query.type) filters.type = req.query.type as string;
+      if (req.query.search) filters.search = req.query.search as string;
+      const contactsList = storage.getAllContacts(Object.keys(filters).length ? filters : undefined);
+      res.json(contactsList);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.get("/api/contacts/:id", (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const contact = storage.getContactById(id);
+      if (!contact) return res.status(404).json({ error: "Not found" });
+      res.json(contact);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.post("/api/contacts", (req, res) => {
+    try {
+      const data = insertContactSchema.parse(req.body);
+      const contact = storage.createContact(data);
+      res.status(201).json(contact);
+    } catch (e: any) {
+      if (e instanceof z.ZodError) return res.status(400).json({ error: "Validation failed" });
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.patch("/api/contacts/:id", (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const data = insertContactSchema.partial().parse(req.body);
+      const contact = storage.updateContact(id, data);
+      if (!contact) return res.status(404).json({ error: "Not found" });
+      res.json(contact);
+    } catch (e: any) {
+      if (e instanceof z.ZodError) return res.status(400).json({ error: "Validation failed" });
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.delete("/api/contacts/:id", (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      storage.deleteContact(id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });

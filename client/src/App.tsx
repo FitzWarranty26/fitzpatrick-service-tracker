@@ -16,6 +16,7 @@ import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 // Lazy-load Analytics page (pulls in recharts — large dependency)
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
+const Contacts = lazy(() => import("@/pages/Contacts"));
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
@@ -34,11 +35,21 @@ function AppRouter() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/calls" component={ServiceCallList} />
-        <Route path="/new" component={NewServiceCall} />
+        <Route path="/new">{() => <NewServiceCall />}</Route>
+        <Route path="/new/followup/:parentId">
+          {(params) => <NewServiceCall followUpId={params.parentId} />}
+        </Route>
         <Route path="/analytics">
           {() => (
             <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading analytics...</div>}>
               <Analytics />
+            </Suspense>
+          )}
+        </Route>
+        <Route path="/contacts">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading contacts...</div>}>
+              <Contacts />
             </Suspense>
           )}
         </Route>

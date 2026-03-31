@@ -13,9 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   PlusCircle, ClipboardCheck, Clock, PackageSearch, FileCheck, ArrowRight, ChevronRight,
-  CloudOff, RefreshCw
+  CloudOff, RefreshCw, ShieldAlert
 } from "lucide-react";
 import type { ServiceCall } from "@shared/schema";
+import { getWarrantyStatus } from "@shared/schema";
 
 interface DashboardStats {
   totalCalls: number;
@@ -94,6 +95,19 @@ export default function Dashboard() {
     queryKey: ["/api/dashboard/recent"],
   });
 
+  // Fetch all calls to compute out-of-warranty count
+  const { data: allCalls } = useQuery<ServiceCallWithCounts[]>({
+    queryKey: ["/api/service-calls"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/service-calls");
+      return res.json();
+    },
+  });
+
+  const outOfWarrantyCount = allCalls
+    ? allCalls.filter(c => c.status !== "Completed" && getWarrantyStatus(c.installationDate, c.manufacturer).status === "out-of-warranty").length
+    : 0;
+
   // Seed on first load
   useQuery({
     queryKey: ["/api/seed"],
@@ -141,6 +155,15 @@ export default function Dashboard() {
       testId: "stat-claims",
       href: "/calls?filter=pending-claims",
     },
+    ...(outOfWarrantyCount > 0 ? [{
+      title: "Out of Warranty",
+      value: outOfWarrantyCount,
+      icon: ShieldAlert,
+      color: "text-red-600 dark:text-red-400",
+      bg: "bg-red-50 dark:bg-red-900/20",
+      testId: "stat-out-of-warranty",
+      href: "/calls",
+    }] : []),
   ];
 
   return (

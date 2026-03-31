@@ -1,8 +1,8 @@
-import { useState, useRef } from "react";
-import { useLocation } from "wouter";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useLocation, Link } from "wouter";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import { todayISO } from "@/lib/utils";
@@ -23,8 +23,9 @@ import {
 import {
   MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, JOB_STATES
 } from "@shared/schema";
+import type { ServiceCall, Contact } from "@shared/schema";
 import {
-  Camera, Plus, Trash2, ChevronLeft, Upload, X, Save, WifiOff
+  Camera, Plus, Trash2, ChevronLeft, Upload, X, Save, WifiOff, ArrowLeft, UserPlus
 } from "lucide-react";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 
@@ -57,6 +58,7 @@ const formSchema = z.object({
   milesTraveled: z.string().optional().nullable(),
   scheduledDate: z.string().optional().nullable(),
   scheduledTime: z.string().optional().nullable(),
+  parentCallId: z.number().optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -75,7 +77,57 @@ interface PartEntry {
   source: string;
 }
 
-export default function NewServiceCall() {
+// Simple contact suggest hook with debounce
+function useContactSuggest(type: string, query: string) {
+  const [suggestions, setSuggestions] = useState<Contact[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (!query || query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await apiRequest("GET", `/api/contacts/suggest?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setSuggestions(data);
+      } catch {
+        setSuggestions([]);
+      }
+    }, 300);
+    return () => clearTimeout(timerRef.current);
+  }, [type, query]);
+
+  return { suggestions, clear: () => setSuggestions([]) };
+}
+
+function SuggestDropdown({ suggestions, onSelect, onClose }: {
+  suggestions: Contact[];
+  onSelect: (c: Contact) => void;
+  onClose: () => void;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-popover border border-border rounded-md shadow-md max-h-48 overflow-y-auto" data-testid="suggest-dropdown">
+      {suggestions.map(c => (
+        <button
+          key={c.id}
+          type="button"
+          className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
+          onClick={() => { onSelect(c); onClose(); }}
+          data-testid={`suggest-item-${c.id}`}
+        >
+          <span className="font-medium">{c.companyName || c.contactName}</span>
+          {c.companyName && <span className="text-muted-foreground ml-1">— {c.contactName}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function NewServiceCall({ followUpId: followUpIdProp }: { followUpId?: string }) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -84,6 +136,18 @@ export default function NewServiceCall() {
   const [parts, setParts] = useState<PartEntry[]>([]);
   const isOnline = useOnlineStatus();
   const [savingOffline, setSavingOffline] = useState(false);
+
+  const followUpId = followUpIdProp ? parseInt(followUpIdProp) : null;
+
+  // Fetch parent call data for follow-up
+  const { data: parentCall } = useQuery<ServiceCall & { photos: any[]; parts: any[] }>({
+    queryKey: ["/api/service-calls", followUpId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/service-calls/${followUpId}`);
+      return res.json();
+    },
+    enabled: !!followUpId,
+  });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -115,10 +179,49 @@ export default function NewServiceCall() {
       milesTraveled: "",
       scheduledDate: "",
       scheduledTime: "",
+      parentCallId: null,
     },
   });
 
+  // Pre-fill from parent call when it loads
+  useEffect(() => {
+    if (parentCall && followUpId) {
+      form.reset({
+        ...form.getValues(),
+        customerName: parentCall.customerName,
+        jobSiteName: parentCall.jobSiteName,
+        jobSiteAddress: parentCall.jobSiteAddress,
+        jobSiteCity: parentCall.jobSiteCity,
+        jobSiteState: parentCall.jobSiteState,
+        contactName: parentCall.contactName ?? "",
+        contactPhone: parentCall.contactPhone ?? "",
+        contactEmail: parentCall.contactEmail ?? "",
+        siteContactName: parentCall.siteContactName ?? "",
+        siteContactPhone: parentCall.siteContactPhone ?? "",
+        siteContactEmail: parentCall.siteContactEmail ?? "",
+        manufacturer: parentCall.manufacturer,
+        manufacturerOther: parentCall.manufacturerOther ?? "",
+        productModel: parentCall.productModel,
+        productSerial: parentCall.productSerial ?? "",
+        installationDate: parentCall.installationDate ?? "",
+        parentCallId: followUpId,
+      });
+    }
+  }, [parentCall, followUpId]);
+
   const manufacturer = form.watch("manufacturer");
+
+  // Contact auto-suggest state
+  const customerNameValue = form.watch("customerName");
+  const contractorNameValue = form.watch("contactName");
+  const siteContactNameValue = form.watch("siteContactName");
+  const [showCustomerSuggest, setShowCustomerSuggest] = useState(false);
+  const [showContractorSuggest, setShowContractorSuggest] = useState(false);
+  const [showSiteContactSuggest, setShowSiteContactSuggest] = useState(false);
+
+  const customerSuggest = useContactSuggest("customer", showCustomerSuggest ? customerNameValue : "");
+  const contractorSuggest = useContactSuggest("contractor", showContractorSuggest ? (contractorNameValue ?? "") : "");
+  const siteContactSuggest = useContactSuggest("site_contact", showSiteContactSuggest ? (siteContactNameValue ?? "") : "");
 
   const createMutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -160,7 +263,6 @@ export default function NewServiceCall() {
     if (isOnline) {
       createMutation.mutate(values);
     } else {
-      // Save to IndexedDB for later sync
       setSavingOffline(true);
       try {
         await savePendingCall({
@@ -178,39 +280,23 @@ export default function NewServiceCall() {
           })),
           savedAt: new Date().toISOString(),
         });
-        toast({
-          title: "Saved offline",
-          description: "Will sync when back online.",
-        });
+        toast({ title: "Saved offline", description: "Will sync when back online." });
         navigate("/");
       } catch (err: any) {
-        toast({
-          title: "Error",
-          description: err?.message ?? "Failed to save offline.",
-          variant: "destructive",
-        });
+        toast({ title: "Error", description: err?.message ?? "Failed to save offline.", variant: "destructive" });
       } finally {
         setSavingOffline(false);
       }
     }
   };
 
-  // Photo handling — compress iPhone photos before storing
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const { compressImage } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
     for (const file of files) {
       try {
         const dataUrl = await compressImage(file);
-        setPhotos((prev) => [
-          ...prev,
-          {
-            photoUrl: dataUrl,
-            caption: "",
-            photoType: "Other",
-            name: file.name,
-          },
-        ]);
+        setPhotos((prev) => [...prev, { photoUrl: dataUrl, caption: "", photoType: "Other", name: file.name }]);
       } catch (err) {
         console.error("Failed to compress image:", err);
       }
@@ -218,13 +304,31 @@ export default function NewServiceCall() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Photo reordering/editing handled by SortablePhotoGrid component
-
-  // Parts handling
   const addPart = () => setParts((p) => [...p, { partNumber: "", partDescription: "", quantity: 1, source: "" }]);
   const removePart = (idx: number) => setParts((p) => p.filter((_, i) => i !== idx));
   const updatePart = (idx: number, field: keyof PartEntry, value: string | number) => {
     setParts((p) => p.map((pt, i) => (i === idx ? { ...pt, [field]: value } : pt)));
+  };
+
+  // Save to contacts helper
+  const saveToContacts = async (type: string, name: string, company?: string, phone?: string, email?: string, address?: string, city?: string, state?: string) => {
+    if (!name) return;
+    try {
+      await apiRequest("POST", "/api/contacts", {
+        contactType: type,
+        contactName: name,
+        companyName: company || null,
+        phone: phone || null,
+        email: email || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Contact saved", description: `${name} added to contacts.` });
+    } catch {
+      toast({ title: "Error saving contact", variant: "destructive" });
+    }
   };
 
   return (
@@ -241,10 +345,23 @@ export default function NewServiceCall() {
           <ChevronLeft className="w-4 h-4" />
         </Button>
         <div>
-          <h1 className="text-xl font-bold">New Service Call</h1>
+          <h1 className="text-xl font-bold">{followUpId ? "Follow-up Service Call" : "New Service Call"}</h1>
           <p className="text-sm text-muted-foreground">Fill out all required fields</p>
         </div>
       </div>
+
+      {/* Follow-up banner */}
+      {followUpId && parentCall && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4 flex items-center gap-2" data-testid="followup-banner">
+          <ArrowLeft className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <p className="text-sm text-blue-700 dark:text-blue-400">
+            Follow-up to{" "}
+            <Link href={`/calls/${followUpId}`} className="font-medium underline" data-testid="followup-link">
+              Call #{followUpId} — {parentCall.customerName}
+            </Link>
+          </p>
+        </div>
+      )}
 
       {!isOnline && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-4 flex items-center gap-2" data-testid="offline-banner">
@@ -346,7 +463,27 @@ export default function NewServiceCall() {
                 <FormField control={form.control} name="customerName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Customer Name *</FormLabel>
-                    <FormControl><Input placeholder="e.g. Mountain West Plumbing" {...field} data-testid="input-customer-name" /></FormControl>
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          placeholder="e.g. Mountain West Plumbing"
+                          {...field}
+                          onFocus={() => setShowCustomerSuggest(true)}
+                          onBlur={() => setTimeout(() => setShowCustomerSuggest(false), 200)}
+                          data-testid="input-customer-name"
+                        />
+                      </FormControl>
+                      <SuggestDropdown
+                        suggestions={customerSuggest.suggestions}
+                        onSelect={(c) => {
+                          form.setValue("customerName", c.companyName || c.contactName);
+                          if (c.address) form.setValue("jobSiteAddress", c.address);
+                          if (c.city) form.setValue("jobSiteCity", c.city);
+                          if (c.state) form.setValue("jobSiteState", c.state);
+                        }}
+                        onClose={() => { setShowCustomerSuggest(false); customerSuggest.clear(); }}
+                      />
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -395,12 +532,44 @@ export default function NewServiceCall() {
               </div>
 
               {/* Installing Contractor */}
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-2">Installing Contractor</p>
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Installing Contractor</p>
+                {form.watch("contactName") && (
+                  <button
+                    type="button"
+                    className="text-xs text-primary flex items-center gap-1 hover:underline"
+                    onClick={() => saveToContacts("contractor", form.getValues("contactName") ?? "", undefined, form.getValues("contactPhone") ?? "", form.getValues("contactEmail") ?? "")}
+                    data-testid="save-contractor-contact"
+                  >
+                    <UserPlus className="w-3 h-3" /> Save to contacts
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField control={form.control} name="contactName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Name</FormLabel>
-                    <FormControl><Input placeholder="Contractor name" {...field} value={field.value ?? ""} data-testid="input-contact-name" /></FormControl>
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          placeholder="Contractor name"
+                          {...field}
+                          value={field.value ?? ""}
+                          onFocus={() => setShowContractorSuggest(true)}
+                          onBlur={() => setTimeout(() => setShowContractorSuggest(false), 200)}
+                          data-testid="input-contact-name"
+                        />
+                      </FormControl>
+                      <SuggestDropdown
+                        suggestions={contractorSuggest.suggestions}
+                        onSelect={(c) => {
+                          form.setValue("contactName", c.contactName);
+                          if (c.phone) form.setValue("contactPhone", c.phone);
+                          if (c.email) form.setValue("contactEmail", c.email);
+                        }}
+                        onClose={() => { setShowContractorSuggest(false); contractorSuggest.clear(); }}
+                      />
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -421,12 +590,44 @@ export default function NewServiceCall() {
               </div>
 
               {/* On-Site Contact */}
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-2">On-Site Contact</p>
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">On-Site Contact</p>
+                {form.watch("siteContactName") && (
+                  <button
+                    type="button"
+                    className="text-xs text-primary flex items-center gap-1 hover:underline"
+                    onClick={() => saveToContacts("site_contact", form.getValues("siteContactName") ?? "", undefined, form.getValues("siteContactPhone") ?? "", form.getValues("siteContactEmail") ?? "")}
+                    data-testid="save-site-contact"
+                  >
+                    <UserPlus className="w-3 h-3" /> Save to contacts
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField control={form.control} name="siteContactName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Name</FormLabel>
-                    <FormControl><Input placeholder="Homeowner / facility contact" {...field} value={field.value ?? ""} data-testid="input-site-contact-name" /></FormControl>
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          placeholder="Homeowner / facility contact"
+                          {...field}
+                          value={field.value ?? ""}
+                          onFocus={() => setShowSiteContactSuggest(true)}
+                          onBlur={() => setTimeout(() => setShowSiteContactSuggest(false), 200)}
+                          data-testid="input-site-contact-name"
+                        />
+                      </FormControl>
+                      <SuggestDropdown
+                        suggestions={siteContactSuggest.suggestions}
+                        onSelect={(c) => {
+                          form.setValue("siteContactName", c.contactName);
+                          if (c.phone) form.setValue("siteContactPhone", c.phone);
+                          if (c.email) form.setValue("siteContactEmail", c.email);
+                        }}
+                        onClose={() => { setShowSiteContactSuggest(false); siteContactSuggest.clear(); }}
+                      />
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -509,12 +710,7 @@ export default function NewServiceCall() {
                 <FormItem>
                   <FormLabel>Issue Description *</FormLabel>
                   <FormControl>
-                    <Textarea
-                      rows={3}
-                      placeholder="Describe what the customer reported…"
-                      {...field}
-                      data-testid="textarea-issue"
-                    />
+                    <Textarea rows={3} placeholder="Describe what the customer reported…" {...field} data-testid="textarea-issue" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

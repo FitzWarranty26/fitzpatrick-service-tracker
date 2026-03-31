@@ -5,12 +5,15 @@ import {
   serviceCalls,
   photos,
   partsUsed,
+  contacts,
   type ServiceCall,
   type InsertServiceCall,
   type Photo,
   type InsertPhoto,
   type Part,
   type InsertPart,
+  type Contact,
+  type InsertContact,
 } from "@shared/schema";
 
 // Use persistent disk path on Render if available, otherwise local
@@ -70,6 +73,20 @@ sqlite.exec(`
     quantity INTEGER NOT NULL DEFAULT 1,
     source TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_type TEXT NOT NULL,
+    company_name TEXT,
+    contact_name TEXT NOT NULL,
+    phone TEXT,
+    email TEXT,
+    address TEXT,
+    city TEXT,
+    state TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // ─── Indexes for query performance ──────────────────────────────────────────
@@ -86,7 +103,7 @@ sqlite.exec(`
 // We check first to avoid errors on tables that already have the column.
 
 // Allow only known table names to prevent SQL injection
-const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used"]);
+const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts"]);
 
 function columnExists(table: string, column: string): boolean {
   if (!ALLOWED_TABLES.has(table)) throw new Error(`Unknown table: ${table}`);
@@ -122,6 +139,12 @@ if (!columnExists("service_calls", "hours_on_job")) {
   sqlite.exec(`ALTER TABLE service_calls ADD COLUMN scheduled_date TEXT`);
   sqlite.exec(`ALTER TABLE service_calls ADD COLUMN scheduled_time TEXT`);
   console.log("Migration: added hours_on_job, miles_traveled, scheduled_date, scheduled_time columns");
+}
+
+// Migration 5: Add parent_call_id for follow-up tracking
+if (!columnExists("service_calls", "parent_call_id")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN parent_call_id INTEGER`);
+  console.log("Migration: added parent_call_id column to service_calls");
 }
 
 export interface ServiceCallWithCounts extends ServiceCall {
@@ -172,6 +195,17 @@ export interface IStorage {
   // Dashboard
   getDashboardStats(): DashboardStats;
   getRecentServiceCalls(limit: number): ServiceCallWithCounts[];
+
+  // Related Calls
+  getRelatedCalls(callId: number): ServiceCall[];
+
+  // Contacts
+  getAllContacts(filters?: { type?: string; search?: string }): Contact[];
+  getContactById(id: number): Contact | undefined;
+  createContact(contact: InsertContact): Contact;
+  updateContact(id: number, contact: Partial<InsertContact>): Contact | undefined;
+  deleteContact(id: number): void;
+  suggestContacts(type: string, query: string): Contact[];
 }
 
 export class SQLiteStorage implements IStorage {
@@ -272,6 +306,7 @@ export class SQLiteStorage implements IStorage {
       scheduledTime: row.scheduled_time,
       latitude: row.latitude,
       longitude: row.longitude,
+      parentCallId: row.parent_call_id,
       createdAt: row.created_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
@@ -399,9 +434,160 @@ export class SQLiteStorage implements IStorage {
       scheduledTime: row.scheduled_time,
       latitude: row.latitude,
       longitude: row.longitude,
+      parentCallId: row.parent_call_id,
       createdAt: row.created_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
+    }));
+  }
+
+  // ─── Related Calls (Follow-up chain) ─────────────────────────────────────
+
+  getRelatedCalls(callId: number): ServiceCall[] {
+    // Find the root call by walking up parent_call_id
+    let currentId = callId;
+    for (let i = 0; i < 100; i++) {
+      const row = sqlite.prepare(`SELECT parent_call_id FROM service_calls WHERE id = ?`).get(currentId) as any;
+      if (!row || !row.parent_call_id) break;
+      currentId = row.parent_call_id;
+    }
+    const rootId = currentId;
+
+    // Collect all calls in the chain using BFS
+    const ids = new Set<number>([rootId]);
+    const queue = [rootId];
+    while (queue.length > 0) {
+      const parentId = queue.shift()!;
+      const children = sqlite.prepare(`SELECT id FROM service_calls WHERE parent_call_id = ?`).all(parentId) as any[];
+      for (const child of children) {
+        if (!ids.has(child.id)) {
+          ids.add(child.id);
+          queue.push(child.id);
+        }
+      }
+    }
+
+    if (ids.size <= 1) {
+      // Check if this single call even has a parent_call_id; if not, no chain
+      const row = sqlite.prepare(`SELECT parent_call_id FROM service_calls WHERE id = ?`).get(rootId) as any;
+      if (!row?.parent_call_id && ids.size === 1) {
+        // Check children
+        const children = sqlite.prepare(`SELECT id FROM service_calls WHERE parent_call_id = ?`).all(rootId) as any[];
+        if (children.length === 0) return [];
+      }
+    }
+
+    const placeholders = Array.from(ids).map(() => "?").join(",");
+    const rows = sqlite.prepare(
+      `SELECT * FROM service_calls WHERE id IN (${placeholders}) ORDER BY call_date ASC, id ASC`
+    ).all(...Array.from(ids)) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      callDate: row.call_date,
+      manufacturer: row.manufacturer,
+      manufacturerOther: row.manufacturer_other,
+      customerName: row.customer_name,
+      jobSiteName: row.job_site_name,
+      jobSiteAddress: row.job_site_address,
+      jobSiteCity: row.job_site_city,
+      jobSiteState: row.job_site_state,
+      contactName: row.contact_name,
+      contactPhone: row.contact_phone,
+      contactEmail: row.contact_email,
+      siteContactName: row.site_contact_name,
+      siteContactPhone: row.site_contact_phone,
+      siteContactEmail: row.site_contact_email,
+      productModel: row.product_model,
+      productSerial: row.product_serial,
+      installationDate: row.installation_date,
+      issueDescription: row.issue_description,
+      diagnosis: row.diagnosis,
+      resolution: row.resolution,
+      status: row.status,
+      claimStatus: row.claim_status,
+      claimNotes: row.claim_notes,
+      techNotes: row.tech_notes,
+      hoursOnJob: row.hours_on_job,
+      milesTraveled: row.miles_traveled,
+      scheduledDate: row.scheduled_date,
+      scheduledTime: row.scheduled_time,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      parentCallId: row.parent_call_id,
+      createdAt: row.created_at,
+    }));
+  }
+
+  // ─── Contacts ──────────────────────────────────────────────────────────────
+
+  getAllContacts(filters?: { type?: string; search?: string }): Contact[] {
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (filters?.type) {
+      conditions.push(`c.contact_type = ?`);
+      params.push(filters.type);
+    }
+    if (filters?.search) {
+      const s = `%${filters.search.toLowerCase()}%`;
+      conditions.push(`(LOWER(c.company_name) LIKE ? OR LOWER(c.contact_name) LIKE ? OR LOWER(c.phone) LIKE ? OR LOWER(c.email) LIKE ?)`);
+      params.push(s, s, s, s);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const rows = sqlite.prepare(`SELECT * FROM contacts c ${whereClause} ORDER BY c.contact_name ASC`).all(...params) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      contactType: row.contact_type,
+      companyName: row.company_name,
+      contactName: row.contact_name,
+      phone: row.phone,
+      email: row.email,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      notes: row.notes,
+      createdAt: row.created_at,
+    }));
+  }
+
+  getContactById(id: number): Contact | undefined {
+    return db.select().from(contacts).where(eq(contacts.id, id)).get();
+  }
+
+  createContact(contact: InsertContact): Contact {
+    const now = new Date().toISOString();
+    return db.insert(contacts).values({ ...contact, createdAt: now }).returning().get();
+  }
+
+  updateContact(id: number, contact: Partial<InsertContact>): Contact | undefined {
+    return db.update(contacts).set(contact).where(eq(contacts.id, id)).returning().get();
+  }
+
+  deleteContact(id: number): void {
+    db.delete(contacts).where(eq(contacts.id, id)).run();
+  }
+
+  suggestContacts(type: string, query: string): Contact[] {
+    const s = `%${query.toLowerCase()}%`;
+    const rows = sqlite.prepare(
+      `SELECT * FROM contacts WHERE contact_type = ? AND (LOWER(company_name) LIKE ? OR LOWER(contact_name) LIKE ?) ORDER BY contact_name ASC LIMIT 5`
+    ).all(type, s, s) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      contactType: row.contact_type,
+      companyName: row.company_name,
+      contactName: row.contact_name,
+      phone: row.phone,
+      email: row.email,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      notes: row.notes,
+      createdAt: row.created_at,
     }));
   }
 }
