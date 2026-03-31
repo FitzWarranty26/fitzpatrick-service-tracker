@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, desc, like, and, gte, lte, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   serviceCalls,
   photos,
@@ -72,12 +72,24 @@ sqlite.exec(`
   );
 `);
 
+// ─── Indexes for query performance ──────────────────────────────────────────
+sqlite.exec(`
+  CREATE INDEX IF NOT EXISTS idx_photos_service_call_id ON photos(service_call_id);
+  CREATE INDEX IF NOT EXISTS idx_parts_service_call_id ON parts_used(service_call_id);
+  CREATE INDEX IF NOT EXISTS idx_service_calls_call_date ON service_calls(call_date);
+  CREATE INDEX IF NOT EXISTS idx_service_calls_status ON service_calls(status);
+`);
+
 // ─── Migrations (safe to re-run) ─────────────────────────────────────────────
 // Add new columns to existing tables without losing data.
 // SQLite's ALTER TABLE ADD COLUMN is safe — it adds the column if missing.
 // We check first to avoid errors on tables that already have the column.
 
+// Allow only known table names to prevent SQL injection
+const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used"]);
+
 function columnExists(table: string, column: string): boolean {
+  if (!ALLOWED_TABLES.has(table)) throw new Error(`Unknown table: ${table}`);
   const info = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   return info.some(col => col.name === column);
 }
@@ -175,49 +187,95 @@ export class SQLiteStorage implements IStorage {
     dateFrom?: string;
     dateTo?: string;
   }): ServiceCallWithCounts[] {
-    const calls = db.select().from(serviceCalls).orderBy(desc(serviceCalls.callDate)).all();
-    
-    let filtered = calls;
-    if (filters) {
-      if (filters.manufacturer) {
-        filtered = filtered.filter(c => c.manufacturer === filters.manufacturer);
-      }
-      if (filters.status) {
-        filtered = filtered.filter(c => c.status === filters.status);
-      }
-      if (filters.claimStatus) {
-        filtered = filtered.filter(c => c.claimStatus === filters.claimStatus);
-      }
-      if (filters.city) {
-        filtered = filtered.filter(c => c.jobSiteCity.toLowerCase().includes(filters.city!.toLowerCase()));
-      }
-      if (filters.state) {
-        filtered = filtered.filter(c => c.jobSiteState === filters.state);
-      }
-      if (filters.search) {
-        const s = filters.search.toLowerCase();
-        filtered = filtered.filter(c =>
-          c.customerName.toLowerCase().includes(s) ||
-          c.jobSiteName.toLowerCase().includes(s) ||
-          c.jobSiteCity.toLowerCase().includes(s) ||
-          c.productModel.toLowerCase().includes(s) ||
-          (c.productSerial && c.productSerial.toLowerCase().includes(s)) ||
-          (c.contactName && c.contactName.toLowerCase().includes(s))
-        );
-      }
-      if (filters.dateFrom) {
-        filtered = filtered.filter(c => c.callDate >= filters.dateFrom!);
-      }
-      if (filters.dateTo) {
-        filtered = filtered.filter(c => c.callDate <= filters.dateTo!);
-      }
+    // Build WHERE conditions to push filtering into SQL
+    const conditions: any[] = [];
+    const params: any[] = [];
+
+    if (filters?.manufacturer) {
+      conditions.push(`sc.manufacturer = ?`);
+      params.push(filters.manufacturer);
+    }
+    if (filters?.status) {
+      conditions.push(`sc.status = ?`);
+      params.push(filters.status);
+    }
+    if (filters?.claimStatus) {
+      conditions.push(`sc.claim_status = ?`);
+      params.push(filters.claimStatus);
+    }
+    if (filters?.city) {
+      conditions.push(`LOWER(sc.job_site_city) LIKE ?`);
+      params.push(`%${filters.city.toLowerCase()}%`);
+    }
+    if (filters?.state) {
+      conditions.push(`sc.job_site_state = ?`);
+      params.push(filters.state);
+    }
+    if (filters?.search) {
+      const s = `%${filters.search.toLowerCase()}%`;
+      conditions.push(`(LOWER(sc.customer_name) LIKE ? OR LOWER(sc.job_site_name) LIKE ? OR LOWER(sc.job_site_city) LIKE ? OR LOWER(sc.product_model) LIKE ? OR LOWER(sc.product_serial) LIKE ? OR LOWER(sc.contact_name) LIKE ?)`);
+      params.push(s, s, s, s, s, s);
+    }
+    if (filters?.dateFrom) {
+      conditions.push(`sc.call_date >= ?`);
+      params.push(filters.dateFrom);
+    }
+    if (filters?.dateTo) {
+      conditions.push(`sc.call_date <= ?`);
+      params.push(filters.dateTo);
     }
 
-    return filtered.map(call => {
-      const photoCount = db.select({ count: sql<number>`count(*)` }).from(photos).where(eq(photos.serviceCallId, call.id)).get()?.count ?? 0;
-      const partCount = db.select({ count: sql<number>`count(*)` }).from(partsUsed).where(eq(partsUsed.serviceCallId, call.id)).get()?.count ?? 0;
-      return { ...call, photoCount, partCount };
-    });
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    // Single query with subqueries for counts — eliminates N+1 pattern
+    const query = `
+      SELECT sc.*,
+        (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
+        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
+      FROM service_calls sc
+      ${whereClause}
+      ORDER BY sc.call_date DESC
+    `;
+
+    const rows = sqlite.prepare(query).all(...params) as any[];
+
+    // Map snake_case SQL result to camelCase TypeScript types
+    return rows.map(row => ({
+      id: row.id,
+      callDate: row.call_date,
+      manufacturer: row.manufacturer,
+      manufacturerOther: row.manufacturer_other,
+      customerName: row.customer_name,
+      jobSiteName: row.job_site_name,
+      jobSiteAddress: row.job_site_address,
+      jobSiteCity: row.job_site_city,
+      jobSiteState: row.job_site_state,
+      contactName: row.contact_name,
+      contactPhone: row.contact_phone,
+      contactEmail: row.contact_email,
+      siteContactName: row.site_contact_name,
+      siteContactPhone: row.site_contact_phone,
+      siteContactEmail: row.site_contact_email,
+      productModel: row.product_model,
+      productSerial: row.product_serial,
+      installationDate: row.installation_date,
+      issueDescription: row.issue_description,
+      diagnosis: row.diagnosis,
+      resolution: row.resolution,
+      status: row.status,
+      claimStatus: row.claim_status,
+      claimNotes: row.claim_notes,
+      techNotes: row.tech_notes,
+      hoursOnJob: row.hours_on_job,
+      milesTraveled: row.miles_traveled,
+      scheduledDate: row.scheduled_date,
+      scheduledTime: row.scheduled_time,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      createdAt: row.created_at,
+      photoCount: row.photo_count,
+      partCount: row.part_count,
+    }));
   }
 
   getServiceCallById(id: number): ServiceCallFull | undefined {
@@ -278,26 +336,73 @@ export class SQLiteStorage implements IStorage {
   // ─── Dashboard ──────────────────────────────────────────────────────────────
 
   getDashboardStats(): DashboardStats {
-    const all = db.select().from(serviceCalls).all();
     const now = new Date();
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
     const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-31`;
 
+    const row = sqlite.prepare(`
+      SELECT
+        COUNT(*) AS total_calls,
+        SUM(CASE WHEN status != 'Completed' THEN 1 ELSE 0 END) AS open_calls,
+        SUM(CASE WHEN status = 'Completed' AND call_date >= ? AND call_date <= ? THEN 1 ELSE 0 END) AS completed_this_month,
+        SUM(CASE WHEN claim_status IN ('Submitted', 'Pending Review') THEN 1 ELSE 0 END) AS pending_claims
+      FROM service_calls
+    `).get(monthStart, monthEnd) as any;
+
     return {
-      totalCalls: all.length,
-      openCalls: all.filter(c => c.status !== "Completed").length,
-      completedThisMonth: all.filter(c => c.status === "Completed" && c.callDate >= monthStart && c.callDate <= monthEnd).length,
-      pendingClaims: all.filter(c => c.claimStatus === "Submitted" || c.claimStatus === "Pending Review").length,
+      totalCalls: row.total_calls ?? 0,
+      openCalls: row.open_calls ?? 0,
+      completedThisMonth: row.completed_this_month ?? 0,
+      pendingClaims: row.pending_claims ?? 0,
     };
   }
 
   getRecentServiceCalls(limit: number): ServiceCallWithCounts[] {
-    const calls = db.select().from(serviceCalls).orderBy(desc(serviceCalls.callDate)).all().slice(0, limit);
-    return calls.map(call => {
-      const photoCount = db.select({ count: sql<number>`count(*)` }).from(photos).where(eq(photos.serviceCallId, call.id)).get()?.count ?? 0;
-      const partCount = db.select({ count: sql<number>`count(*)` }).from(partsUsed).where(eq(partsUsed.serviceCallId, call.id)).get()?.count ?? 0;
-      return { ...call, photoCount, partCount };
-    });
+    const rows = sqlite.prepare(`
+      SELECT sc.*,
+        (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
+        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
+      FROM service_calls sc
+      ORDER BY sc.call_date DESC
+      LIMIT ?
+    `).all(limit) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      callDate: row.call_date,
+      manufacturer: row.manufacturer,
+      manufacturerOther: row.manufacturer_other,
+      customerName: row.customer_name,
+      jobSiteName: row.job_site_name,
+      jobSiteAddress: row.job_site_address,
+      jobSiteCity: row.job_site_city,
+      jobSiteState: row.job_site_state,
+      contactName: row.contact_name,
+      contactPhone: row.contact_phone,
+      contactEmail: row.contact_email,
+      siteContactName: row.site_contact_name,
+      siteContactPhone: row.site_contact_phone,
+      siteContactEmail: row.site_contact_email,
+      productModel: row.product_model,
+      productSerial: row.product_serial,
+      installationDate: row.installation_date,
+      issueDescription: row.issue_description,
+      diagnosis: row.diagnosis,
+      resolution: row.resolution,
+      status: row.status,
+      claimStatus: row.claim_status,
+      claimNotes: row.claim_notes,
+      techNotes: row.tech_notes,
+      hoursOnJob: row.hours_on_job,
+      milesTraveled: row.miles_traveled,
+      scheduledDate: row.scheduled_date,
+      scheduledTime: row.scheduled_time,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      createdAt: row.created_at,
+      photoCount: row.photo_count,
+      partCount: row.part_count,
+    }));
   }
 }
 

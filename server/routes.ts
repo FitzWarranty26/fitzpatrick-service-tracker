@@ -74,13 +74,18 @@ function isValidSession(token: string): boolean {
   return true;
 }
 
-// Clean expired sessions every hour
+// Clean expired sessions and stale rate-limit records every hour
 setInterval(() => {
   const now = Date.now();
   const maxAge = SESSION_EXPIRY_HOURS * 60 * 60 * 1000;
   activeSessions.forEach((session, token) => {
     if (now - session.createdAt > maxAge) {
       activeSessions.delete(token);
+    }
+  });
+  loginAttempts.forEach((record, ip) => {
+    if (now > record.resetAt) {
+      loginAttempts.delete(ip);
     }
   });
 }, 60 * 60 * 1000);
@@ -223,7 +228,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       res.status(201).json(call);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
-        return res.status(400).json({ error: "Validation failed", details: e.errors });
+        return res.status(400).json({ error: "Validation failed" });
       }
       res.status(500).json({ error: safeError(e) });
     }
@@ -239,7 +244,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       res.json(call);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
-        return res.status(400).json({ error: "Validation failed", details: e.errors });
+        return res.status(400).json({ error: "Validation failed" });
       }
       res.status(500).json({ error: safeError(e) });
     }
@@ -278,7 +283,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       res.status(201).json(photo);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
-        return res.status(400).json({ error: "Validation failed", details: e.errors });
+        return res.status(400).json({ error: "Validation failed" });
       }
       res.status(500).json({ error: safeError(e) });
     }
@@ -317,7 +322,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       res.status(201).json(part);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
-        return res.status(400).json({ error: "Validation failed", details: e.errors });
+        return res.status(400).json({ error: "Validation failed" });
       }
       res.status(500).json({ error: safeError(e) });
     }
@@ -556,11 +561,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (manufacturer) filters.manufacturer = manufacturer;
       const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
 
-      // Build CSV
+      // Build CSV — fetch parts in bulk to avoid N+1 queries
       const headers = [
-        "Call ID", "Date", "Manufacturer", "Customer", "Job Site", "Address", "City", "State",
-        "Contractor Name", "Contractor Phone", "Site Contact", "Model", "Serial", "Install Date",
-        "Status", "Claim Status", "Issue", "Diagnosis", "Resolution", "Parts Used", "Tech Notes"
+        "Call ID", "Date", "Scheduled Date", "Scheduled Time", "Manufacturer", "Customer", "Job Site",
+        "Address", "City", "State", "Contractor Name", "Contractor Phone", "Site Contact",
+        "Model", "Serial", "Install Date", "Status", "Claim Status",
+        "Hours on Job", "Miles Traveled",
+        "Issue", "Diagnosis", "Resolution", "Parts Used", "Tech Notes"
       ];
 
       const escapeCSV = (val: string | null | undefined): string => {
@@ -572,16 +579,24 @@ export function registerRoutes(httpServer: Server, app: Express) {
         return s;
       };
 
+      // Pre-fetch all parts grouped by service call ID to avoid N+1
+      const allParts = calls.length > 0
+        ? calls.map(c => ({ id: c.id, parts: storage.getPartsByServiceCallId(c.id) }))
+        : [];
+      const partsMap = new Map(allParts.map(p => [p.id, p.parts]));
+
       const rows = calls.map(c => {
-        // Get full call with parts
-        const full = storage.getServiceCallById(c.id);
-        const partsStr = full?.parts?.map(p => `${p.partDescription} (${p.partNumber}) x${p.quantity}`).join("; ") || "";
+        const parts = partsMap.get(c.id) ?? [];
+        const partsStr = parts.map(p => `${p.partDescription} (${p.partNumber}) x${p.quantity}`).join("; ");
         return [
-          c.id, c.callDate, c.manufacturer, c.customerName, c.jobSiteName,
+          c.id, c.callDate, c.scheduledDate, c.scheduledTime,
+          c.manufacturer, c.customerName, c.jobSiteName,
           c.jobSiteAddress, c.jobSiteCity, c.jobSiteState,
           c.contactName, c.contactPhone, c.siteContactName,
           c.productModel, c.productSerial, c.installationDate,
-          c.status, c.claimStatus, c.issueDescription, c.diagnosis, c.resolution,
+          c.status, c.claimStatus,
+          c.hoursOnJob, c.milesTraveled,
+          c.issueDescription, c.diagnosis, c.resolution,
           partsStr, c.techNotes
         ].map(v => escapeCSV(v as any)).join(",");
       });
