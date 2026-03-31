@@ -22,7 +22,7 @@ import type { ServiceCall, Photo, Part } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Package,
   MapPin, Phone, User, Wrench, Calendar, Hash, Building, AlertCircle, CheckCircle2,
-  Image as ImageIcon, Mail, Loader2
+  Image as ImageIcon, Mail, Loader2, Clock, Car
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -409,6 +409,50 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </Card>
       </div>
 
+      {/* Scheduling */}
+      {(call.scheduledDate || call.scheduledTime || isEditing) && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Scheduling</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {!isEditing ? (
+                <>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Scheduled Date</p>
+                    <p className="text-sm">{call.scheduledDate ? formatDate(call.scheduledDate) : "\u2014"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Scheduled Time</p>
+                    <p className="text-sm">{call.scheduledTime || "\u2014"}</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Scheduled Date</label>
+                    <Input
+                      type="date"
+                      value={(editData.scheduledDate ?? call.scheduledDate ?? "") as string}
+                      onChange={e => setEditData(d => ({ ...d, scheduledDate: e.target.value }))}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Scheduled Time (approx.)</label>
+                    <Input
+                      type="time"
+                      value={(editData.scheduledTime ?? call.scheduledTime ?? "") as string}
+                      onChange={e => setEditData(d => ({ ...d, scheduledTime: e.target.value }))}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Product */}
       <Card>
         <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Product</CardTitle></CardHeader>
@@ -451,6 +495,62 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Job Logistics */}
+      {(call.hoursOnJob || call.milesTraveled || isEditing) && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Job Logistics</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {!isEditing ? (
+                <>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Hours on Job</p>
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                      <p className="text-sm font-medium">{call.hoursOnJob ? `${call.hoursOnJob} hrs` : "\u2014"}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Miles Traveled</p>
+                    <div className="flex items-center gap-1.5">
+                      <Car className="w-3.5 h-3.5 text-muted-foreground" />
+                      <p className="text-sm font-medium">{call.milesTraveled ? `${call.milesTraveled} mi` : "\u2014"}</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Hours on Job</label>
+                    <Input
+                      type="number"
+                      step="0.25"
+                      min="0"
+                      placeholder="e.g. 2.5"
+                      value={(editData.hoursOnJob ?? call.hoursOnJob ?? "") as string}
+                      onChange={e => setEditData(d => ({ ...d, hoursOnJob: e.target.value }))}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Miles Traveled</label>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder="e.g. 45"
+                      value={(editData.milesTraveled ?? call.milesTraveled ?? "") as string}
+                      onChange={e => setEditData(d => ({ ...d, milesTraveled: e.target.value }))}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Issue / Diagnosis / Resolution */}
       {(["issueDescription", "diagnosis", "resolution", "techNotes"] as const).map((field) => {

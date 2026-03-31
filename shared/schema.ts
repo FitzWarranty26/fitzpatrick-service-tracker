@@ -32,6 +32,12 @@ export const serviceCalls = sqliteTable("service_calls", {
   claimStatus: text("claim_status").notNull().default("Not Filed"), // Not Filed | Submitted | Approved | Denied | Pending Review
   claimNotes: text("claim_notes"),
   techNotes: text("tech_notes"),
+  // Job logistics
+  hoursOnJob: text("hours_on_job"),    // decimal as text, e.g. "2.5"
+  milesTraveled: text("miles_traveled"), // decimal as text, e.g. "45"
+  // Scheduling
+  scheduledDate: text("scheduled_date"),  // ISO date string
+  scheduledTime: text("scheduled_time"),  // e.g. "09:00" or "2:30 PM"
   latitude: text("latitude"),
   longitude: text("longitude"),
   createdAt: text("created_at").notNull(),

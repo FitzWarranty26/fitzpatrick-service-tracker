@@ -103,6 +103,15 @@ if (!columnExists("service_calls", "latitude")) {
   console.log("Migration: added latitude/longitude columns to service_calls");
 }
 
+// Migration 4: Add job logistics (hours, miles) and scheduling fields
+if (!columnExists("service_calls", "hours_on_job")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN hours_on_job TEXT`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN miles_traveled TEXT`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN scheduled_date TEXT`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN scheduled_time TEXT`);
+  console.log("Migration: added hours_on_job, miles_traveled, scheduled_date, scheduled_time columns");
+}
+
 export interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;

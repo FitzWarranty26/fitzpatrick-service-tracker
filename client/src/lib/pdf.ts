@@ -258,6 +258,12 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
       <span class="status-value" style="font-family:monospace">${call.productSerial}</span>
     </div>
     ` : ""}
+    ${call.scheduledDate ? `
+    <div class="status-item">
+      <span class="status-label">Scheduled</span>
+      <span class="status-value">${formatDate(call.scheduledDate)}${call.scheduledTime ? ` at ${call.scheduledTime}` : ""}</span>
+    </div>
+    ` : ""}
   </div>
 
   <!-- Customer & Site -->
@@ -318,6 +324,27 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
       ` : ""}
     </div>
   </div>
+
+  ${(call.hoursOnJob || call.milesTraveled) ? `
+  <!-- Job Logistics -->
+  <div class="section">
+    <h2>Job Logistics</h2>
+    <div class="field-grid">
+      ${call.hoursOnJob ? `
+      <div class="field">
+        <label>Hours on Job</label>
+        <span class="value">${call.hoursOnJob} hrs</span>
+      </div>
+      ` : ""}
+      ${call.milesTraveled ? `
+      <div class="field">
+        <label>Miles Traveled</label>
+        <span class="value">${call.milesTraveled} mi</span>
+      </div>
+      ` : ""}
+    </div>
+  </div>
+  ` : ""}
 
   <!-- Issue Description -->
   <div class="section">

@@ -53,6 +53,10 @@ const formSchema = z.object({
   claimStatus: z.string().min(1),
   claimNotes: z.string().optional().nullable(),
   techNotes: z.string().optional().nullable(),
+  hoursOnJob: z.string().optional().nullable(),
+  milesTraveled: z.string().optional().nullable(),
+  scheduledDate: z.string().optional().nullable(),
+  scheduledTime: z.string().optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -107,6 +111,10 @@ export default function NewServiceCall() {
       claimStatus: "Not Filed",
       claimNotes: "",
       techNotes: "",
+      hoursOnJob: "",
+      milesTraveled: "",
+      scheduledDate: "",
+      scheduledTime: "",
     },
   });
 
@@ -307,6 +315,29 @@ export default function NewServiceCall() {
             </CardContent>
           </Card>
 
+          {/* ── Scheduling ─────────────────────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Scheduling</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField control={form.control} name="scheduledDate" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Scheduled Date</FormLabel>
+                    <FormControl><Input type="date" {...field} value={field.value ?? ""} data-testid="input-scheduled-date" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="scheduledTime" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Scheduled Time (approx.)</FormLabel>
+                    <FormControl><Input type="time" {...field} value={field.value ?? ""} data-testid="input-scheduled-time" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+            </CardContent>
+          </Card>
+
           {/* ── Customer / Site ───────────────────────────────────────── */}
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">Customer & Job Site</CardTitle></CardHeader>
@@ -444,6 +475,29 @@ export default function NewServiceCall() {
                   <FormMessage />
                 </FormItem>
               )} />
+            </CardContent>
+          </Card>
+
+          {/* ── Job Logistics ─────────────────────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Job Logistics</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField control={form.control} name="hoursOnJob" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Hours on Job</FormLabel>
+                    <FormControl><Input type="number" step="0.25" min="0" placeholder="e.g. 2.5" {...field} value={field.value ?? ""} data-testid="input-hours" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="milesTraveled" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Miles Traveled</FormLabel>
+                    <FormControl><Input type="number" step="1" min="0" placeholder="e.g. 45" {...field} value={field.value ?? ""} data-testid="input-miles" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
             </CardContent>
           </Card>
 
