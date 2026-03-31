@@ -335,18 +335,21 @@ export default function Reports() {
       {/* Controls */}
       <Card className="mb-5">
         <CardContent className="p-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
             {/* Report type */}
-            <Select value={reportType} onValueChange={v => setReportType(v as ReportType)} data-testid="select-report-type">
-              <SelectTrigger data-testid="select-report-type">
-                <SelectValue placeholder="Report Type" />
-              </SelectTrigger>
-              <SelectContent>
-                {REPORT_TYPES.map(r => (
-                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Report Type</label>
+              <Select value={reportType} onValueChange={v => setReportType(v as ReportType)}>
+                <SelectTrigger data-testid="select-report-type">
+                  <SelectValue placeholder="Report Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REPORT_TYPES.map(r => (
+                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* Date from */}
             <div>
