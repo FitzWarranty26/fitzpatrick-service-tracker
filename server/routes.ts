@@ -219,6 +219,36 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const data = insertServiceCallSchema.parse(req.body);
       const call = storage.createServiceCall(data);
+
+      // Auto-save contacts to directory (won't duplicate existing ones)
+      try {
+        // Customer
+        if (data.customerName) {
+          storage.findOrCreateContact("customer", data.customerName, {
+            address: data.jobSiteAddress,
+            city: data.jobSiteCity,
+            state: data.jobSiteState,
+          });
+        }
+        // Installing Contractor
+        if (data.contactName) {
+          storage.findOrCreateContact("contractor", data.contactName, {
+            phone: data.contactPhone,
+            email: data.contactEmail,
+          });
+        }
+        // On-Site Contact
+        if (data.siteContactName) {
+          storage.findOrCreateContact("site_contact", data.siteContactName, {
+            phone: data.siteContactPhone,
+            email: data.siteContactEmail,
+          });
+        }
+      } catch (e) {
+        // Don't fail the call creation if contact saving fails
+        console.error("Auto-save contacts error:", e);
+      }
+
       // Geocode in background (don't block the response)
       geocodeAddress(data.jobSiteAddress, data.jobSiteCity, data.jobSiteState).then(coords => {
         if (coords) {
@@ -693,6 +723,45 @@ export function registerRoutes(httpServer: Server, app: Express) {
       res.setHeader("Content-Type", "text/csv");
       res.setHeader("Content-Disposition", "attachment; filename=service-calls-export.csv");
       res.send(csv);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── Backfill contacts from existing service calls ─────────────────────────
+
+  app.post("/api/contacts/backfill", (_req, res) => {
+    try {
+      const calls = storage.getAllServiceCalls();
+      let created = 0;
+      for (const call of calls) {
+        // Customer
+        if (call.customerName) {
+          const c = storage.findOrCreateContact("customer", call.customerName, {
+            address: call.jobSiteAddress,
+            city: call.jobSiteCity,
+            state: call.jobSiteState,
+          });
+          if (c) created++;
+        }
+        // Installing Contractor
+        if (call.contactName) {
+          const c = storage.findOrCreateContact("contractor", call.contactName, {
+            phone: call.contactPhone,
+            email: call.contactEmail,
+          });
+          if (c) created++;
+        }
+        // On-Site Contact
+        if (call.siteContactName) {
+          const c = storage.findOrCreateContact("site_contact", call.siteContactName, {
+            phone: call.siteContactPhone,
+            email: call.siteContactEmail,
+          });
+          if (c) created++;
+        }
+      }
+      res.json({ message: `Processed ${calls.length} calls`, contactsProcessed: created });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }

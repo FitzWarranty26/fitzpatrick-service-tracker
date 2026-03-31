@@ -212,6 +212,14 @@ export interface IStorage {
   updateContact(id: number, contact: Partial<InsertContact>): Contact | undefined;
   deleteContact(id: number): void;
   suggestContacts(type: string, query: string): Contact[];
+  findOrCreateContact(type: string, contactName: string, extra?: {
+    companyName?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+  }): Contact | null;
 }
 
 export class SQLiteStorage implements IStorage {
@@ -577,6 +585,50 @@ export class SQLiteStorage implements IStorage {
 
   deleteContact(id: number): void {
     db.delete(contacts).where(eq(contacts.id, id)).run();
+  }
+
+  // Find existing contact by type + name, or create a new one
+  findOrCreateContact(type: string, contactName: string, extra?: {
+    companyName?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+  }): Contact | null {
+    if (!contactName || !contactName.trim()) return null;
+    const name = contactName.trim();
+    // Check if a contact with the same type and name already exists
+    const existing = sqlite.prepare(
+      `SELECT * FROM contacts WHERE contact_type = ? AND LOWER(contact_name) = LOWER(?) LIMIT 1`
+    ).get(type, name) as any;
+    if (existing) {
+      // Update phone/email if they were empty and we now have them
+      const updates: string[] = [];
+      const params: any[] = [];
+      if (!existing.phone && extra?.phone) { updates.push("phone = ?"); params.push(extra.phone); }
+      if (!existing.email && extra?.email) { updates.push("email = ?"); params.push(extra.email); }
+      if (!existing.company_name && extra?.companyName) { updates.push("company_name = ?"); params.push(extra.companyName); }
+      if (!existing.address && extra?.address) { updates.push("address = ?"); params.push(extra.address); }
+      if (!existing.city && extra?.city) { updates.push("city = ?"); params.push(extra.city); }
+      if (!existing.state && extra?.state) { updates.push("state = ?"); params.push(extra.state); }
+      if (updates.length > 0) {
+        sqlite.prepare(`UPDATE contacts SET ${updates.join(", ")} WHERE id = ?`).run(...params, existing.id);
+      }
+      return existing;
+    }
+    // Create new
+    return this.createContact({
+      contactType: type,
+      contactName: name,
+      companyName: extra?.companyName ?? null,
+      phone: extra?.phone ?? null,
+      email: extra?.email ?? null,
+      address: extra?.address ?? null,
+      city: extra?.city ?? null,
+      state: extra?.state ?? null,
+      notes: null,
+    });
   }
 
   suggestContacts(type: string, query: string): Contact[] {
