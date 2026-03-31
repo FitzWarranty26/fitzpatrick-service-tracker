@@ -405,7 +405,7 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
   <div class="footer">
     <div class="footer-left">
       Fitzpatrick Warranty Service, LLC<br/>
-      Utah &amp; Southern Idaho · kevin@fitzpatricksales.com
+      Utah &amp; Southern Idaho · Fitz.warranty@fitzpatrickwarranty.com
     </div>
     <div class="footer-right">
       Service Call #${call.id} · ${formatDate(call.callDate)}<br/>
