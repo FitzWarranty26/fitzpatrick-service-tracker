@@ -22,7 +22,7 @@ import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Package,
   MapPin, Phone, User, Wrench, Calendar, Hash, Building, AlertCircle, CheckCircle2,
-  Image as ImageIcon, Mail, Loader2, Clock, Car, CornerDownRight, Shield, ShieldAlert, ShieldQuestion
+  Image as ImageIcon, Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -770,16 +770,72 @@ export default function ServiceCallDetail({ id }: { id: string }) {
             {(displayCall.claimStatus === "Denied") && <AlertCircle className="w-4 h-4 text-red-500" />}
           </div>
           {!isEditing ? (
-            call.claimNotes ? <p className="text-sm text-foreground whitespace-pre-wrap">{call.claimNotes}</p> : <p className="text-sm text-muted-foreground">No claim notes.</p>
+            <>
+              {call.claimNotes ? <p className="text-sm text-foreground whitespace-pre-wrap">{call.claimNotes}</p> : <p className="text-sm text-muted-foreground">No claim notes.</p>}
+              {(call.partsCost || call.laborCost || call.otherCost || call.claimAmount) && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 mt-2 border-t border-border">
+                  {call.partsCost && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Parts Cost</p>
+                      <p className="text-sm font-medium">${parseFloat(call.partsCost).toFixed(2)}</p>
+                    </div>
+                  )}
+                  {call.laborCost && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Labor Cost</p>
+                      <p className="text-sm font-medium">${parseFloat(call.laborCost).toFixed(2)}</p>
+                    </div>
+                  )}
+                  {call.otherCost && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Other Cost</p>
+                      <p className="text-sm font-medium">${parseFloat(call.otherCost).toFixed(2)}</p>
+                    </div>
+                  )}
+                  {call.claimAmount && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Claim Amount</p>
+                      <p className="text-sm font-semibold text-green-600 dark:text-green-400">${parseFloat(call.claimAmount).toFixed(2)}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
-            <Textarea
-              rows={2}
-              value={(editData.claimNotes ?? call.claimNotes) as string ?? ""}
-              onChange={e => setEditData(d => ({ ...d, claimNotes: e.target.value }))}
-              placeholder="Claim reference numbers, notes…"
-              className="text-sm"
-              data-testid="edit-claim-notes"
-            />
+            <>
+              <Textarea
+                rows={2}
+                value={(editData.claimNotes ?? call.claimNotes) as string ?? ""}
+                onChange={e => setEditData(d => ({ ...d, claimNotes: e.target.value }))}
+                placeholder="Claim reference numbers, notes…"
+                className="text-sm"
+                data-testid="edit-claim-notes"
+              />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                {[
+                  { key: "partsCost", label: "Parts Cost" },
+                  { key: "laborCost", label: "Labor Cost" },
+                  { key: "otherCost", label: "Other Cost" },
+                  { key: "claimAmount", label: "Claim Amount" },
+                ].map(({ key, label }) => (
+                  <div key={key}>
+                    <label className="text-xs text-muted-foreground">{label}</label>
+                    <div className="relative mt-0.5">
+                      <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={(editData[key as keyof typeof editData] ?? call[key as keyof ServiceCall]) as string ?? ""}
+                        onChange={e => setEditData(d => ({ ...d, [key]: e.target.value }))}
+                        className="h-8 text-sm pl-7"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

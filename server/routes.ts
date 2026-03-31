@@ -485,11 +485,20 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const models = new Set<string>();
       const customers = new Set<string>();
 
+      let totalPartsCost = 0;
+      let totalLaborCost = 0;
+      let totalOtherCost = 0;
+      let totalClaimAmount = 0;
+
       for (const c of calls) {
         totalByStatus[c.status] = (totalByStatus[c.status] || 0) + 1;
         totalByClaimStatus[c.claimStatus] = (totalByClaimStatus[c.claimStatus] || 0) + 1;
         models.add(c.productModel);
         customers.add(c.customerName);
+        if (c.partsCost) totalPartsCost += parseFloat(c.partsCost) || 0;
+        if (c.laborCost) totalLaborCost += parseFloat(c.laborCost) || 0;
+        if (c.otherCost) totalOtherCost += parseFloat(c.otherCost) || 0;
+        if (c.claimAmount) totalClaimAmount += parseFloat(c.claimAmount) || 0;
       }
 
       res.json({
@@ -499,6 +508,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
         uniqueModels: models.size,
         uniqueCustomers: customers.size,
         dateRange: { from: dateFrom || null, to: dateTo || null },
+        financials: {
+          totalPartsCost: Math.round(totalPartsCost * 100) / 100,
+          totalLaborCost: Math.round(totalLaborCost * 100) / 100,
+          totalOtherCost: Math.round(totalOtherCost * 100) / 100,
+          totalClaimAmount: Math.round(totalClaimAmount * 100) / 100,
+          totalCosts: Math.round((totalPartsCost + totalLaborCost + totalOtherCost) * 100) / 100,
+        },
       });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -684,6 +700,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         "Address", "City", "State", "Contractor Name", "Contractor Phone", "Site Contact",
         "Model", "Serial", "Install Date", "Status", "Claim Status",
         "Hours on Job", "Miles Traveled",
+        "Parts Cost", "Labor Cost", "Other Cost", "Claim Amount",
         "Issue", "Diagnosis", "Resolution", "Parts Used", "Tech Notes"
       ];
 
@@ -713,6 +730,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           c.productModel, c.productSerial, c.installationDate,
           c.status, c.claimStatus,
           c.hoursOnJob, c.milesTraveled,
+          c.partsCost, c.laborCost, c.otherCost, c.claimAmount,
           c.issueDescription, c.diagnosis, c.resolution,
           partsStr, c.techNotes
         ].map(v => escapeCSV(v as any)).join(",");

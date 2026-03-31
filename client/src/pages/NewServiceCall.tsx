@@ -54,6 +54,10 @@ const formSchema = z.object({
   status: z.string().min(1),
   claimStatus: z.string().min(1),
   claimNotes: z.string().optional().nullable(),
+  partsCost: z.string().optional().nullable(),
+  laborCost: z.string().optional().nullable(),
+  otherCost: z.string().optional().nullable(),
+  claimAmount: z.string().optional().nullable(),
   techNotes: z.string().optional().nullable(),
   hoursOnJob: z.string().optional().nullable(),
   milesTraveled: z.string().optional().nullable(),
@@ -176,6 +180,10 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       status: "Scheduled",
       claimStatus: "Not Filed",
       claimNotes: "",
+      partsCost: "",
+      laborCost: "",
+      otherCost: "",
+      claimAmount: "",
       techNotes: "",
       hoursOnJob: "",
       milesTraveled: "",
@@ -796,6 +804,27 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                   <FormMessage />
                 </FormItem>
               )} />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { name: "partsCost" as const, label: "Parts Cost" },
+                  { name: "laborCost" as const, label: "Labor Cost" },
+                  { name: "otherCost" as const, label: "Other Cost" },
+                  { name: "claimAmount" as const, label: "Claim Amount" },
+                ].map(({ name, label }) => (
+                  <FormField key={name} control={form.control} name={name} render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{label}</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                          <Input type="number" step="0.01" min="0" placeholder="0.00" {...field} value={field.value ?? ""} className="pl-7" data-testid={`input-${name}`} />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                ))}
+              </div>
             </CardContent>
           </Card>
 

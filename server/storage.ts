@@ -153,6 +153,15 @@ if (!columnExists("service_calls", "product_type")) {
   console.log("Migration: added product_type column to service_calls");
 }
 
+// Migration 7: Add claim financial fields
+if (!columnExists("service_calls", "parts_cost")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN parts_cost TEXT`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN labor_cost TEXT`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN other_cost TEXT`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN claim_amount TEXT`);
+  console.log("Migration: added claim financial columns");
+}
+
 export interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;
@@ -314,6 +323,10 @@ export class SQLiteStorage implements IStorage {
       status: row.status,
       claimStatus: row.claim_status,
       claimNotes: row.claim_notes,
+      partsCost: row.parts_cost,
+      laborCost: row.labor_cost,
+      otherCost: row.other_cost,
+      claimAmount: row.claim_amount,
       techNotes: row.tech_notes,
       hoursOnJob: row.hours_on_job,
       milesTraveled: row.miles_traveled,
@@ -443,6 +456,10 @@ export class SQLiteStorage implements IStorage {
       status: row.status,
       claimStatus: row.claim_status,
       claimNotes: row.claim_notes,
+      partsCost: row.parts_cost,
+      laborCost: row.labor_cost,
+      otherCost: row.other_cost,
+      claimAmount: row.claim_amount,
       techNotes: row.tech_notes,
       hoursOnJob: row.hours_on_job,
       milesTraveled: row.miles_traveled,
@@ -524,6 +541,10 @@ export class SQLiteStorage implements IStorage {
       status: row.status,
       claimStatus: row.claim_status,
       claimNotes: row.claim_notes,
+      partsCost: row.parts_cost,
+      laborCost: row.labor_cost,
+      otherCost: row.other_cost,
+      claimAmount: row.claim_amount,
       techNotes: row.tech_notes,
       hoursOnJob: row.hours_on_job,
       milesTraveled: row.miles_traveled,

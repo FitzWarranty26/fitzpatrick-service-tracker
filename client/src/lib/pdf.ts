@@ -101,6 +101,30 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
             <p class="value">${call.claimNotes}</p>
           </div>
         ` : ""}
+        ${call.partsCost ? `
+          <div class="field">
+            <label>Parts Cost</label>
+            <span class="value">$${parseFloat(call.partsCost).toFixed(2)}</span>
+          </div>
+        ` : ""}
+        ${call.laborCost ? `
+          <div class="field">
+            <label>Labor Cost</label>
+            <span class="value">$${parseFloat(call.laborCost).toFixed(2)}</span>
+          </div>
+        ` : ""}
+        ${call.otherCost ? `
+          <div class="field">
+            <label>Other Cost</label>
+            <span class="value">$${parseFloat(call.otherCost).toFixed(2)}</span>
+          </div>
+        ` : ""}
+        ${call.claimAmount ? `
+          <div class="field">
+            <label>Claim Amount</label>
+            <span class="value" style="font-weight:700;color:#16a34a;">$${parseFloat(call.claimAmount).toFixed(2)}</span>
+          </div>
+        ` : ""}
       </div>
     </div>
   `;

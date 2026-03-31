@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   Download,
   Search,
+  DollarSign,
 } from "lucide-react";
 import { subDays, format, parseISO } from "date-fns";
 import { MANUFACTURERS } from "@shared/schema";
@@ -43,6 +44,13 @@ interface SummaryData {
   uniqueModels: number;
   uniqueCustomers: number;
   dateRange: { from: string | null; to: string | null };
+  financials?: {
+    totalPartsCost: number;
+    totalLaborCost: number;
+    totalOtherCost: number;
+    totalClaimAmount: number;
+    totalCosts: number;
+  };
 }
 
 interface MfgData {
@@ -369,6 +377,42 @@ export default function Analytics() {
           );
         })}
       </div>
+
+      {/* Financial Summary */}
+      {summary?.financials && (summary.financials.totalCosts > 0 || summary.financials.totalClaimAmount > 0) && (
+        <Card data-testid="analytics-financials">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-1.5 rounded-lg bg-green-50 dark:bg-green-900/20">
+                <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400" />
+              </div>
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Claim Financials</p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Parts Cost</p>
+                <p className="text-lg font-bold">${summary.financials.totalPartsCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Labor Cost</p>
+                <p className="text-lg font-bold">${summary.financials.totalLaborCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Other Costs</p>
+                <p className="text-lg font-bold">${summary.financials.totalOtherCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Total Costs</p>
+                <p className="text-lg font-bold">${summary.financials.totalCosts.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Total Claimed</p>
+                <p className="text-lg font-bold text-green-600 dark:text-green-400">${summary.financials.totalClaimAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Bar Chart: Calls by Manufacturer */}
       <Card>

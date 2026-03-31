@@ -32,6 +32,11 @@ export const serviceCalls = sqliteTable("service_calls", {
   status: text("status").notNull().default("Scheduled"), // Scheduled | In Progress | Completed | Pending Parts | Escalated
   claimStatus: text("claim_status").notNull().default("Not Filed"), // Not Filed | Submitted | Approved | Denied | Pending Review
   claimNotes: text("claim_notes"),
+  // Claim financials (all optional, stored as text for decimal precision)
+  partsCost: text("parts_cost"),         // e.g. "125.50"
+  laborCost: text("labor_cost"),         // e.g. "200.00"
+  otherCost: text("other_cost"),         // mileage reimbursement, misc
+  claimAmount: text("claim_amount"),     // total claim amount submitted/approved
   techNotes: text("tech_notes"),
   // Job logistics
   hoursOnJob: text("hours_on_job"),    // decimal as text, e.g. "2.5"
