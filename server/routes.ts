@@ -1222,7 +1222,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }
 
         default:
-          return res.status(400).json({ error: `Unknown report type: ${reportType}` });
+          return res.status(400).json({ error: "Unknown report type" });
       }
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });

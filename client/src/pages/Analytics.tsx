@@ -33,7 +33,6 @@ import {
   Search,
   DollarSign,
   Clock,
-  Car,
 } from "lucide-react";
 import { subDays, format, parseISO } from "date-fns";
 import { MANUFACTURERS } from "@shared/schema";
