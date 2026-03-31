@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -22,7 +22,7 @@ import type { ServiceCall, Photo, Part } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Package,
   MapPin, Phone, User, Wrench, Calendar, Hash, Building, AlertCircle, CheckCircle2,
-  Image as ImageIcon, Mail
+  Image as ImageIcon, Mail, Loader2
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -50,7 +50,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Partial<ServiceCallFull>>({});
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
-  const [newPhotoFiles, setNewPhotoFiles] = useState<Array<{ dataUrl: string; caption: string; photoType: string }>>([]);
+  const [newPhotoFiles, setNewPhotoFiles] = useState<Array<{ photoUrl: string; caption: string; photoType: string }>>([]);
 
   const { data: call, isLoading } = useQuery<ServiceCallFull>({
     queryKey: ["/api/service-calls", callId],
@@ -116,14 +116,15 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     updateMutation.mutate(updateFields);
   };
 
-  const handlePhotoAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Add photos while in edit mode (queued until save)
+  const handlePhotoAddForEdit = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const { compressImage } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
     for (const file of files) {
       try {
         const dataUrl = await compressImage(file);
         setNewPhotoFiles(prev => [...prev, {
-          dataUrl,
+          photoUrl: dataUrl,
           caption: "",
           photoType: "Other",
         }]);
@@ -131,6 +132,37 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         console.error("Failed to compress image:", err);
       }
     }
+  };
+
+  // Direct photo upload — saves immediately without entering edit mode
+  const [isUploading, setIsUploading] = useState(false);
+  const directPhotoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDirectPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!call) return;
+    const { compressImage } = await import("@/lib/image-utils");
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    let uploaded = 0;
+    for (const file of files) {
+      try {
+        const dataUrl = await compressImage(file);
+        await apiRequest("POST", `/api/service-calls/${call.id}/photos`, {
+          photoUrl: dataUrl,
+          caption: "",
+          photoType: "Other",
+        });
+        uploaded++;
+      } catch (err) {
+        console.error("Failed to upload photo:", err);
+      }
+    }
+    setIsUploading(false);
+    if (directPhotoInputRef.current) directPhotoInputRef.current.value = "";
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+    toast({ title: "Photos added", description: `${uploaded} photo${uploaded !== 1 ? "s" : ""} uploaded.` });
   };
 
   const handlePDF = async () => {
@@ -482,14 +514,43 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Photos ({call.photos.length})</CardTitle>
-          {isEditing && (
-            <label className="cursor-pointer">
-              <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoAdd} />
-              <Button type="button" variant="outline" size="sm" asChild>
-                <span><Camera className="w-3.5 h-3.5 mr-1" />Add Photos</span>
-              </Button>
-            </label>
-          )}
+          <div className="flex items-center gap-2">
+            {isUploading && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Uploading…
+              </div>
+            )}
+            {isEditing ? (
+              <label className="cursor-pointer">
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoAddForEdit} />
+                <Button type="button" variant="outline" size="sm" asChild>
+                  <span><Camera className="w-3.5 h-3.5 mr-1" />Add Photos</span>
+                </Button>
+              </label>
+            ) : (
+              <>
+                <input
+                  ref={directPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleDirectPhotoUpload}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isUploading}
+                  onClick={() => directPhotoInputRef.current?.click()}
+                  data-testid="button-add-photos-direct"
+                >
+                  <Camera className="w-3.5 h-3.5 mr-1" />Add Photos
+                </Button>
+              </>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {call.photos.length === 0 && newPhotoFiles.length === 0 ? (

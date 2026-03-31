@@ -58,7 +58,7 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 interface PhotoEntry {
-  dataUrl: string;
+  photoUrl: string;
   caption: string;
   photoType: string;
   name?: string;
@@ -121,7 +121,7 @@ export default function NewServiceCall() {
       // Upload photos
       for (const photo of photos) {
         await apiRequest("POST", `/api/service-calls/${newCall.id}/photos`, {
-          photoUrl: photo.dataUrl,
+          photoUrl: photo.photoUrl,
           caption: photo.caption,
           photoType: photo.photoType,
         });
@@ -158,7 +158,7 @@ export default function NewServiceCall() {
         await savePendingCall({
           formData: values as unknown as Record<string, unknown>,
           photos: photos.map((p) => ({
-            dataUrl: p.dataUrl,
+            photoUrl: p.photoUrl,
             caption: p.caption,
             photoType: p.photoType,
           })),
@@ -197,7 +197,7 @@ export default function NewServiceCall() {
         setPhotos((prev) => [
           ...prev,
           {
-            dataUrl,
+            photoUrl: dataUrl,
             caption: "",
             photoType: "Other",
             name: file.name,

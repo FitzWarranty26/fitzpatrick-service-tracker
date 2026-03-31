@@ -26,7 +26,7 @@ export async function syncPendingCalls(): Promise<SyncResult> {
       // 2. Upload photos
       for (const photo of entry.photos) {
         await apiRequest("POST", `/api/service-calls/${newCall.id}/photos`, {
-          photoUrl: photo.dataUrl,
+          photoUrl: photo.photoUrl,
           caption: photo.caption,
           photoType: photo.photoType,
         });

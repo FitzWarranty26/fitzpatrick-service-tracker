@@ -5,7 +5,7 @@
  */
 
 export interface PendingPhoto {
-  dataUrl: string;
+  photoUrl: string;
   caption: string;
   photoType: string;
 }

@@ -21,7 +21,7 @@ import { X, GripVertical } from "lucide-react";
 import { PHOTO_TYPES } from "@shared/schema";
 
 interface PhotoEntry {
-  dataUrl: string;
+  photoUrl: string;
   caption: string;
   photoType: string;
   name?: string;
@@ -71,7 +71,7 @@ function SortablePhotoItem({
       {/* Drag handle + image */}
       <div className="relative">
         <img
-          src={photo.dataUrl}
+          src={photo.photoUrl}
           alt={photo.caption || "Photo"}
           className="w-full aspect-[4/3] object-cover"
         />
