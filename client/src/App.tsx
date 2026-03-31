@@ -39,6 +39,7 @@ function AppRouter() {
         <Route path="/calls/filter/:preset">
           {(params) => <ServiceCallList preset={params.preset} />}
         </Route>
+        <Route path="/scheduled">{() => <ServiceCallList preset="scheduled" />}</Route>
         <Route path="/new">{() => <NewServiceCall />}</Route>
         <Route path="/new/followup/:parentId">
           {(params) => <NewServiceCall followUpId={params.parentId} />}

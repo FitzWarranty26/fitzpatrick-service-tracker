@@ -173,7 +173,14 @@ if (!columnExists("service_calls", "parts_cost")) {
   console.log("Migration: added claim financial columns");
 }
 
-// Migration 8: Add claim_number field
+// Migration 8: Add sort_order to photos
+if (!columnExists("photos", "sort_order")) {
+  sqlite.exec(`ALTER TABLE photos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
+  sqlite.exec(`UPDATE photos SET sort_order = id WHERE sort_order = 0`);
+  console.log("Migration: added sort_order column to photos");
+}
+
+// Migration 9: Add claim_number field
 if (!columnExists("service_calls", "claim_number")) {
   sqlite.exec(`ALTER TABLE service_calls ADD COLUMN claim_number TEXT`);
   console.log("Migration: added claim_number column");
@@ -363,7 +370,7 @@ export class SQLiteStorage implements IStorage {
   getServiceCallById(id: number): ServiceCallFull | undefined {
     const call = db.select().from(serviceCalls).where(eq(serviceCalls.id, id)).get();
     if (!call) return undefined;
-    const callPhotos = db.select().from(photos).where(eq(photos.serviceCallId, id)).all();
+    const callPhotos = db.select().from(photos).where(eq(photos.serviceCallId, id)).orderBy(photos.sortOrder).all();
     const callParts = db.select().from(partsUsed).where(eq(partsUsed.serviceCallId, id)).all();
     const callActivities = db.select().from(activityLog).where(eq(activityLog.serviceCallId, id)).all();
     return { ...call, photos: callPhotos, parts: callParts, activities: callActivities };
@@ -397,6 +404,10 @@ export class SQLiteStorage implements IStorage {
 
   deletePhoto(id: number): void {
     db.delete(photos).where(eq(photos.id, id)).run();
+  }
+
+  updatePhotoSortOrder(photoId: number, sortOrder: number): void {
+    sqlite.prepare("UPDATE photos SET sort_order = ? WHERE id = ?").run(sortOrder, photoId);
   }
 
   // ─── Parts ──────────────────────────────────────────────────────────────────

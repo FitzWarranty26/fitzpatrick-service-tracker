@@ -443,6 +443,21 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  app.put("/api/service-calls/:id/photos/reorder", (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const { photoIds } = req.body;
+      if (!Array.isArray(photoIds)) return res.status(400).json({ error: "photoIds array required" });
+      for (let i = 0; i < photoIds.length; i++) {
+        storage.updatePhotoSortOrder(photoIds[i], i);
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   app.delete("/api/photos/:id", (req, res) => {
     try {
       const id = parseInt(req.params.id);

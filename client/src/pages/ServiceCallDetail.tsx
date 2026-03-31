@@ -20,12 +20,20 @@ import { useToast } from "@/hooks/use-toast";
 import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PRODUCT_TYPES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
-  ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera,
+  ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
-  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare
+  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
+import {
+  DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove, SortableContext, rectSortingStrategy, useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
@@ -119,6 +127,78 @@ function WarrantyBadge({ installationDate, manufacturer, productType }: { instal
       <ShieldAlert className="w-3 h-3" /> Out of Warranty
       {expDate && <span className="text-red-600 dark:text-red-500">(expired {expDate})</span>}
     </span>
+  );
+}
+
+// ─── Sortable existing photo for edit mode (Fix 4) ─────────────────────────
+
+function SortableExistingPhoto({ photo, onDelete }: { photo: Photo; onDelete: (id: number) => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: String(photo.id) });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : ("auto" as any),
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className={`relative rounded-lg overflow-hidden border ${isDragging ? "border-primary shadow-lg" : "border-border"}`} data-testid={`photo-${photo.id}`}>
+      <div className="relative">
+        <img src={photo.photoUrl} alt={photo.caption || "Photo"} className="w-full aspect-square object-cover" />
+        <div {...attributes} {...listeners} className="absolute top-1.5 left-1.5 bg-black/60 rounded-full p-1.5 text-white cursor-grab active:cursor-grabbing touch-none" title="Drag to reorder">
+          <GripVertical className="w-3.5 h-3.5" />
+        </div>
+        <button type="button" onClick={() => onDelete(photo.id)} className="absolute top-1.5 right-1.5 bg-black/60 rounded-full p-1 text-white hover:bg-red-600/80">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="p-1.5 bg-background/90">
+        <p className="text-[10px] font-medium text-muted-foreground">{photo.photoType}</p>
+        {photo.caption && <p className="text-xs text-foreground truncate">{photo.caption}</p>}
+      </div>
+    </div>
+  );
+}
+
+function EditablePhotoGrid({ photos, onReorder, onDelete }: {
+  photos: Photo[];
+  onReorder: (ids: number[]) => void;
+  onDelete: (id: number) => void;
+}) {
+  const [items, setItems] = useState(photos.map(p => p.id));
+
+  useEffect(() => {
+    setItems(photos.map(p => p.id));
+  }, [photos]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = items.indexOf(Number(active.id));
+      const newIndex = items.indexOf(Number(over.id));
+      const newOrder = arrayMove(items, oldIndex, newIndex);
+      setItems(newOrder);
+      onReorder(newOrder);
+    }
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={items.map(String)} strategy={rectSortingStrategy}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {items.map((photoId) => {
+            const photo = photos.find(p => p.id === photoId);
+            if (!photo) return null;
+            return <SortableExistingPhoto key={photoId} photo={photo} onDelete={onDelete} />;
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }
 
@@ -250,6 +330,43 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   });
   const deleteActivityMutation = useMutation({
     mutationFn: (activityId: number) => apiRequest("DELETE", `/api/activities/${activityId}`).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+    },
+  });
+
+  // Fix 2: Add Part state and mutations
+  const [showAddPart, setShowAddPart] = useState(false);
+  const [newPart, setNewPart] = useState({ partNumber: "", partDescription: "", quantity: 1, source: "" });
+
+  const addPartMutation = useMutation({
+    mutationFn: async (part: { partNumber: string; partDescription: string; quantity: number; source: string }) => {
+      const res = await apiRequest("POST", `/api/service-calls/${callId}/parts`, { ...part, serviceCallId: callId });
+      return res.json();
+    },
+    onSuccess: () => {
+      setNewPart({ partNumber: "", partDescription: "", quantity: 1, source: "" });
+      setShowAddPart(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+      toast({ title: "Part added" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deletePartMutation = useMutation({
+    mutationFn: (partId: number) => apiRequest("DELETE", `/api/parts/${partId}`).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+      toast({ title: "Part removed" });
+    },
+  });
+
+  // Fix 4: Reorder photos mutation
+  const reorderPhotosMutation = useMutation({
+    mutationFn: async (photoIds: number[]) => {
+      const res = await apiRequest("PUT", `/api/service-calls/${callId}/photos/reorder`, { photoIds });
+      return res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
     },
@@ -1029,34 +1146,37 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         <CardContent>
           {call.photos.length === 0 && newPhotoFiles.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">No photos attached.</p>
+          ) : isEditing ? (
+            <>
+              {call.photos.length > 0 && (
+                <EditablePhotoGrid
+                  photos={call.photos}
+                  onReorder={(photoIds) => reorderPhotosMutation.mutate(photoIds)}
+                  onDelete={(photoId) => deletePhotoMutation.mutate(photoId)}
+                />
+              )}
+              {newPhotoFiles.length > 0 && (
+                <div className={call.photos.length > 0 ? "mt-3" : ""}>
+                  <SortablePhotoGrid photos={newPhotoFiles} onChange={setNewPhotoFiles} />
+                </div>
+              )}
+            </>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {call.photos.map((photo) => (
                 <div
                   key={photo.id}
                   className="relative rounded-lg overflow-hidden border border-border cursor-pointer group"
-                  onClick={() => !isEditing && setLightboxPhoto(photo)}
+                  onClick={() => setLightboxPhoto(photo)}
                   data-testid={`photo-${photo.id}`}
                 >
                   <img src={photo.photoUrl} alt={photo.caption || "Photo"} className="w-full aspect-square object-cover group-hover:opacity-90 transition-opacity" />
-                  {isEditing && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); deletePhotoMutation.mutate(photo.id); }}
-                      className="absolute top-1.5 right-1.5 bg-black/60 rounded-full p-0.5 text-white"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                   <div className="p-1.5 bg-background/90">
                     <p className="text-[10px] font-medium text-muted-foreground">{photo.photoType}</p>
                     {photo.caption && <p className="text-xs text-foreground truncate">{photo.caption}</p>}
                   </div>
                 </div>
               ))}
-              {newPhotoFiles.length > 0 && (
-                <SortablePhotoGrid photos={newPhotoFiles} onChange={setNewPhotoFiles} />
-              )}
             </div>
           )}
         </CardContent>
@@ -1064,13 +1184,58 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
       {/* Parts Used */}
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Parts Used ({call.parts.length})</CardTitle>
+          <Button variant="outline" size="sm" onClick={() => setShowAddPart(!showAddPart)} data-testid="button-add-part">
+            <Plus className="w-3.5 h-3.5 mr-1" /> Add Part
+          </Button>
         </CardHeader>
         <CardContent>
-          {call.parts.length === 0 ? (
+          {showAddPart && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3 p-3 bg-muted/50 rounded-lg">
+              <Input
+                placeholder="Part #"
+                value={newPart.partNumber}
+                onChange={e => setNewPart(p => ({ ...p, partNumber: e.target.value }))}
+                className="text-sm"
+                data-testid="input-part-number"
+              />
+              <Input
+                placeholder="Description"
+                value={newPart.partDescription}
+                onChange={e => setNewPart(p => ({ ...p, partDescription: e.target.value }))}
+                className="text-sm"
+                data-testid="input-part-description"
+              />
+              <Input
+                type="number"
+                placeholder="Qty"
+                min={1}
+                value={newPart.quantity}
+                onChange={e => setNewPart(p => ({ ...p, quantity: parseInt(e.target.value) || 1 }))}
+                className="text-sm"
+                data-testid="input-part-quantity"
+              />
+              <Input
+                placeholder="Source"
+                value={newPart.source}
+                onChange={e => setNewPart(p => ({ ...p, source: e.target.value }))}
+                className="text-sm"
+                data-testid="input-part-source"
+              />
+              <Button
+                size="sm"
+                disabled={!newPart.partNumber || !newPart.partDescription || addPartMutation.isPending}
+                onClick={() => addPartMutation.mutate(newPart)}
+                data-testid="button-save-part"
+              >
+                Save Part
+              </Button>
+            </div>
+          )}
+          {call.parts.length === 0 && !showAddPart ? (
             <p className="text-sm text-muted-foreground text-center py-4">No parts logged.</p>
-          ) : (
+          ) : call.parts.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1079,23 +1244,47 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     <th className="text-left py-2 text-xs font-medium text-muted-foreground">Description</th>
                     <th className="text-center py-2 text-xs font-medium text-muted-foreground">Qty</th>
                     <th className="text-left py-2 text-xs font-medium text-muted-foreground">Source</th>
+                    <th className="w-8 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {call.parts.map((part) => (
-                    <tr key={part.id} className="border-b border-border last:border-0" data-testid={`part-row-${part.id}`}>
+                    <tr key={part.id} className="border-b border-border last:border-0 group" data-testid={`part-row-${part.id}`}>
                       <td className="py-2 pr-3 font-mono text-xs">{part.partNumber}</td>
                       <td className="py-2 pr-3">{part.partDescription}</td>
                       <td className="py-2 pr-3 text-center">{part.quantity}</td>
                       <td className="py-2 text-muted-foreground text-xs">{part.source || "—"}</td>
+                      <td className="py-2">
+                        <button
+                          onClick={() => deletePartMutation.mutate(part.id)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"
+                          title="Delete part"
+                          data-testid={`button-delete-part-${part.id}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
+
+      {/* Sticky save bar at bottom (Fix 3) */}
+      {isEditing && (
+        <div className="sticky bottom-0 z-20 bg-background/95 backdrop-blur border-t border-border p-3 flex justify-end gap-2 -mx-4 md:-mx-6 px-4 md:px-6">
+          <Button variant="outline" size="sm" onClick={cancelEdit} data-testid="button-cancel-edit-bottom">
+            <X className="w-4 h-4 mr-1.5" /> Cancel
+          </Button>
+          <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending} data-testid="button-save-edit-bottom">
+            <Save className="w-4 h-4 mr-1.5" />
+            {updateMutation.isPending ? "Saving…" : "Save Changes"}
+          </Button>
+        </div>
+      )}
 
       {/* Danger Zone */}
       {!isEditing && (

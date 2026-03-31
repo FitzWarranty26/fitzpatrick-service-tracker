@@ -67,6 +67,7 @@ export const photos = sqliteTable("photos", {
   photoUrl: text("photo_url").notNull(), // base64 data URL
   caption: text("caption"),
   photoType: text("photo_type").notNull().default("Other"), // Before | After | Product Label | Damage | Other
+  sortOrder: integer("sort_order").notNull().default(0),
 });
 
 export const insertPhotoSchema = createInsertSchema(photos).omit({ id: true });

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, ClipboardList, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users
+  LayoutDashboard, ClipboardList, CalendarClock, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OfflineIndicatorDesktop, OfflineIndicatorMobile } from "@/components/OfflineIndicator";
@@ -12,6 +12,7 @@ import logoDark from "@assets/logo-dark.jpg";
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/calls", icon: ClipboardList, label: "Service Calls" },
+  { href: "/scheduled", icon: CalendarClock, label: "Scheduled" },
   { href: "/new", icon: PlusCircle, label: "New Call" },
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/reports", icon: FileBarChart, label: "Reports" },

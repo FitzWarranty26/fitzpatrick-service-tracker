@@ -77,6 +77,10 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
         return calls.filter(c => c.claimStatus === "Submitted" || c.claimStatus === "Pending Review");
       case "out-of-warranty":
         return calls.filter(c => c.status !== "Completed" && getWarrantyStatus(c.installationDate, c.manufacturer, c.productType).status === "out-of-warranty");
+      case "scheduled": {
+        const today = new Date().toISOString().split("T")[0];
+        return calls.filter(c => c.scheduledDate && c.scheduledDate >= today);
+      }
       default:
         return calls;
     }
@@ -87,6 +91,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
     "completed-month": "Completed This Month",
     "pending-claims": "Pending Claims",
     "out-of-warranty": "Out of Warranty",
+    "scheduled": "Scheduled Calls",
   };
 
   const activeFilters = [filterManufacturer, filterStatus, filterClaimStatus, filterState, presetFilter].filter(Boolean).length;
