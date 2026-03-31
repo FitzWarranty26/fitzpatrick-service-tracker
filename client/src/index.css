@@ -141,8 +141,9 @@
   }
 }
 
-/* Fix iOS date inputs overflowing containers */
+/* Fix iOS date/time inputs overflowing containers */
 input[type="date"],
+input[type="time"],
 input[type="datetime-local"] {
   -webkit-appearance: none;
   appearance: none;
