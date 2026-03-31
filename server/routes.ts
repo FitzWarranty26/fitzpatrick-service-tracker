@@ -330,6 +330,39 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  app.get("/api/contacts/export", (req, res) => {
+    try {
+      const filters: { type?: string; search?: string } = {};
+      if (req.query.type) filters.type = req.query.type as string;
+      if (req.query.search) filters.search = req.query.search as string;
+      const contactsList = storage.getAllContacts(Object.keys(filters).length ? filters : undefined);
+
+      const headers = ["Type", "Company Name", "Contact Name", "Phone", "Email", "Address", "City", "State", "Notes"];
+      const escapeCSV = (val: string | null | undefined): string => {
+        if (val == null) return "";
+        const s = String(val);
+        if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      };
+
+      const typeLabels: Record<string, string> = { customer: "Customer", contractor: "Contractor", site_contact: "Site Contact" };
+      const rows = contactsList.map(c => [
+        typeLabels[c.contactType] || c.contactType,
+        c.companyName, c.contactName, c.phone, c.email,
+        c.address, c.city, c.state, c.notes,
+      ].map(v => escapeCSV(v)).join(","));
+
+      const csv = [headers.join(","), ...rows].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=contacts-export.csv");
+      res.send(csv);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   app.get("/api/contacts/:id", (req, res) => {
     try {
       const id = parseInt(req.params.id);

@@ -18,7 +18,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  PlusCircle, Search, Phone, Mail, Building, User, Trash2, Edit3, X, MapPin, RefreshCw,
+  PlusCircle, Search, Phone, Mail, Building, User, Trash2, Edit3, X, MapPin, RefreshCw, Download,
 } from "lucide-react";
 import type { Contact } from "@shared/schema";
 
@@ -192,6 +192,26 @@ export default function Contacts() {
           <Button variant="outline" size="sm" onClick={() => backfillMutation.mutate()} disabled={backfillMutation.isPending} data-testid="button-backfill-contacts">
             <RefreshCw className={`w-4 h-4 mr-1.5 ${backfillMutation.isPending ? "animate-spin" : ""}`} />
             {backfillMutation.isPending ? "Importing…" : "Import from Calls"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={async () => {
+            try {
+              const params = new URLSearchParams();
+              if (filterType) params.set("type", filterType);
+              if (search) params.set("search", search);
+              const url = `/api/contacts/export${params.toString() ? "?" + params.toString() : ""}`;
+              const res = await apiRequest("GET", url);
+              const blob = await res.blob();
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = "contacts-export.csv";
+              a.click();
+              URL.revokeObjectURL(a.href);
+            } catch (e: any) {
+              toast({ title: "Export failed", description: e.message, variant: "destructive" });
+            }
+          }} data-testid="button-export-contacts">
+            <Download className="w-4 h-4 mr-1.5" />
+            Export CSV
           </Button>
           <Button size="sm" onClick={openCreate} data-testid="button-add-contact">
             <PlusCircle className="w-4 h-4 mr-1.5" />
