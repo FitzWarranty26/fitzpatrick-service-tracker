@@ -4,7 +4,7 @@ import { getPendingCount } from "@/lib/offline-queue";
 import { syncPendingCalls } from "@/lib/sync-service";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Wifi, WifiOff, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**

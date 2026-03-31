@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,7 +12,7 @@ import { savePendingCall } from "@/lib/offline-queue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -21,11 +21,11 @@ import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import {
-  MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, JOB_STATES, PRODUCT_TYPES
+  MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PRODUCT_TYPES
 } from "@shared/schema";
 import type { ServiceCall, Contact } from "@shared/schema";
 import {
-  Camera, Plus, Trash2, ChevronLeft, Upload, X, Save, WifiOff, ArrowLeft, UserPlus
+  Camera, Plus, Trash2, ChevronLeft, Save, WifiOff, ArrowLeft, UserPlus
 } from "lucide-react";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 

@@ -17,12 +17,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PHOTO_TYPES, PRODUCT_TYPES, getWarrantyStatus } from "@shared/schema";
+import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PRODUCT_TYPES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
-  ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Package,
-  MapPin, Phone, User, Wrench, Calendar, Hash, Building, AlertCircle, CheckCircle2,
-  Image as ImageIcon, Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion
+  ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera,
+  MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
+  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";

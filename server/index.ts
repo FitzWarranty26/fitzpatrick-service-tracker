@@ -3,7 +3,6 @@ import compression from "compression";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import crypto from "crypto";
 
 const app = express();
 const httpServer = createServer(app);

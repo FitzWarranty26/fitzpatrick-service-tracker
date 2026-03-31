@@ -111,28 +111,32 @@ export function registerRoutes(httpServer: Server, app: Express) {
   const APP_PASSWORD = process.env.APP_PASSWORD || "fitzpatrick2026";
 
   app.post("/api/auth/login", (req, res) => {
-    const ip = getClientIP(req);
+    try {
+      const ip = getClientIP(req);
 
-    if (isRateLimited(ip)) {
-      return res.status(429).json({
-        success: false,
-        error: `Too many login attempts. Try again in ${LOCKOUT_MINUTES} minutes.`,
-      });
+      if (isRateLimited(ip)) {
+        return res.status(429).json({
+          success: false,
+          error: `Too many login attempts. Try again in ${LOCKOUT_MINUTES} minutes.`,
+        });
+      }
+
+      const { password } = req.body;
+      if (typeof password !== "string" || !password) {
+        return res.status(400).json({ success: false, error: "Password required" });
+      }
+
+      if (safeCompare(password, APP_PASSWORD)) {
+        clearFailedLogins(ip);
+        const token = createSessionToken(ip);
+        return res.json({ success: true, token });
+      }
+
+      recordFailedLogin(ip);
+      return res.status(401).json({ success: false, error: "Incorrect password" });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: safeError(e) });
     }
-
-    const { password } = req.body;
-    if (typeof password !== "string" || !password) {
-      return res.status(400).json({ success: false, error: "Password required" });
-    }
-
-    if (safeCompare(password, APP_PASSWORD)) {
-      clearFailedLogins(ip);
-      const token = createSessionToken(ip);
-      return res.json({ success: true, token });
-    }
-
-    recordFailedLogin(ip);
-    return res.status(401).json({ success: false, error: "Incorrect password" });
   });
 
   app.get("/api/auth/verify", (req, res) => {
@@ -933,7 +937,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         techNotes: "Replacement union kit on order. Estimated 3-5 day lead time from Utah Pipe & Supply.",
       });
 
-      const call3 = storage.createServiceCall({
+      storage.createServiceCall({
         callDate: "2026-03-24",
         manufacturer: "State Water Heaters",
         customerName: "Desert Sun Construction",

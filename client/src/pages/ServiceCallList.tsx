@@ -12,7 +12,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  PlusCircle, Search, Filter, X, ChevronRight, ClipboardList, Image, Package, Shield, ShieldAlert, ShieldQuestion
+  PlusCircle, Search, Filter, X, ChevronRight, ClipboardList, Image, Package
 } from "lucide-react";
 import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall } from "@shared/schema";
@@ -33,19 +33,6 @@ function WarrantyDot({ installationDate, manufacturer, productType }: { installa
   return <span className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" title="Warranty Unknown" data-testid="warranty-dot-unknown" />;
 }
 
-function getInitialFilter(): { status?: string; claimStatus?: string; preset?: string } {
-  try {
-    const hash = window.location.hash; // e.g. #/calls?filter=open
-    const qIndex = hash.indexOf("?");
-    if (qIndex === -1) return {};
-    const params = new URLSearchParams(hash.slice(qIndex + 1));
-    const filter = params.get("filter");
-    if (filter === "open") return { preset: "open" };
-    if (filter === "completed-month") return { preset: "completed-month" };
-    if (filter === "pending-claims") return { preset: "pending-claims" };
-    return {};
-  } catch { return {}; }
-}
 
 export default function ServiceCallList({ preset: presetProp }: { preset?: string }) {
   const [search, setSearch] = useState("");

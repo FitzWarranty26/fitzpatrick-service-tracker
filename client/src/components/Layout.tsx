@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, ClipboardList, PlusCircle, Sun, Moon, Menu, X, ChevronRight, Wrench, BarChart3, MapPin, Users
+  LayoutDashboard, ClipboardList, PlusCircle, Sun, Moon, Menu, X, BarChart3, MapPin, Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OfflineIndicatorDesktop, OfflineIndicatorMobile } from "@/components/OfflineIndicator";

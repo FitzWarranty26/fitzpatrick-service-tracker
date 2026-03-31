@@ -18,7 +18,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  PlusCircle, Search, Phone, Mail, Building, User, Trash2, Edit3, X, MapPin, RefreshCw, Download,
+  PlusCircle, Search, Phone, Mail, Building, User, Trash2, Edit3, MapPin, RefreshCw, Download,
 } from "lucide-react";
 import type { Contact } from "@shared/schema";
 
