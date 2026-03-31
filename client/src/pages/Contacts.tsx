@@ -18,7 +18,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  PlusCircle, Search, Phone, Mail, Building, User, Trash2, Edit3, X, MapPin,
+  PlusCircle, Search, Phone, Mail, Building, User, Trash2, Edit3, X, MapPin, RefreshCw,
 } from "lucide-react";
 import type { Contact } from "@shared/schema";
 
@@ -128,6 +128,18 @@ export default function Contacts() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const backfillMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/contacts/backfill");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Import complete", description: `Processed ${data.contactsProcessed} contacts from ${data.message?.match(/\d+/)?.[0] ?? ""} service calls.` });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const openCreate = () => {
     setEditingContact(null);
     setFormData(emptyForm);
@@ -176,10 +188,16 @@ export default function Contacts() {
             {contactsList ? `${contactsList.length} contact${contactsList.length !== 1 ? "s" : ""}` : "Loading…"}
           </p>
         </div>
-        <Button size="sm" onClick={openCreate} data-testid="button-add-contact">
-          <PlusCircle className="w-4 h-4 mr-1.5" />
-          Add Contact
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => backfillMutation.mutate()} disabled={backfillMutation.isPending} data-testid="button-backfill-contacts">
+            <RefreshCw className={`w-4 h-4 mr-1.5 ${backfillMutation.isPending ? "animate-spin" : ""}`} />
+            {backfillMutation.isPending ? "Importing…" : "Import from Calls"}
+          </Button>
+          <Button size="sm" onClick={openCreate} data-testid="button-add-contact">
+            <PlusCircle className="w-4 h-4 mr-1.5" />
+            Add Contact
+          </Button>
+        </div>
       </div>
 
       {/* Search + Filter */}
