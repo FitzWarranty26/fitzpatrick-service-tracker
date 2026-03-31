@@ -17,6 +17,7 @@ import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
 const Contacts = lazy(() => import("@/pages/Contacts"));
+const Reports = lazy(() => import("@/pages/Reports"));
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
@@ -46,6 +47,13 @@ function AppRouter() {
           {() => (
             <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading analytics...</div>}>
               <Analytics />
+            </Suspense>
+          )}
+        </Route>
+        <Route path="/reports">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading reports...</div>}>
+              <Reports />
             </Suspense>
           )}
         </Route>

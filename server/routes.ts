@@ -938,6 +938,297 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── Reports ────────────────────────────────────────────────────────────────
+
+  app.get("/api/reports/:type", (req, res) => {
+    try {
+      const reportType = req.params.type;
+      const { dateFrom, dateTo, manufacturer, customer, claimStatus, minCount } = req.query as Record<string, string | undefined>;
+
+      switch (reportType) {
+        case "manufacturer-summary": {
+          if (!manufacturer) return res.status(400).json({ error: "manufacturer is required" });
+          const filters: any = { manufacturer };
+          if (dateFrom) filters.dateFrom = dateFrom;
+          if (dateTo) filters.dateTo = dateTo;
+          const calls = storage.getAllServiceCalls(filters);
+
+          const models = new Set<string>();
+          const customers = new Set<string>();
+          let totalPartsCost = 0, totalLaborCost = 0, totalClaimAmount = 0;
+
+          for (const c of calls) {
+            models.add(c.productModel);
+            customers.add(c.customerName);
+            if (c.partsCost) totalPartsCost += parseFloat(c.partsCost) || 0;
+            if (c.laborCost) totalLaborCost += parseFloat(c.laborCost) || 0;
+            if (c.claimAmount) totalClaimAmount += parseFloat(c.claimAmount) || 0;
+          }
+
+          return res.json({
+            manufacturer,
+            dateFrom: dateFrom || null,
+            dateTo: dateTo || null,
+            summary: {
+              totalCalls: calls.length,
+              uniqueModels: models.size,
+              uniqueCustomers: customers.size,
+              totalPartsCost: Math.round(totalPartsCost * 100) / 100,
+              totalLaborCost: Math.round(totalLaborCost * 100) / 100,
+              totalClaimAmount: Math.round(totalClaimAmount * 100) / 100,
+            },
+            calls: calls.map(c => ({
+              id: c.id,
+              callDate: c.callDate,
+              customerName: c.customerName,
+              jobSiteName: c.jobSiteName,
+              productModel: c.productModel,
+              productSerial: c.productSerial,
+              status: c.status,
+              claimStatus: c.claimStatus,
+              claimNumber: c.claimNumber,
+              partsCost: c.partsCost,
+              laborCost: c.laborCost,
+              claimAmount: c.claimAmount,
+            })),
+          });
+        }
+
+        case "monthly-expense": {
+          const filters: any = {};
+          if (dateFrom) filters.dateFrom = dateFrom;
+          if (dateTo) filters.dateTo = dateTo;
+          const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+
+          const monthMap = new Map<string, {
+            calls: number; hours: number; miles: number;
+            partsCost: number; laborCost: number; otherCost: number; claimAmount: number;
+          }>();
+
+          let totalHours = 0, totalMiles = 0, totalPartsCost = 0, totalLaborCost = 0, totalOtherCost = 0, totalClaimAmount = 0;
+
+          for (const c of calls) {
+            const month = c.callDate.slice(0, 7);
+            if (!monthMap.has(month)) monthMap.set(month, { calls: 0, hours: 0, miles: 0, partsCost: 0, laborCost: 0, otherCost: 0, claimAmount: 0 });
+            const entry = monthMap.get(month)!;
+            entry.calls++;
+            const hrs = c.hoursOnJob ? parseFloat(c.hoursOnJob) || 0 : 0;
+            const mi = c.milesTraveled ? parseFloat(c.milesTraveled) || 0 : 0;
+            const pc = c.partsCost ? parseFloat(c.partsCost) || 0 : 0;
+            const lc = c.laborCost ? parseFloat(c.laborCost) || 0 : 0;
+            const oc = c.otherCost ? parseFloat(c.otherCost) || 0 : 0;
+            const ca = c.claimAmount ? parseFloat(c.claimAmount) || 0 : 0;
+            entry.hours += hrs; entry.miles += mi;
+            entry.partsCost += pc; entry.laborCost += lc; entry.otherCost += oc; entry.claimAmount += ca;
+            totalHours += hrs; totalMiles += mi;
+            totalPartsCost += pc; totalLaborCost += lc; totalOtherCost += oc; totalClaimAmount += ca;
+          }
+
+          const MILEAGE_RATE = 0.70;
+          const months = Array.from(monthMap.entries())
+            .map(([month, d]) => ({
+              month,
+              calls: d.calls,
+              hours: Math.round(d.hours * 100) / 100,
+              miles: Math.round(d.miles * 100) / 100,
+              mileageCost: Math.round(d.miles * MILEAGE_RATE * 100) / 100,
+              partsCost: Math.round(d.partsCost * 100) / 100,
+              laborCost: Math.round(d.laborCost * 100) / 100,
+              otherCost: Math.round(d.otherCost * 100) / 100,
+              totalCosts: Math.round((d.partsCost + d.laborCost + d.otherCost + d.miles * MILEAGE_RATE) * 100) / 100,
+              claimAmount: Math.round(d.claimAmount * 100) / 100,
+            }))
+            .sort((a, b) => a.month.localeCompare(b.month));
+
+          const totalMileageCost = Math.round(totalMiles * MILEAGE_RATE * 100) / 100;
+          const totalCosts = Math.round((totalPartsCost + totalLaborCost + totalOtherCost + totalMileageCost) * 100) / 100;
+
+          return res.json({
+            dateFrom: dateFrom || null,
+            dateTo: dateTo || null,
+            summary: {
+              totalHours: Math.round(totalHours * 100) / 100,
+              totalMiles: Math.round(totalMiles * 100) / 100,
+              totalMileageCost,
+              totalPartsCost: Math.round(totalPartsCost * 100) / 100,
+              totalLaborCost: Math.round(totalLaborCost * 100) / 100,
+              totalOtherCost: Math.round(totalOtherCost * 100) / 100,
+              totalCosts,
+              totalClaimAmount: Math.round(totalClaimAmount * 100) / 100,
+              net: Math.round((totalClaimAmount - totalCosts) * 100) / 100,
+            },
+            months,
+          });
+        }
+
+        case "customer-history": {
+          if (!customer) return res.status(400).json({ error: "customer is required" });
+          const filters: any = { search: customer };
+          if (dateFrom) filters.dateFrom = dateFrom;
+          if (dateTo) filters.dateTo = dateTo;
+          // Get all calls, then filter by exact customer name
+          const allCalls = storage.getAllServiceCalls(Object.keys(filters).length > 1 ? { dateFrom, dateTo } as any : undefined);
+          const calls = allCalls.filter(c => c.customerName.toLowerCase() === customer.toLowerCase());
+
+          let totalPartsCost = 0, totalLaborCost = 0, totalClaimAmount = 0;
+          for (const c of calls) {
+            if (c.partsCost) totalPartsCost += parseFloat(c.partsCost) || 0;
+            if (c.laborCost) totalLaborCost += parseFloat(c.laborCost) || 0;
+            if (c.claimAmount) totalClaimAmount += parseFloat(c.claimAmount) || 0;
+          }
+
+          // Try to find contact info
+          const contactResults = storage.getAllContacts({ type: "customer", search: customer });
+          const contact = contactResults.find(c => c.contactName.toLowerCase() === customer.toLowerCase()) || contactResults[0] || null;
+
+          return res.json({
+            customer,
+            dateFrom: dateFrom || null,
+            dateTo: dateTo || null,
+            contact: contact ? {
+              contactName: contact.contactName,
+              companyName: contact.companyName,
+              phone: contact.phone,
+              email: contact.email,
+              address: contact.address,
+              city: contact.city,
+              state: contact.state,
+            } : null,
+            summary: {
+              totalCalls: calls.length,
+              totalPartsCost: Math.round(totalPartsCost * 100) / 100,
+              totalLaborCost: Math.round(totalLaborCost * 100) / 100,
+              totalClaimAmount: Math.round(totalClaimAmount * 100) / 100,
+            },
+            calls: calls.map(c => ({
+              id: c.id,
+              callDate: c.callDate,
+              jobSiteName: c.jobSiteName,
+              manufacturer: c.manufacturer,
+              productModel: c.productModel,
+              productSerial: c.productSerial,
+              issueDescription: c.issueDescription,
+              status: c.status,
+              claimStatus: c.claimStatus,
+              claimAmount: c.claimAmount,
+            })),
+          });
+        }
+
+        case "claim-status": {
+          const filters: any = {};
+          if (dateFrom) filters.dateFrom = dateFrom;
+          if (dateTo) filters.dateTo = dateTo;
+          if (manufacturer) filters.manufacturer = manufacturer;
+          if (claimStatus && claimStatus !== "__all__") filters.claimStatus = claimStatus;
+          const allCalls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+
+          // Default: show Submitted + Pending Review unless a specific status is requested or __all__
+          const calls = (!claimStatus || claimStatus === "__default__")
+            ? allCalls.filter(c => c.claimStatus === "Submitted" || c.claimStatus === "Pending Review")
+            : allCalls;
+
+          const now = new Date();
+          const statusCounts: Record<string, { count: number; amount: number }> = {};
+
+          const rows = calls.map(c => {
+            const callDate = new Date(c.callDate + "T00:00:00");
+            const daysPending = Math.ceil((now.getTime() - callDate.getTime()) / (1000 * 60 * 60 * 24));
+            const amt = c.claimAmount ? parseFloat(c.claimAmount) || 0 : 0;
+
+            if (!statusCounts[c.claimStatus]) statusCounts[c.claimStatus] = { count: 0, amount: 0 };
+            statusCounts[c.claimStatus].count++;
+            statusCounts[c.claimStatus].amount += amt;
+
+            return {
+              id: c.id,
+              callDate: c.callDate,
+              customerName: c.customerName,
+              manufacturer: c.manufacturer,
+              productModel: c.productModel,
+              claimNumber: c.claimNumber,
+              claimStatus: c.claimStatus,
+              claimAmount: c.claimAmount,
+              daysPending,
+            };
+          }).sort((a, b) => b.daysPending - a.daysPending);
+
+          // Round amounts
+          for (const key of Object.keys(statusCounts)) {
+            statusCounts[key].amount = Math.round(statusCounts[key].amount * 100) / 100;
+          }
+
+          return res.json({
+            dateFrom: dateFrom || null,
+            dateTo: dateTo || null,
+            manufacturer: manufacturer || null,
+            statusCounts,
+            calls: rows,
+          });
+        }
+
+        case "product-failure": {
+          const filters: any = {};
+          if (dateFrom) filters.dateFrom = dateFrom;
+          if (dateTo) filters.dateTo = dateTo;
+          if (manufacturer) filters.manufacturer = manufacturer;
+          const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+
+          const min = parseInt(minCount || "2") || 2;
+
+          const modelMap = new Map<string, {
+            manufacturer: string; model: string; count: number;
+            serials: Set<string>; customers: Set<string>;
+            lastDate: string; issues: Set<string>;
+          }>();
+
+          for (const c of calls) {
+            const key = `${c.manufacturer}||${c.productModel}`;
+            if (!modelMap.has(key)) {
+              modelMap.set(key, {
+                manufacturer: c.manufacturer, model: c.productModel,
+                count: 0, serials: new Set(), customers: new Set(),
+                lastDate: c.callDate, issues: new Set(),
+              });
+            }
+            const entry = modelMap.get(key)!;
+            entry.count++;
+            if (c.productSerial) entry.serials.add(c.productSerial);
+            entry.customers.add(c.customerName);
+            if (c.callDate > entry.lastDate) entry.lastDate = c.callDate;
+            if (c.issueDescription) entry.issues.add(c.issueDescription);
+          }
+
+          const models = Array.from(modelMap.values())
+            .filter(e => e.count >= min)
+            .map(e => ({
+              manufacturer: e.manufacturer,
+              model: e.model,
+              count: e.count,
+              uniqueSerials: e.serials.size,
+              uniqueCustomers: e.customers.size,
+              lastServiceDate: e.lastDate,
+              issues: Array.from(e.issues),
+            }))
+            .sort((a, b) => b.count - a.count);
+
+          return res.json({
+            dateFrom: dateFrom || null,
+            dateTo: dateTo || null,
+            manufacturer: manufacturer || null,
+            minCount: min,
+            models,
+          });
+        }
+
+        default:
+          return res.status(400).json({ error: `Unknown report type: ${reportType}` });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   // ─── Seed Data (development only) ────────────────────────────────────────────
 
   app.post("/api/seed", (_req, res) => {
