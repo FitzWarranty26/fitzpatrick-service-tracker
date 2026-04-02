@@ -106,6 +106,7 @@ sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_service_calls_call_date ON service_calls(call_date);
   CREATE INDEX IF NOT EXISTS idx_service_calls_status ON service_calls(status);
   CREATE INDEX IF NOT EXISTS idx_activity_log_service_call_id ON activity_log(service_call_id);
+  CREATE INDEX IF NOT EXISTS idx_contacts_type ON contacts(contact_type);
 `);
 
 // ─── Migrations (safe to re-run) ─────────────────────────────────────────────

@@ -9,11 +9,11 @@ import { LoginScreen } from "@/components/LoginScreen";
 import { setToken, isAuthenticated } from "@/lib/auth";
 import Dashboard from "@/pages/Dashboard";
 import ServiceCallList from "@/pages/ServiceCallList";
-import NewServiceCall from "@/pages/NewServiceCall";
-import ServiceCallDetail from "@/pages/ServiceCallDetail";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 
-// Lazy-load Analytics page (pulls in recharts — large dependency)
+// Lazy-load heavy pages — keeps initial bundle small for fast first load
+const NewServiceCall = lazy(() => import("@/pages/NewServiceCall"));
+const ServiceCallDetail = lazy(() => import("@/pages/ServiceCallDetail"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
 const Contacts = lazy(() => import("@/pages/Contacts"));
@@ -40,9 +40,19 @@ function AppRouter() {
           {(params) => <ServiceCallList preset={params.preset} />}
         </Route>
         <Route path="/scheduled">{() => <ServiceCallList preset="scheduled" />}</Route>
-        <Route path="/new">{() => <NewServiceCall />}</Route>
+        <Route path="/new">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+              <NewServiceCall />
+            </Suspense>
+          )}
+        </Route>
         <Route path="/new/followup/:parentId">
-          {(params) => <NewServiceCall followUpId={params.parentId} />}
+          {(params) => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+              <NewServiceCall followUpId={params.parentId} />
+            </Suspense>
+          )}
         </Route>
         <Route path="/analytics">
           {() => (
@@ -73,7 +83,11 @@ function AppRouter() {
           )}
         </Route>
         <Route path="/calls/:id">
-          {(params) => <ServiceCallDetail id={params.id} />}
+          {(params) => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+              <ServiceCallDetail id={params.id} />
+            </Suspense>
+          )}
         </Route>
         <Route component={NotFound} />
       </Switch>
