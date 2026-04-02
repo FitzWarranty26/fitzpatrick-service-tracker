@@ -948,53 +948,35 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
             </CardContent>
           </Card>
 
-          {/* ── Submit ───────────────────────────────────────────────── */}
-          <div className="flex gap-3 pb-4">
-            <Button
-              type="submit"
-              disabled={createMutation.isPending || savingOffline}
-              className="flex-1"
-              data-testid="button-submit"
-            >
-              {(createMutation.isPending || savingOffline) ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Saving…
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Save className="w-4 h-4" />
-                  {isOnline ? "Save Service Call" : "Save Offline"}
-                </span>
-              )}
-            </Button>
-          </div>
+
+          {/* spacer so content doesn't hide behind floating bar */}
+          <div className="h-16" />
 
         </form>
-
-        {/* Floating save bar */}
-        <div className="sticky bottom-0 z-20 bg-background/95 backdrop-blur border-t border-border p-3 -mx-4 md:-mx-6 px-4 md:px-6">
-          <Button
-            type="submit"
-            disabled={createMutation.isPending || savingOffline}
-            className="w-full"
-            onClick={() => form.handleSubmit(onSubmit)()}
-            data-testid="button-floating-save"
-          >
-            {(createMutation.isPending || savingOffline) ? (
-              <span className="flex items-center gap-2">
-                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                Saving…
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Save className="w-4 h-4" />
-                {isOnline ? "Save Service Call" : "Save Offline"}
-              </span>
-            )}
-          </Button>
-        </div>
       </Form>
+
+      {/* Floating save bar — fixed to bottom of viewport */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border p-3 md:pl-[232px]">
+        <Button
+          disabled={createMutation.isPending || savingOffline}
+          className="w-full max-w-3xl mx-auto"
+          onClick={() => form.handleSubmit(onSubmit)()}
+          data-testid="button-floating-save"
+        >
+          {(createMutation.isPending || savingOffline) ? (
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              Saving…
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Save className="w-4 h-4" />
+              {isOnline ? "Save Service Call" : "Save Offline"}
+            </span>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }
+
