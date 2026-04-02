@@ -1273,16 +1273,18 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </CardContent>
       </Card>
 
-      {/* Sticky save bar at bottom (Fix 3) */}
+      {/* Fixed save bar at bottom of viewport */}
       {isEditing && (
-        <div className="sticky bottom-0 z-20 bg-background/95 backdrop-blur border-t border-border p-3 flex justify-end gap-2 -mx-4 md:-mx-6 px-4 md:px-6">
-          <Button variant="outline" size="sm" onClick={cancelEdit} data-testid="button-cancel-edit-bottom">
-            <X className="w-4 h-4 mr-1.5" /> Cancel
-          </Button>
-          <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending} data-testid="button-save-edit-bottom">
-            <Save className="w-4 h-4 mr-1.5" />
-            {updateMutation.isPending ? "Saving…" : "Save Changes"}
-          </Button>
+        <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border md:left-[216px]">
+          <div className="max-w-4xl mx-auto px-4 md:px-6 py-3 flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={cancelEdit} data-testid="button-cancel-edit-bottom">
+              <X className="w-4 h-4 mr-1.5" /> Cancel
+            </Button>
+            <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending} data-testid="button-save-edit-bottom">
+              <Save className="w-4 h-4 mr-1.5" />
+              {updateMutation.isPending ? "Saving…" : "Save Changes"}
+            </Button>
+          </div>
         </div>
       )}
 

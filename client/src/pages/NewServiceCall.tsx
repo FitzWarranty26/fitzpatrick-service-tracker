@@ -956,10 +956,11 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       </Form>
 
       {/* Floating save bar — fixed to bottom of viewport */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border p-3 md:pl-[232px]">
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border md:left-[216px]">
+        <div className="max-w-3xl mx-auto px-4 md:px-6 py-3">
         <Button
           disabled={createMutation.isPending || savingOffline}
-          className="w-full max-w-3xl mx-auto"
+          className="w-full"
           onClick={() => form.handleSubmit(onSubmit)()}
           data-testid="button-floating-save"
         >
@@ -975,6 +976,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
             </span>
           )}
         </Button>
+        </div>
       </div>
     </div>
   );
