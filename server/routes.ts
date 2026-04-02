@@ -140,11 +140,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   app.get("/api/auth/verify", (req, res) => {
-    const token = (req.headers.authorization || "").replace("Bearer ", "");
-    if (token && isValidSession(token)) {
-      return res.json({ authenticated: true });
+    try {
+      const token = (req.headers.authorization || "").replace("Bearer ", "");
+      if (token && isValidSession(token)) {
+        return res.json({ authenticated: true });
+      }
+      return res.status(401).json({ authenticated: false });
+    } catch (e: any) {
+      return res.status(500).json({ authenticated: false, error: safeError(e) });
     }
-    return res.status(401).json({ authenticated: false });
   });
 
   // Middleware to protect all other API routes — Bearer token only
