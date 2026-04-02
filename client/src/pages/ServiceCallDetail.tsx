@@ -420,29 +420,78 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   };
 
   // Email / Share handler
+  const [isEmailing, setIsEmailing] = useState(false);
   const handleEmail = async () => {
     if (!call) return;
     const subject = `Service Call #${call.id} \u2014 ${call.customerName || ""} \u2014 ${call.manufacturer}`;
     const bodyText = `Service Call #${call.id}\nDate: ${call.callDate}\nCustomer: ${call.customerName || ""}\nSite: ${call.jobSiteName || ""}\nManufacturer: ${call.manufacturer}\nModel: ${call.productModel || ""}\nStatus: ${call.status}\nClaim: ${call.claimStatus}\n\nIssue: ${(call.issueDescription || "").slice(0, 500)}`;
 
-    // Try Web Share API with PDF file (works on iOS Safari)
+    // Try Web Share API with real PDF file (works on iOS Safari)
     if (navigator.share && navigator.canShare) {
       try {
-        // Generate the PDF HTML
+        setIsEmailing(true);
+        // Generate the PDF HTML and render to a real PDF via html2canvas + jspdf
         const { generatePDFHtml } = await import("@/lib/pdf");
         const html = await generatePDFHtml(call);
-        const blob = new Blob([html], { type: "text/html" });
-        const file = new File([blob], `Service-Call-${call.id}.html`, { type: "text/html" });
+
+        // Render HTML in a hidden iframe
+        const iframe = document.createElement("iframe");
+        iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:800px;height:1200px;border:none;";
+        document.body.appendChild(iframe);
+        iframe.contentDocument!.open();
+        iframe.contentDocument!.write(html);
+        iframe.contentDocument!.close();
+
+        // Wait for images/fonts to load
+        await new Promise(r => setTimeout(r, 800));
+
+        const html2canvas = (await import("html2canvas")).default;
+        const { jsPDF } = await import("jspdf");
+
+        const body = iframe.contentDocument!.body;
+        const canvas = await html2canvas(body, {
+          scale: 2,
+          useCORS: true,
+          width: 800,
+          windowWidth: 800,
+        });
+        document.body.removeChild(iframe);
+
+        // Convert canvas to PDF (letter size)
+        const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const imgWidth = pageWidth;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        // Add pages as needed
+        let yOffset = 0;
+        while (yOffset < imgHeight) {
+          if (yOffset > 0) pdf.addPage();
+          pdf.addImage(
+            canvas.toDataURL("image/jpeg", 0.92),
+            "JPEG", 0, -yOffset, imgWidth, imgHeight
+          );
+          yOffset += pageHeight;
+        }
+
+        const pdfBlob = pdf.output("blob");
+        const file = new File([pdfBlob], `Service-Call-${call.id}.pdf`, { type: "application/pdf" });
+
         if (navigator.canShare({ files: [file] })) {
           await navigator.share({
             title: subject,
             text: bodyText,
             files: [file],
           });
+          setIsEmailing(false);
           return;
         }
-      } catch {
+      } catch (err) {
         // Share cancelled or failed — fall through to mailto
+        console.error("Share failed:", err);
+      } finally {
+        setIsEmailing(false);
       }
     }
     // Fallback: mailto
@@ -504,9 +553,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <CornerDownRight className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">Follow-up</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={handleEmail} data-testid="button-email">
-                <Mail className="w-4 h-4 mr-1.5" />
-                <span className="hidden sm:inline">Email</span>
+              <Button variant="outline" size="sm" onClick={handleEmail} disabled={isEmailing} data-testid="button-email">
+                {isEmailing ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Mail className="w-4 h-4 mr-1.5" />}
+                <span className="hidden sm:inline">{isEmailing ? "Preparing…" : "Email"}</span>
               </Button>
 
               <Button variant="outline" size="sm" onClick={handlePDF} data-testid="button-generate-pdf">
