@@ -25,7 +25,7 @@ import {
 } from "@shared/schema";
 import type { ServiceCall, Contact } from "@shared/schema";
 import {
-  Camera, Plus, Trash2, ChevronLeft, Save, WifiOff, ArrowLeft, UserPlus
+  Camera, Plus, Trash2, ChevronLeft, Save, WifiOff, ArrowLeft, UserPlus, X
 } from "lucide-react";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 
@@ -957,25 +957,19 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
       {/* Floating save bar — fixed to bottom of viewport */}
       <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border md:left-[216px]">
-        <div className="max-w-3xl mx-auto px-4 md:px-6 py-3">
-        <Button
-          disabled={createMutation.isPending || savingOffline}
-          className="w-full"
-          onClick={() => form.handleSubmit(onSubmit)()}
-          data-testid="button-floating-save"
-        >
-          {(createMutation.isPending || savingOffline) ? (
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-              Saving…
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Save className="w-4 h-4" />
-              {isOnline ? "Save Service Call" : "Save Offline"}
-            </span>
-          )}
-        </Button>
+        <div className="max-w-3xl mx-auto px-4 md:px-6 py-3 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate("/calls")} data-testid="button-cancel-new">
+            <X className="w-4 h-4 mr-1.5" /> Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={createMutation.isPending || savingOffline}
+            onClick={() => form.handleSubmit(onSubmit)()}
+            data-testid="button-floating-save"
+          >
+            <Save className="w-4 h-4 mr-1.5" />
+            {(createMutation.isPending || savingOffline) ? "Saving…" : isOnline ? "Save Service Call" : "Save Offline"}
+          </Button>
         </div>
       </div>
     </div>
