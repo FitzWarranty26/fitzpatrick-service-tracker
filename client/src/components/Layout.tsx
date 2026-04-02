@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
 import {
-  LayoutDashboard, ClipboardList, CalendarClock, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search
+  LayoutDashboard, ClipboardList, CalendarClock, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search, MoreHorizontal
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -173,6 +173,90 @@ export function ThemeToggle() {
   );
 }
 
+const primaryNavItems = [
+  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/calls", icon: ClipboardList, label: "Calls" },
+  { href: "/scheduled", icon: CalendarClock, label: "Scheduled" },
+  { href: "/new", icon: PlusCircle, label: "New Call" },
+];
+
+const moreNavItems = [
+  { href: "/analytics", icon: BarChart3, label: "Analytics" },
+  { href: "/reports", icon: FileBarChart, label: "Reports" },
+  { href: "/contacts", icon: Users, label: "Contacts" },
+  { href: "/map", icon: MapPin, label: "Map" },
+];
+
+function MobileBottomNav({ location }: { location: string }) {
+  const [showMore, setShowMore] = useState(false);
+  const moreIsActive = moreNavItems.some(item => location.startsWith(item.href));
+
+  return (
+    <>
+      {/* More menu overlay */}
+      {showMore && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setShowMore(false)}>
+          <div
+            className="absolute bottom-[60px] left-0 right-0 bg-[hsl(217,32%,15%)] border-t border-[hsl(217,28%,20%)] rounded-t-xl p-2"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="grid grid-cols-4 gap-1">
+              {moreNavItems.map(({ href, icon: Icon, label }) => {
+                const isActive = location.startsWith(href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setShowMore(false)}
+                    className={cn(
+                      "flex flex-col items-center justify-center py-3 rounded-lg text-xs font-medium gap-1 transition-colors",
+                      isActive ? "text-white bg-[hsl(217,28%,22%)]" : "text-slate-400 hover:text-white"
+                    )}
+                  >
+                    <Icon size={22} />
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom tab bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex bg-[hsl(217,32%,15%)] text-white border-t border-[hsl(217,28%,20%)]" aria-label="Bottom navigation">
+        {primaryNavItems.map(({ href, icon: Icon, label }) => {
+          const isActive = href === "/" ? location === "/" : location.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-center py-2 text-[10px] font-medium gap-0.5 transition-colors",
+                isActive ? "text-white" : "text-slate-400 hover:text-white"
+              )}
+            >
+              <Icon size={20} />
+              {label}
+            </Link>
+          );
+        })}
+        <button
+          onClick={() => setShowMore(!showMore)}
+          className={cn(
+            "flex-1 flex flex-col items-center justify-center py-2 text-[10px] font-medium gap-0.5 transition-colors",
+            showMore || moreIsActive ? "text-white" : "text-slate-400 hover:text-white"
+          )}
+          data-testid="button-more-nav"
+        >
+          <MoreHorizontal size={20} />
+          More
+        </button>
+      </nav>
+    </>
+  );
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -296,25 +380,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {children}
         </div>
 
-        {/* Mobile Bottom Nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex bg-[hsl(217,32%,15%)] text-white border-t border-[hsl(217,28%,20%)]" aria-label="Bottom navigation">
-          {navItems.map(({ href, icon: Icon, label }) => {
-            const isActive = href === "/" ? location === "/" : location.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex-1 flex flex-col items-center justify-center py-2 text-xs font-medium gap-1 transition-colors",
-                  isActive ? "text-white" : "text-slate-400 hover:text-white"
-                )}
-              >
-                <Icon size={20} />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* Mobile Bottom Nav — 4 primary items + More */}
+        <MobileBottomNav location={location} />
       </main>
     </div>
   );
