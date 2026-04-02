@@ -22,7 +22,7 @@ import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
-  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, Share2
+  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -420,25 +420,33 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   };
 
   // Email / Share handler
-  const handleEmail = () => {
+  const handleEmail = async () => {
     if (!call) return;
-    const subject = encodeURIComponent(`Service Call #${call.id} — ${call.customerName || ""} — ${call.manufacturer}`);
-    const body = encodeURIComponent(
-      `Service Call #${call.id}\nDate: ${call.callDate}\nCustomer: ${call.customerName || ""}\nSite: ${call.jobSiteName || ""}\nManufacturer: ${call.manufacturer}\nModel: ${call.productModel || ""}\nStatus: ${call.status}\nClaim: ${call.claimStatus}\n\nIssue: ${(call.issueDescription || "").slice(0, 500)}\n\nFull PDF report attached separately.`
-    );
-    window.open(`mailto:?subject=${subject}&body=${body}`);
-  };
+    const subject = `Service Call #${call.id} \u2014 ${call.customerName || ""} \u2014 ${call.manufacturer}`;
+    const bodyText = `Service Call #${call.id}\nDate: ${call.callDate}\nCustomer: ${call.customerName || ""}\nSite: ${call.jobSiteName || ""}\nManufacturer: ${call.manufacturer}\nModel: ${call.productModel || ""}\nStatus: ${call.status}\nClaim: ${call.claimStatus}\n\nIssue: ${(call.issueDescription || "").slice(0, 500)}`;
 
-  const handleShare = async () => {
-    if (!call || !navigator.share) return;
-    try {
-      await navigator.share({
-        title: `Service Call #${call.id}`,
-        text: `${call.manufacturer} - ${call.customerName || "Service Call"}\nDate: ${call.callDate}\nStatus: ${call.status}\n\nIssue: ${(call.issueDescription || "").slice(0, 500)}`,
-      });
-    } catch {
-      // User cancelled or share failed — ignore
+    // Try Web Share API with PDF file (works on iOS Safari)
+    if (navigator.share && navigator.canShare) {
+      try {
+        // Generate the PDF HTML
+        const { generatePDFHtml } = await import("@/lib/pdf");
+        const html = await generatePDFHtml(call);
+        const blob = new Blob([html], { type: "text/html" });
+        const file = new File([blob], `Service-Call-${call.id}.html`, { type: "text/html" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: subject,
+            text: bodyText,
+            files: [file],
+          });
+          return;
+        }
+      } catch {
+        // Share cancelled or failed — fall through to mailto
+      }
     }
+    // Fallback: mailto
+    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText + "\n\nFull PDF report attached separately.")}`);
   };
 
   const handlePDF = async () => {
@@ -500,12 +508,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <Mail className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">Email</span>
               </Button>
-              {typeof navigator !== "undefined" && "share" in navigator && (
-                <Button variant="outline" size="sm" onClick={handleShare} data-testid="button-share">
-                  <Share2 className="w-4 h-4 mr-1.5" />
-                  <span className="hidden sm:inline">Share</span>
-                </Button>
-              )}
+
               <Button variant="outline" size="sm" onClick={handlePDF} data-testid="button-generate-pdf">
                 <FileText className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">PDF</span>

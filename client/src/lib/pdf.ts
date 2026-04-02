@@ -14,11 +14,24 @@ function formatDate(dateStr: string | null | undefined): string {
   } catch { return dateStr; }
 }
 
-export async function generatePDF(call: ServiceCallFull): Promise<void> {
-  // Lazy-load logo data only when generating a PDF (saves ~450KB from main bundle)
+// Generate the PDF HTML string (reusable for share/email)
+export async function generatePDFHtml(call: ServiceCallFull): Promise<string> {
   const { LOGO_DARK_DATA_URL } = await import("./logo-data");
+  return buildPDFHtml(call, LOGO_DARK_DATA_URL);
+}
 
-  // Build an HTML report and open in a new window for print-to-PDF
+export async function generatePDF(call: ServiceCallFull): Promise<void> {
+  const html = await generatePDFHtml(call);
+  const win = window.open("", "_blank");
+  if (!win) {
+    throw new Error("Popup blocked. Please allow popups for this site.");
+  }
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
+function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string {
   const manufacturerDisplay = call.manufacturer === "Other"
     ? (call.manufacturerOther ?? "Other")
     : call.manufacturer;
@@ -417,13 +430,7 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
 </body>
 </html>`;
 
-  const win = window.open("", "_blank");
-  if (!win) {
-    throw new Error("Popup blocked. Please allow popups for this site.");
-  }
-  win.document.write(html);
-  win.document.close();
-  setTimeout(() => win.print(), 500);
+  return html;
 }
 
 function getStatusBadgeClass(status: string): string {
