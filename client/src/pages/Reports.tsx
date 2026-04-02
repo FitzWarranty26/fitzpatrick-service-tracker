@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { FileBarChart, Download, FileText } from "lucide-react";
+import { FileBarChart, Download, FileText, Mail } from "lucide-react";
 import { MANUFACTURERS, CLAIM_STATUSES } from "@shared/schema";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -299,6 +299,48 @@ export default function Reports() {
     generateReportPDF(reportType, reportData);
   };
 
+  // ─── Email Report ──────────────────────────────────────────────────────────
+
+  const handleEmailReport = () => {
+    if (!reportData) return;
+    const reportLabel = REPORT_TYPES.find(r => r.value === reportType)?.label ?? reportType;
+    const dateRange = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : "";
+    const subject = encodeURIComponent(`${reportLabel}${dateRange ? ` — ${dateRange}` : ""}`);
+    let summary = `Report: ${reportLabel}\n`;
+    if (dateRange) summary += `Date Range: ${dateRange}\n`;
+
+    switch (reportType) {
+      case "manufacturer-summary": {
+        const d = reportData as ManufacturerSummaryReport;
+        summary += `Manufacturer: ${d.manufacturer || "All"}\nTotal Calls: ${d.summary.totalCalls}\nUnique Models: ${d.summary.uniqueModels}\nTotal Parts Cost: $${d.summary.totalPartsCost.toFixed(2)}\nTotal Labor Cost: $${d.summary.totalLaborCost.toFixed(2)}\nTotal Claim Amount: $${d.summary.totalClaimAmount.toFixed(2)}`;
+        break;
+      }
+      case "monthly-expense": {
+        const d = reportData as MonthlyExpenseReport;
+        summary += `Total Hours: ${d.summary.totalHours}\nTotal Miles: ${d.summary.totalMiles}\nTotal Costs: $${d.summary.totalCosts.toFixed(2)}\nTotal Claims: $${d.summary.totalClaimAmount.toFixed(2)}\nNet: $${d.summary.net.toFixed(2)}`;
+        break;
+      }
+      case "customer-history": {
+        const d = reportData as CustomerHistoryReport;
+        summary += `Customer: ${d.customer}\nTotal Calls: ${d.summary.totalCalls}\nTotal Claims: $${d.summary.totalClaimAmount.toFixed(2)}`;
+        break;
+      }
+      case "claim-status": {
+        const d = reportData as ClaimStatusReport;
+        summary += `Total Claims: ${d.calls.length}`;
+        break;
+      }
+      case "product-failure": {
+        const d = reportData as ProductFailureReport;
+        summary += `Models with repeat failures: ${d.models.length}`;
+        break;
+      }
+    }
+
+    const body = encodeURIComponent(summary + "\n\nFull report attached separately.");
+    window.open(`mailto:?subject=${subject}&body=${body}`);
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -310,6 +352,16 @@ export default function Reports() {
           <p className="text-sm text-muted-foreground mt-0.5">Generate and download service reports</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleEmailReport}
+            disabled={!reportData || isLoading}
+            data-testid="button-email-report"
+          >
+            <Mail className="w-4 h-4 mr-1.5" />
+            Email
+          </Button>
           <Button
             variant="outline"
             size="sm"

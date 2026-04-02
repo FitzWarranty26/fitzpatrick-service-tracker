@@ -45,6 +45,7 @@ export const serviceCalls = sqliteTable("service_calls", {
   // Scheduling
   scheduledDate: text("scheduled_date"),  // ISO date string
   scheduledTime: text("scheduled_time"),  // e.g. "09:00" or "2:30 PM"
+  followUpDate: text("follow_up_date"),   // ISO date string — when to follow up
   latitude: text("latitude"),
   longitude: text("longitude"),
   parentCallId: integer("parent_call_id"),

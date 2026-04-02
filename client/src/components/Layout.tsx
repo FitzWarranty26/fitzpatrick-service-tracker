@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
+import { formatDate } from "@/lib/utils";
 import {
-  LayoutDashboard, ClipboardList, CalendarClock, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users
+  LayoutDashboard, ClipboardList, CalendarClock, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { OfflineIndicatorDesktop, OfflineIndicatorMobile } from "@/components/OfflineIndicator";
 import logoWhite from "@assets/logo-white.jpg";
 import logoDark from "@assets/logo-dark.jpg";
@@ -22,6 +25,124 @@ const navItems = [
 
 // Export logo paths for use in other components (e.g. PDF reports)
 export { logoWhite, logoDark };
+
+interface SearchResults {
+  calls: Array<{ id: number; callDate: string; customerName: string | null; manufacturer: string; productModel: string | null; status: string }>;
+  contacts: Array<{ id: number; contactType: string; contactName: string; companyName: string | null; phone: string | null }>;
+  activities: Array<{ id: number; serviceCallId: number; note: string; createdAt: string }>;
+}
+
+function GlobalSearch() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResults | null>(null);
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const doSearch = useCallback(async (q: string) => {
+    if (q.length < 2) { setResults(null); setOpen(false); return; }
+    try {
+      const res = await apiRequest("GET", `/api/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      setResults(data);
+      setOpen(true);
+    } catch {
+      setResults(null);
+    }
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setQuery(v);
+    clearTimeout(timerRef.current);
+    if (v.length < 2) { setResults(null); setOpen(false); return; }
+    timerRef.current = setTimeout(() => doSearch(v), 300);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") { setOpen(false); setQuery(""); }
+  };
+
+  // Close on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const navigate = (path: string) => {
+    window.location.hash = path;
+    setOpen(false);
+    setQuery("");
+    setResults(null);
+  };
+
+  const totalResults = results ? results.calls.length + results.contacts.length + results.activities.length : 0;
+
+  return (
+    <div ref={containerRef} className="relative px-3 mb-2">
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+        <Input
+          value={query}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => { if (results && query.length >= 2) setOpen(true); }}
+          placeholder="Search…"
+          className="h-8 pl-8 text-xs bg-[hsl(217,28%,22%)] border-[hsl(217,28%,25%)] text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-blue-500"
+          data-testid="global-search-input"
+        />
+      </div>
+      {open && results && totalResults > 0 && (
+        <div className="absolute left-3 right-3 top-full mt-1 z-50 bg-popover border border-border rounded-md shadow-lg max-h-80 overflow-y-auto" data-testid="global-search-results">
+          {results.calls.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-3 pt-2 pb-1">Service Calls</p>
+              {results.calls.map(c => (
+                <button key={`c-${c.id}`} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors" onClick={() => navigate(`/calls/${c.id}`)} data-testid={`search-result-call-${c.id}`}>
+                  <span className="font-medium text-foreground">{c.customerName || "Call"} #{c.id}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{formatDate(c.callDate)} · {c.manufacturer}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {results.contacts.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-3 pt-2 pb-1">Contacts</p>
+              {results.contacts.map(c => (
+                <button key={`ct-${c.id}`} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors" onClick={() => navigate("/contacts")} data-testid={`search-result-contact-${c.id}`}>
+                  <span className="font-medium text-foreground">{c.contactName}</span>
+                  {c.companyName && <span className="text-muted-foreground ml-1">({c.companyName})</span>}
+                  <span className="text-xs text-muted-foreground ml-2">{c.contactType}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {results.activities.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-3 pt-2 pb-1">Activity Notes</p>
+              {results.activities.map(a => (
+                <button key={`a-${a.id}`} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors" onClick={() => navigate(`/calls/${a.serviceCallId}`)} data-testid={`search-result-activity-${a.id}`}>
+                  <span className="text-foreground">{a.note.length > 80 ? a.note.slice(0, 80) + "…" : a.note}</span>
+                  <span className="text-xs text-muted-foreground ml-2">Call #{a.serviceCallId}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {open && results && totalResults === 0 && query.length >= 2 && (
+        <div className="absolute left-3 right-3 top-full mt-1 z-50 bg-popover border border-border rounded-md shadow-lg p-3">
+          <p className="text-sm text-muted-foreground text-center">No results found</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ThemeToggle() {
   const [isDark, setIsDark] = useState(() =>
@@ -76,6 +197,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             className="h-16 w-auto object-contain"
           />
         </div>
+
+        {/* Search */}
+        <GlobalSearch />
 
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-1" aria-label="Main navigation">

@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   PlusCircle, ClipboardCheck, Clock, PackageSearch, FileCheck, ArrowRight, ChevronRight,
-  CloudOff, RefreshCw, ShieldAlert
+  CloudOff, RefreshCw, ShieldAlert, Bell
 } from "lucide-react";
 import type { ServiceCall } from "@shared/schema";
 import { getWarrantyStatus } from "@shared/schema";
@@ -23,6 +23,7 @@ interface DashboardStats {
   openCalls: number;
   completedThisMonth: number;
   pendingClaims: number;
+  followUpsDue: number;
 }
 
 interface ServiceCallWithCounts extends ServiceCall {
@@ -108,6 +109,15 @@ export default function Dashboard() {
     ? allCalls.filter(c => c.status !== "Completed" && getWarrantyStatus(c.installationDate, c.manufacturer, c.productType).status === "out-of-warranty").length
     : 0;
 
+  // Fetch follow-ups due
+  const { data: followUps } = useQuery<ServiceCallWithCounts[]>({
+    queryKey: ["/api/dashboard/follow-ups"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/dashboard/follow-ups");
+      return res.json();
+    },
+  });
+
   // Seed on first load
   useQuery({
     queryKey: ["/api/seed"],
@@ -155,6 +165,15 @@ export default function Dashboard() {
       testId: "stat-claims",
       href: "/calls/filter/pending-claims",
     },
+    ...((stats?.followUpsDue ?? 0) > 0 ? [{
+      title: "Follow-ups Due",
+      value: stats?.followUpsDue ?? 0,
+      icon: Bell,
+      color: "text-orange-600 dark:text-orange-400",
+      bg: "bg-orange-50 dark:bg-orange-900/20",
+      testId: "stat-followups-due",
+      href: "/calls/filter/follow-ups-due",
+    }] : []),
     ...(outOfWarrantyCount > 0 ? [{
       title: "Out of Warranty",
       value: outOfWarrantyCount,
@@ -245,6 +264,43 @@ export default function Dashboard() {
           );
         })}
       </div>
+
+      {/* Follow-ups Due Alert */}
+      {followUps && followUps.length > 0 && (
+        <Card className="border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20" data-testid="followups-due-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-orange-800 dark:text-orange-300">
+              <Bell className="w-4 h-4" />
+              {followUps.length} Follow-up{followUps.length !== 1 ? "s" : ""} Due
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-orange-200 dark:divide-orange-800">
+              {followUps.slice(0, 5).map(c => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between px-4 py-2.5 hover:bg-orange-100 dark:hover:bg-orange-900/40 cursor-pointer transition-colors"
+                  onClick={() => { window.location.hash = `/calls/${c.id}`; }}
+                  data-testid={`followup-row-${c.id}`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{c.customerName || `Call #${c.id}`}</p>
+                    <p className="text-xs text-muted-foreground">{c.manufacturer} · {formatDate(c.followUpDate!)}</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                </div>
+              ))}
+            </div>
+            {followUps.length > 5 && (
+              <div className="px-4 py-2 text-center">
+                <Button variant="ghost" size="sm" className="text-xs text-orange-700 dark:text-orange-300" onClick={() => { window.location.hash = "/calls/filter/follow-ups-due"; }} data-testid="button-view-all-followups">
+                  View all {followUps.length} follow-ups
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent Service Calls */}
       <Card>

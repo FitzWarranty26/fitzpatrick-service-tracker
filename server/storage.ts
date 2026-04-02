@@ -187,6 +187,12 @@ if (!columnExists("service_calls", "claim_number")) {
   console.log("Migration: added claim_number column");
 }
 
+// Migration 10: Add follow_up_date field
+if (!columnExists("service_calls", "follow_up_date")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN follow_up_date TEXT`);
+  console.log("Migration: added follow_up_date column");
+}
+
 export interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;
@@ -203,6 +209,7 @@ export interface DashboardStats {
   openCalls: number;
   completedThisMonth: number;
   pendingClaims: number;
+  followUpsDue: number;
 }
 
 export interface IStorage {
@@ -359,6 +366,7 @@ export class SQLiteStorage implements IStorage {
       milesTraveled: row.miles_traveled,
       scheduledDate: row.scheduled_date,
       scheduledTime: row.scheduled_time,
+      followUpDate: row.follow_up_date,
       latitude: row.latitude,
       longitude: row.longitude,
       parentCallId: row.parent_call_id,
@@ -436,20 +444,24 @@ export class SQLiteStorage implements IStorage {
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
     const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-31`;
 
+    const today = now.toISOString().split("T")[0];
+
     const row = sqlite.prepare(`
       SELECT
         COUNT(*) AS total_calls,
         SUM(CASE WHEN status != 'Completed' THEN 1 ELSE 0 END) AS open_calls,
         SUM(CASE WHEN status = 'Completed' AND call_date >= ? AND call_date <= ? THEN 1 ELSE 0 END) AS completed_this_month,
-        SUM(CASE WHEN claim_status IN ('Submitted', 'Pending Review') THEN 1 ELSE 0 END) AS pending_claims
+        SUM(CASE WHEN claim_status IN ('Submitted', 'Pending Review') THEN 1 ELSE 0 END) AS pending_claims,
+        SUM(CASE WHEN follow_up_date IS NOT NULL AND follow_up_date <= ? AND status != 'Completed' THEN 1 ELSE 0 END) AS follow_ups_due
       FROM service_calls
-    `).get(monthStart, monthEnd) as any;
+    `).get(monthStart, monthEnd, today) as any;
 
     return {
       totalCalls: row.total_calls ?? 0,
       openCalls: row.open_calls ?? 0,
       completedThisMonth: row.completed_this_month ?? 0,
       pendingClaims: row.pending_claims ?? 0,
+      followUpsDue: row.follow_ups_due ?? 0,
     };
   }
 
@@ -499,6 +511,7 @@ export class SQLiteStorage implements IStorage {
       milesTraveled: row.miles_traveled,
       scheduledDate: row.scheduled_date,
       scheduledTime: row.scheduled_time,
+      followUpDate: row.follow_up_date,
       latitude: row.latitude,
       longitude: row.longitude,
       parentCallId: row.parent_call_id,
@@ -585,6 +598,7 @@ export class SQLiteStorage implements IStorage {
       milesTraveled: row.miles_traveled,
       scheduledDate: row.scheduled_date,
       scheduledTime: row.scheduled_time,
+      followUpDate: row.follow_up_date,
       latitude: row.latitude,
       longitude: row.longitude,
       parentCallId: row.parent_call_id,
@@ -706,6 +720,125 @@ export class SQLiteStorage implements IStorage {
       notes: row.notes,
       createdAt: row.created_at,
     }));
+  }
+
+  // ─── Follow-ups Due ────────────────────────────────────────────────────────
+
+  getFollowUpsDue(): ServiceCallWithCounts[] {
+    const today = new Date().toISOString().split("T")[0];
+    const rows = sqlite.prepare(`
+      SELECT sc.*,
+        (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
+        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
+      FROM service_calls sc
+      WHERE sc.follow_up_date IS NOT NULL AND sc.follow_up_date <= ? AND sc.status != 'Completed'
+      ORDER BY sc.follow_up_date ASC
+    `).all(today) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      callDate: row.call_date,
+      manufacturer: row.manufacturer,
+      manufacturerOther: row.manufacturer_other,
+      customerName: row.customer_name,
+      jobSiteName: row.job_site_name,
+      jobSiteAddress: row.job_site_address,
+      jobSiteCity: row.job_site_city,
+      jobSiteState: row.job_site_state,
+      contactName: row.contact_name,
+      contactPhone: row.contact_phone,
+      contactEmail: row.contact_email,
+      siteContactName: row.site_contact_name,
+      siteContactPhone: row.site_contact_phone,
+      siteContactEmail: row.site_contact_email,
+      productModel: row.product_model,
+      productSerial: row.product_serial,
+      productType: row.product_type,
+      installationDate: row.installation_date,
+      issueDescription: row.issue_description,
+      diagnosis: row.diagnosis,
+      resolution: row.resolution,
+      status: row.status,
+      claimStatus: row.claim_status,
+      claimNotes: row.claim_notes,
+      claimNumber: row.claim_number,
+      partsCost: row.parts_cost,
+      laborCost: row.labor_cost,
+      otherCost: row.other_cost,
+      claimAmount: row.claim_amount,
+      techNotes: row.tech_notes,
+      hoursOnJob: row.hours_on_job,
+      milesTraveled: row.miles_traveled,
+      scheduledDate: row.scheduled_date,
+      scheduledTime: row.scheduled_time,
+      followUpDate: row.follow_up_date,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      parentCallId: row.parent_call_id,
+      createdAt: row.created_at,
+      photoCount: row.photo_count,
+      partCount: row.part_count,
+    }));
+  }
+
+  // ─── Global Search ────────────────────────────────────────────────────────
+
+  globalSearch(query: string): {
+    calls: Array<{ id: number; callDate: string; customerName: string | null; manufacturer: string; productModel: string | null; status: string }>;
+    contacts: Array<{ id: number; contactType: string; contactName: string; companyName: string | null; phone: string | null }>;
+    activities: Array<{ id: number; serviceCallId: number; note: string; createdAt: string }>;
+  } {
+    const q = `%${query.toLowerCase()}%`;
+
+    const calls = sqlite.prepare(`
+      SELECT id, call_date, customer_name, manufacturer, product_model, status
+      FROM service_calls
+      WHERE LOWER(customer_name) LIKE ? OR LOWER(job_site_name) LIKE ? OR LOWER(product_model) LIKE ?
+        OR LOWER(product_serial) LIKE ? OR LOWER(issue_description) LIKE ? OR LOWER(claim_number) LIKE ?
+        OR LOWER(manufacturer) LIKE ?
+      ORDER BY call_date DESC
+      LIMIT 5
+    `).all(q, q, q, q, q, q, q) as any[];
+
+    const contactRows = sqlite.prepare(`
+      SELECT id, contact_type, contact_name, company_name, phone
+      FROM contacts
+      WHERE LOWER(contact_name) LIKE ? OR LOWER(company_name) LIKE ? OR LOWER(phone) LIKE ? OR LOWER(email) LIKE ?
+      ORDER BY contact_name ASC
+      LIMIT 5
+    `).all(q, q, q, q) as any[];
+
+    const activityRows = sqlite.prepare(`
+      SELECT id, service_call_id, note, created_at
+      FROM activity_log
+      WHERE LOWER(note) LIKE ?
+      ORDER BY created_at DESC
+      LIMIT 5
+    `).all(q) as any[];
+
+    return {
+      calls: calls.map(r => ({
+        id: r.id,
+        callDate: r.call_date,
+        customerName: r.customer_name,
+        manufacturer: r.manufacturer,
+        productModel: r.product_model,
+        status: r.status,
+      })),
+      contacts: contactRows.map(r => ({
+        id: r.id,
+        contactType: r.contact_type,
+        contactName: r.contact_name,
+        companyName: r.company_name,
+        phone: r.phone,
+      })),
+      activities: activityRows.map(r => ({
+        id: r.id,
+        serviceCallId: r.service_call_id,
+        note: r.note,
+        createdAt: r.created_at,
+      })),
+    };
   }
 
   // ─── Activity Log ──────────────────────────────────────────────────────────

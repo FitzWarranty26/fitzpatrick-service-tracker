@@ -177,10 +177,32 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  app.get("/api/dashboard/follow-ups", (_req, res) => {
+    try {
+      const calls = storage.getFollowUpsDue();
+      res.json(calls);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   app.get("/api/dashboard/recent", (_req, res) => {
     try {
       const calls = storage.getRecentServiceCalls(10);
       res.json(calls);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── Global Search ──────────────────────────────────────────────────────────
+
+  app.get("/api/search", (req, res) => {
+    try {
+      const q = req.query.q as string;
+      if (!q || q.length < 2) return res.json({ calls: [], contacts: [], activities: [] });
+      const results = storage.globalSearch(q);
+      res.json(results);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }

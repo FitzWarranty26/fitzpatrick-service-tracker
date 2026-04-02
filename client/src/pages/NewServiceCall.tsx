@@ -64,6 +64,7 @@ const formSchema = z.object({
   milesTraveled: z.string().optional().nullable(),
   scheduledDate: z.string().optional().nullable(),
   scheduledTime: z.string().optional().nullable(),
+  followUpDate: z.string().optional().nullable(),
   parentCallId: z.number().optional().nullable(),
 });
 
@@ -191,6 +192,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       milesTraveled: "",
       scheduledDate: "",
       scheduledTime: "",
+      followUpDate: "",
       parentCallId: null,
     },
   });
@@ -449,7 +451,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">Scheduling</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField control={form.control} name="scheduledDate" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Scheduled Date</FormLabel>
@@ -461,6 +463,13 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                   <FormItem>
                     <FormLabel>Scheduled Time (approx.)</FormLabel>
                     <FormControl><Input type="time" {...field} value={field.value ?? ""} data-testid="input-scheduled-time" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="followUpDate" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Follow-up Date</FormLabel>
+                    <FormControl><Input type="date" {...field} value={field.value ?? ""} data-testid="input-follow-up-date" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />

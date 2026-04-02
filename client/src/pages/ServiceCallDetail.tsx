@@ -22,7 +22,7 @@ import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
-  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical
+  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, Share2
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -394,6 +394,53 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     toast({ title: "Photos added", description: `${uploaded} photo${uploaded !== 1 ? "s" : ""} uploaded.` });
   };
 
+  // Follow-up reminder quick-set
+  const setFollowUpMutation = useMutation({
+    mutationFn: async (date: string | null) => {
+      const res = await apiRequest("PATCH", `/api/service-calls/${callId}`, { followUpDate: date });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/follow-ups"] });
+      toast({ title: date ? "Reminder set" : "Reminder cleared" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+  const [showFollowUpPicker, setShowFollowUpPicker] = useState(false);
+  const [date, setDate] = useState("");
+
+  const setFollowUpPreset = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    const iso = d.toISOString().split("T")[0];
+    setFollowUpMutation.mutate(iso);
+    setShowFollowUpPicker(false);
+  };
+
+  // Email / Share handler
+  const handleEmail = () => {
+    if (!call) return;
+    const subject = encodeURIComponent(`Service Call #${call.id} — ${call.customerName || ""} — ${call.manufacturer}`);
+    const body = encodeURIComponent(
+      `Service Call #${call.id}\nDate: ${call.callDate}\nCustomer: ${call.customerName || ""}\nSite: ${call.jobSiteName || ""}\nManufacturer: ${call.manufacturer}\nModel: ${call.productModel || ""}\nStatus: ${call.status}\nClaim: ${call.claimStatus}\n\nIssue: ${(call.issueDescription || "").slice(0, 500)}\n\nFull PDF report attached separately.`
+    );
+    window.open(`mailto:?subject=${subject}&body=${body}`);
+  };
+
+  const handleShare = async () => {
+    if (!call || !navigator.share) return;
+    try {
+      await navigator.share({
+        title: `Service Call #${call.id}`,
+        text: `${call.manufacturer} - ${call.customerName || "Service Call"}\nDate: ${call.callDate}\nStatus: ${call.status}\n\nIssue: ${(call.issueDescription || "").slice(0, 500)}`,
+      });
+    } catch {
+      // User cancelled or share failed — ignore
+    }
+  };
+
   const handlePDF = async () => {
     if (!call) return;
     try {
@@ -449,6 +496,16 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <CornerDownRight className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">Follow-up</span>
               </Button>
+              <Button variant="outline" size="sm" onClick={handleEmail} data-testid="button-email">
+                <Mail className="w-4 h-4 mr-1.5" />
+                <span className="hidden sm:inline">Email</span>
+              </Button>
+              {typeof navigator !== "undefined" && "share" in navigator && (
+                <Button variant="outline" size="sm" onClick={handleShare} data-testid="button-share">
+                  <Share2 className="w-4 h-4 mr-1.5" />
+                  <span className="hidden sm:inline">Share</span>
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={handlePDF} data-testid="button-generate-pdf">
                 <FileText className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">PDF</span>
@@ -522,6 +579,41 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <DetailRow label="Manufacturer" value={call.manufacturer === "Other" ? (call.manufacturerOther ?? "Other") : call.manufacturer} />
                 <DetailRow label="Status" value={call.status} />
                 <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
+                {/* Follow-up Reminder */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Follow-up Reminder</p>
+                  {call.followUpDate ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-sm text-foreground">
+                        <Bell className="w-3.5 h-3.5 text-amber-500" />
+                        {formatDate(call.followUpDate)}
+                        {(() => {
+                          const diff = Math.ceil((new Date(call.followUpDate + "T00:00:00").getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                          if (diff < 0) return <span className="text-xs text-red-500 ml-1">({Math.abs(diff)}d overdue)</span>;
+                          if (diff === 0) return <span className="text-xs text-amber-500 ml-1">(today)</span>;
+                          return <span className="text-xs text-muted-foreground ml-1">(in {diff}d)</span>;
+                        })()}
+                      </span>
+                      <button type="button" className="text-xs text-primary hover:underline" onClick={() => setShowFollowUpPicker(true)} data-testid="button-change-followup">Change</button>
+                      <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setFollowUpMutation.mutate(null)} data-testid="button-clear-followup">Clear</button>
+                    </div>
+                  ) : (
+                    <button type="button" className="text-sm text-primary hover:underline inline-flex items-center gap-1" onClick={() => setShowFollowUpPicker(true)} data-testid="button-set-followup">
+                      <Bell className="w-3.5 h-3.5" /> Set Reminder
+                    </button>
+                  )}
+                  {showFollowUpPicker && (
+                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setFollowUpPreset(1)} data-testid="followup-tomorrow">Tomorrow</Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setFollowUpPreset(3)} data-testid="followup-3days">3 Days</Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setFollowUpPreset(7)} data-testid="followup-1week">1 Week</Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setFollowUpPreset(14)} data-testid="followup-2weeks">2 Weeks</Button>
+                      <Input type="date" className="h-7 text-xs w-36" value={date} onChange={e => setDate(e.target.value)} data-testid="followup-custom-date" />
+                      <Button variant="default" size="sm" className="h-7 text-xs" disabled={!date} onClick={() => { setFollowUpMutation.mutate(date); setShowFollowUpPicker(false); setDate(""); }} data-testid="followup-set-custom">Set</Button>
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowFollowUpPicker(false)}>Cancel</Button>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <>
@@ -542,6 +634,16 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   </Select>
                 </div>
                 <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Follow-up Date</label>
+                  <Input
+                    type="date"
+                    value={(editData.followUpDate ?? call.followUpDate ?? "") as string}
+                    onChange={e => setEditData(d => ({ ...d, followUpDate: e.target.value || null }))}
+                    className="h-8 text-sm"
+                    data-testid="edit-follow-up-date"
+                  />
+                </div>
               </>
             )}
           </CardContent>
