@@ -254,7 +254,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
 
       // Geocode in background (don't block the response)
-      geocodeAddress(data.jobSiteAddress, data.jobSiteCity, data.jobSiteState).then(coords => {
+      geocodeAddress(data.jobSiteAddress || "", data.jobSiteCity || "", data.jobSiteState || "").then(coords => {
         if (coords) {
           storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
         }
@@ -578,8 +578,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       for (const c of calls) {
         totalByStatus[c.status] = (totalByStatus[c.status] || 0) + 1;
         totalByClaimStatus[c.claimStatus] = (totalByClaimStatus[c.claimStatus] || 0) + 1;
-        models.add(c.productModel);
-        customers.add(c.customerName);
+        if (c.productModel) models.add(c.productModel);
+        if (c.customerName) customers.add(c.customerName);
         if (c.partsCost) totalPartsCost += parseFloat(c.partsCost) || 0;
         if (c.laborCost) totalLaborCost += parseFloat(c.laborCost) || 0;
         if (c.otherCost) totalOtherCost += parseFloat(c.otherCost) || 0;
@@ -647,7 +647,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }
         const entry = mfgMap.get(c.manufacturer)!;
         entry.count++;
-        entry.models.set(c.productModel, (entry.models.get(c.productModel) || 0) + 1);
+        if (c.productModel) entry.models.set(c.productModel, (entry.models.get(c.productModel) || 0) + 1);
       }
 
       const result = Array.from(mfgMap.entries()).map(([manufacturer, data]) => ({
@@ -695,7 +695,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         entry.count++;
         if (c.productSerial) entry.serialNumbers.add(c.productSerial);
         if (c.callDate > entry.lastServiceDate) entry.lastServiceDate = c.callDate;
-        entry.customers.add(c.customerName);
+        if (c.customerName) entry.customers.add(c.customerName);
       }
 
       const result = Array.from(modelMap.entries()).map(([key, data]) => ({
@@ -768,7 +768,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         const key = `${c.manufacturer}||${c.productModel}`;
         if (!modelMap.has(key)) {
           modelMap.set(key, {
-            model: c.productModel,
+            model: c.productModel || "Unknown",
             manufacturer: c.manufacturer,
             count: 0,
             serialNumbers: new Set(),
@@ -903,7 +903,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       let geocoded = 0;
       for (const call of calls) {
         if (!call.latitude && call.jobSiteAddress) {
-          const coords = await geocodeAddress(call.jobSiteAddress, call.jobSiteCity, call.jobSiteState);
+          const coords = await geocodeAddress(call.jobSiteAddress || "", call.jobSiteCity || "", call.jobSiteState || "");
           if (coords) {
             storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
             geocoded++;
@@ -973,8 +973,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           let totalPartsCost = 0, totalLaborCost = 0, totalClaimAmount = 0;
 
           for (const c of calls) {
-            models.add(c.productModel);
-            customers.add(c.customerName);
+            if (c.productModel) models.add(c.productModel);
+            if (c.customerName) customers.add(c.customerName);
             if (c.partsCost) totalPartsCost += parseFloat(c.partsCost) || 0;
             if (c.laborCost) totalLaborCost += parseFloat(c.laborCost) || 0;
             if (c.claimAmount) totalClaimAmount += parseFloat(c.claimAmount) || 0;
@@ -1083,7 +1083,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           if (dateTo) filters.dateTo = dateTo;
           // Get all calls, then filter by exact customer name
           const allCalls = storage.getAllServiceCalls(Object.keys(filters).length > 1 ? { dateFrom, dateTo } as any : undefined);
-          const calls = allCalls.filter(c => c.customerName.toLowerCase() === customer.toLowerCase());
+          const calls = allCalls.filter(c => (c.customerName || "").toLowerCase() === customer.toLowerCase());
 
           let totalPartsCost = 0, totalLaborCost = 0, totalClaimAmount = 0;
           for (const c of calls) {
@@ -1201,7 +1201,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const key = `${c.manufacturer}||${c.productModel}`;
             if (!modelMap.has(key)) {
               modelMap.set(key, {
-                manufacturer: c.manufacturer, model: c.productModel,
+                manufacturer: c.manufacturer, model: c.productModel || "Unknown",
                 count: 0, serials: new Set(), customers: new Set(),
                 lastDate: c.callDate, issues: new Set(),
               });
@@ -1209,7 +1209,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const entry = modelMap.get(key)!;
             entry.count++;
             if (c.productSerial) entry.serials.add(c.productSerial);
-            entry.customers.add(c.customerName);
+            if (c.customerName) entry.customers.add(c.customerName);
             if (c.callDate > entry.lastDate) entry.lastDate = c.callDate;
             if (c.issueDescription) entry.issues.add(c.issueDescription);
           }

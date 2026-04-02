@@ -33,22 +33,22 @@ const formSchema = z.object({
   callDate: z.string().min(1, "Required"),
   manufacturer: z.string().min(1, "Required"),
   manufacturerOther: z.string().optional().nullable(),
-  customerName: z.string().min(1, "Required"),
-  jobSiteName: z.string().min(1, "Required"),
-  jobSiteAddress: z.string().min(1, "Required"),
-  jobSiteCity: z.string().min(1, "Required"),
-  jobSiteState: z.string().min(1, "Required"),
+  customerName: z.string().optional().nullable(),
+  jobSiteName: z.string().optional().nullable(),
+  jobSiteAddress: z.string().optional().nullable(),
+  jobSiteCity: z.string().optional().nullable(),
+  jobSiteState: z.string().optional().nullable(),
   contactName: z.string().optional().nullable(),
   contactPhone: z.string().optional().nullable(),
   contactEmail: z.string().optional().nullable(),
   siteContactName: z.string().optional().nullable(),
   siteContactPhone: z.string().optional().nullable(),
   siteContactEmail: z.string().optional().nullable(),
-  productModel: z.string().min(1, "Required"),
+  productModel: z.string().optional().nullable(),
   productSerial: z.string().optional().nullable(),
   productType: z.string().optional().nullable(),
   installationDate: z.string().optional().nullable(),
-  issueDescription: z.string().min(1, "Required"),
+  issueDescription: z.string().optional().nullable(),
   diagnosis: z.string().optional().nullable(),
   resolution: z.string().optional().nullable(),
   status: z.string().min(1),
@@ -232,7 +232,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
   const [showContractorSuggest, setShowContractorSuggest] = useState(false);
   const [showSiteContactSuggest, setShowSiteContactSuggest] = useState(false);
 
-  const customerSuggest = useContactSuggest("customer", showCustomerSuggest ? customerNameValue : "");
+  const customerSuggest = useContactSuggest("customer", showCustomerSuggest ? (customerNameValue ?? "") : "");
   const contractorSuggest = useContactSuggest("contractor", showContractorSuggest ? (contractorNameValue ?? "") : "");
   const siteContactSuggest = useContactSuggest("site_contact", showSiteContactSuggest ? (siteContactNameValue ?? "") : "");
 
@@ -475,12 +475,13 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="customerName" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Customer Name *</FormLabel>
+                    <FormLabel>Customer Name</FormLabel>
                     <div className="relative">
                       <FormControl>
                         <Input
                           placeholder="e.g. Mountain West Plumbing"
                           {...field}
+                          value={field.value ?? ""}
                           onFocus={() => setShowCustomerSuggest(true)}
                           onBlur={() => setTimeout(() => setShowCustomerSuggest(false), 200)}
                           data-testid="input-customer-name"
@@ -502,8 +503,8 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                 )} />
                 <FormField control={form.control} name="jobSiteName" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Job Site / Project Name *</FormLabel>
-                    <FormControl><Input placeholder="e.g. Riverview Apartments Phase 2" {...field} data-testid="input-job-site-name" /></FormControl>
+                    <FormLabel>Job Site / Project Name</FormLabel>
+                    <FormControl><Input placeholder="e.g. Riverview Apartments Phase 2" {...field} value={field.value ?? ""} data-testid="input-job-site-name" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -511,8 +512,8 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
               <FormField control={form.control} name="jobSiteAddress" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Address *</FormLabel>
-                  <FormControl><Input placeholder="Street address" {...field} data-testid="input-address" /></FormControl>
+                  <FormLabel>Address</FormLabel>
+                  <FormControl><Input placeholder="Street address" {...field} value={field.value ?? ""} data-testid="input-address" /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -520,21 +521,22 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="jobSiteCity" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>City *</FormLabel>
-                    <FormControl><Input placeholder="City" {...field} data-testid="input-city" /></FormControl>
+                    <FormLabel>City</FormLabel>
+                    <FormControl><Input placeholder="City" {...field} value={field.value ?? ""} data-testid="input-city" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="jobSiteState" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>State *</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <FormLabel>State</FormLabel>
+                    <Select value={field.value || "__none__"} onValueChange={v => field.onChange(v === "__none__" ? "" : v)}>
                       <FormControl>
                         <SelectTrigger data-testid="select-state">
-                          <SelectValue />
+                          <SelectValue placeholder="Select state" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <SelectItem value="__none__">Select state</SelectItem>
                         <SelectItem value="UT">Utah</SelectItem>
                         <SelectItem value="ID">Idaho</SelectItem>
                       </SelectContent>
@@ -669,8 +671,8 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="productModel" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Model Number *</FormLabel>
-                    <FormControl><Input placeholder="e.g. HVHPT-50-240-PE" {...field} data-testid="input-model" /></FormControl>
+                    <FormLabel>Model Number</FormLabel>
+                    <FormControl><Input placeholder="e.g. HVHPT-50-240-PE" {...field} value={field.value ?? ""} data-testid="input-model" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -740,9 +742,9 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
             <CardContent className="space-y-4">
               <FormField control={form.control} name="issueDescription" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Issue Description *</FormLabel>
+                  <FormLabel>Issue Description</FormLabel>
                   <FormControl>
-                    <Textarea rows={3} placeholder="Describe what the customer reported…" {...field} data-testid="textarea-issue" />
+                    <Textarea rows={3} placeholder="Describe what the customer reported…" {...field} value={field.value ?? ""} data-testid="textarea-issue" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -969,6 +971,29 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
           </div>
 
         </form>
+
+        {/* Floating save bar */}
+        <div className="sticky bottom-0 z-20 bg-background/95 backdrop-blur border-t border-border p-3 -mx-4 md:-mx-6 px-4 md:px-6">
+          <Button
+            type="submit"
+            disabled={createMutation.isPending || savingOffline}
+            className="w-full"
+            onClick={() => form.handleSubmit(onSubmit)()}
+            data-testid="button-floating-save"
+          >
+            {(createMutation.isPending || savingOffline) ? (
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                Saving…
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Save className="w-4 h-4" />
+                {isOnline ? "Save Service Call" : "Save Offline"}
+              </span>
+            )}
+          </Button>
+        </div>
       </Form>
     </div>
   );

@@ -9,11 +9,11 @@ export const serviceCalls = sqliteTable("service_calls", {
   callDate: text("call_date").notNull(),
   manufacturer: text("manufacturer").notNull(),
   manufacturerOther: text("manufacturer_other"),
-  customerName: text("customer_name").notNull(),
-  jobSiteName: text("job_site_name").notNull(),
-  jobSiteAddress: text("job_site_address").notNull(),
-  jobSiteCity: text("job_site_city").notNull(),
-  jobSiteState: text("job_site_state").notNull(), // "UT" | "ID"
+  customerName: text("customer_name"),
+  jobSiteName: text("job_site_name"),
+  jobSiteAddress: text("job_site_address"),
+  jobSiteCity: text("job_site_city"),
+  jobSiteState: text("job_site_state"), // "UT" | "ID"
   // Installing Contractor
   contactName: text("contact_name"),
   contactPhone: text("contact_phone"),
@@ -22,11 +22,11 @@ export const serviceCalls = sqliteTable("service_calls", {
   siteContactName: text("site_contact_name"),
   siteContactPhone: text("site_contact_phone"),
   siteContactEmail: text("site_contact_email"),
-  productModel: text("product_model").notNull(),
+  productModel: text("product_model"),
   productSerial: text("product_serial"),
   productType: text("product_type"), // "Residential" | "Commercial" | "Tankless"
   installationDate: text("installation_date"),
-  issueDescription: text("issue_description").notNull(),
+  issueDescription: text("issue_description"),
   diagnosis: text("diagnosis"),
   resolution: text("resolution"),
   status: text("status").notNull().default("Scheduled"), // Scheduled | In Progress | Completed | Pending Parts | Escalated
