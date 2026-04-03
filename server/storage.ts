@@ -473,8 +473,8 @@ export class SQLiteStorage implements IStorage {
       FROM service_calls sc
       ORDER BY
         CASE WHEN sc.scheduled_date IS NULL THEN 1 ELSE 0 END,
-        sc.scheduled_date ASC,
-        sc.scheduled_time ASC,
+        sc.scheduled_date DESC,
+        sc.scheduled_time DESC,
         sc.call_date DESC
       LIMIT ?
     `).all(limit) as any[];
