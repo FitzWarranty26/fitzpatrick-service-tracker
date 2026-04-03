@@ -336,10 +336,10 @@ export default function Dashboard() {
                     <tr className="border-b border-border">
                       <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Date</th>
                       <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Customer / Site</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Manufacturer</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Model</th>
                       <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Status</th>
                       <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Scheduled</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Manufacturer</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Model</th>
                       <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Claim</th>
                       <th className="w-8 px-4 py-2.5"></th>
                     </tr>
@@ -361,8 +361,6 @@ export default function Dashboard() {
                             <p className="text-[10px] text-muted-foreground/60">{[call.jobSiteCity, call.jobSiteState].filter(Boolean).join(", ")}</p>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{call.manufacturer}</td>
-                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{call.productModel}</td>
                         <td className="px-4 py-3"><StatusBadge status={call.status} /></td>
                         <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
                           {call.scheduledDate ? (
@@ -376,6 +374,8 @@ export default function Dashboard() {
                             <span className="text-muted-foreground/40">—</span>
                           )}
                         </td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{call.manufacturer}</td>
+                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{call.productModel}</td>
                         <td className="px-4 py-3"><ClaimBadge status={call.claimStatus} /></td>
                         <td className="px-4 py-3 text-muted-foreground">
                           <ChevronRight className="w-4 h-4" />
