@@ -305,7 +305,7 @@ export default function Dashboard() {
       {/* Recent Service Calls */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold">Recent Service Calls</CardTitle>
+          <CardTitle className="text-base font-semibold">Service Calls</CardTitle>
           <Button variant="ghost" size="sm" asChild className="text-xs text-muted-foreground">
             <Link href="/calls">
               View all <ArrowRight className="w-3.5 h-3.5 ml-1" />

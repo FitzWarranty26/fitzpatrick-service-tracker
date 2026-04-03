@@ -471,7 +471,11 @@ export class SQLiteStorage implements IStorage {
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
         (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
       FROM service_calls sc
-      ORDER BY sc.call_date DESC
+      ORDER BY
+        CASE WHEN sc.scheduled_date IS NULL THEN 1 ELSE 0 END,
+        sc.scheduled_date ASC,
+        sc.scheduled_time ASC,
+        sc.call_date DESC
       LIMIT ?
     `).all(limit) as any[];
 
