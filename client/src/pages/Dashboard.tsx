@@ -357,6 +357,9 @@ export default function Dashboard() {
                         <td className="px-4 py-3">
                           <p className="font-medium text-foreground">{call.customerName}</p>
                           <p className="text-xs text-muted-foreground">{call.jobSiteName}</p>
+                          {(call.jobSiteCity || call.jobSiteState) && (
+                            <p className="text-[10px] text-muted-foreground/60">{[call.jobSiteCity, call.jobSiteState].filter(Boolean).join(", ")}</p>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{call.manufacturer}</td>
                         <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{call.productModel}</td>
