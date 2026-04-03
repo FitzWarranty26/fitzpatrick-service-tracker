@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime, formatTime } from "@/lib/utils";
 import { StatusBadge, ClaimBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -866,7 +866,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground mb-0.5">Scheduled Time</p>
-                    <p className="text-sm">{call.scheduledTime || "\u2014"}</p>
+                    <p className="text-sm">{call.scheduledTime ? formatTime(call.scheduledTime) : "\u2014"}</p>
                   </div>
                 </>
               ) : (

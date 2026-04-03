@@ -15,6 +15,19 @@ export function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
+export function formatTime(timeStr: string | null | undefined): string {
+  if (!timeStr) return "";
+  try {
+    const [h, m] = timeStr.split(":").map(Number);
+    if (isNaN(h) || isNaN(m)) return timeStr;
+    const period = h >= 12 ? "PM" : "AM";
+    const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+  } catch {
+    return timeStr;
+  }
+}
+
 export function formatDateTime(isoStr: string | null | undefined): string {
   if (!isoStr) return "—";
   try {

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatTime } from "@/lib/utils";
 import { StatusBadge, ClaimBadge } from "@/components/StatusBadge";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { getPendingCount } from "@/lib/offline-queue";
@@ -366,7 +366,7 @@ export default function Dashboard() {
                             <>
                               {formatDate(call.scheduledDate)}
                               {call.scheduledTime && (
-                                <span className="block text-[10px] text-muted-foreground/70">{call.scheduledTime}</span>
+                                <span className="block text-[10px] text-muted-foreground/70">{formatTime(call.scheduledTime)}</span>
                               )}
                             </>
                           ) : (

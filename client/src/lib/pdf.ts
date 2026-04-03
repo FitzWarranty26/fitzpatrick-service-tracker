@@ -14,6 +14,17 @@ function formatDate(dateStr: string | null | undefined): string {
   } catch { return dateStr; }
 }
 
+function formatTime(timeStr: string | null | undefined): string {
+  if (!timeStr) return "";
+  try {
+    const [h, m] = timeStr.split(":").map(Number);
+    if (isNaN(h) || isNaN(m)) return timeStr;
+    const period = h >= 12 ? "PM" : "AM";
+    const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+  } catch { return timeStr; }
+}
+
 // Generate the PDF HTML string (reusable for share/email)
 export async function generatePDFHtml(call: ServiceCallFull): Promise<string> {
   const { LOGO_DARK_DATA_URL } = await import("./logo-data");
@@ -298,7 +309,7 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
     ${call.scheduledDate ? `
     <div class="status-item">
       <span class="status-label">Scheduled</span>
-      <span class="status-value">${formatDate(call.scheduledDate)}${call.scheduledTime ? ` at ${call.scheduledTime}` : ""}</span>
+      <span class="status-value">${formatDate(call.scheduledDate)}${call.scheduledTime ? ` at ${formatTime(call.scheduledTime)}` : ""}</span>
     </div>
     ` : ""}
   </div>
