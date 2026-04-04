@@ -3,8 +3,9 @@ import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
+import { getUser, isManager } from "@/lib/auth";
 import {
-  LayoutDashboard, ClipboardList, CalendarClock, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search, MoreHorizontal
+  LayoutDashboard, ClipboardList, CalendarClock, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search, MoreHorizontal, Shield, ScrollText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,7 @@ import { OfflineIndicatorDesktop, OfflineIndicatorMobile } from "@/components/Of
 import logoWhite from "@assets/logo-white.jpg";
 import logoDark from "@assets/logo-dark.jpg";
 
-const navItems = [
+const baseNavItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/calls", icon: ClipboardList, label: "Service Calls" },
   { href: "/scheduled", icon: CalendarClock, label: "Scheduled" },
@@ -22,6 +23,15 @@ const navItems = [
   { href: "/contacts", icon: Users, label: "Contacts" },
   { href: "/map", icon: MapPin, label: "Map" },
 ];
+
+const managerNavItems = [
+  { href: "/team", icon: Shield, label: "Team" },
+  { href: "/audit-log", icon: ScrollText, label: "Activity Log" },
+];
+
+function getNavItems() {
+  return isManager() ? [...baseNavItems, ...managerNavItems] : baseNavItems;
+}
 
 // Export logo paths for use in other components (e.g. PDF reports)
 export { logoWhite, logoDark };
@@ -289,7 +299,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-1" aria-label="Main navigation">
-          {navItems.map(({ href, icon: Icon, label }) => {
+          {getNavItems().map(({ href, icon: Icon, label }) => {
             const isActive = href === "/" ? location === "/" : location.startsWith(href);
             return (
               <Link
@@ -313,7 +323,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Bottom */}
         <div className="p-4 border-t border-[hsl(220,22%,18%)] space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-300 font-medium">kevin@fitzpatricksales.com</span>
+            <span className="text-xs text-slate-300 font-medium">{getUser()?.displayName || "User"}</span>
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider">{getUser()?.role || ""}</span>
             <ThemeToggle />
           </div>
           <OfflineIndicatorDesktop />
@@ -357,7 +368,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             className="absolute top-14 left-0 right-0 bg-[hsl(220,22%,14%)] text-white border-b border-[hsl(220,22%,18%)] p-3 space-y-1"
             onClick={e => e.stopPropagation()}
           >
-            {navItems.map(({ href, icon: Icon, label }) => {
+            {getNavItems().map(({ href, icon: Icon, label }) => {
               const isActive = href === "/" ? location === "/" : location.startsWith(href);
               return (
                 <Link

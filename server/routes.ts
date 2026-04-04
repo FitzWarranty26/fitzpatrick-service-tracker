@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import express from "express";
 import type { Server } from "http";
 import crypto from "crypto";
 import path from "path";
@@ -57,11 +58,18 @@ function safeCompare(a: string, b: string): boolean {
 
 // ─── Session Token Management ─────────────────────────────────────────────
 const SESSION_EXPIRY_HOURS = 24;
-const activeSessions = new Map<string, { createdAt: number; ip: string }>();
+interface SessionData {
+  createdAt: number;
+  ip: string;
+  userId: number;
+  username: string;
+  role: string;
+}
+const activeSessions = new Map<string, SessionData>();
 
-function createSessionToken(ip: string): string {
+function createSessionToken(ip: string, user: { id: number; username: string; role: string }): string {
   const token = crypto.randomBytes(32).toString("hex");
-  activeSessions.set(token, { createdAt: Date.now(), ip });
+  activeSessions.set(token, { createdAt: Date.now(), ip, userId: user.id, username: user.username, role: user.role });
   return token;
 }
 
@@ -74,6 +82,17 @@ function isValidSession(token: string): boolean {
     return false;
   }
   return true;
+}
+
+function getSessionUser(token: string): SessionData | null {
+  const session = activeSessions.get(token);
+  if (!session) return null;
+  const age = Date.now() - session.createdAt;
+  if (age > SESSION_EXPIRY_HOURS * 60 * 60 * 1000) {
+    activeSessions.delete(token);
+    return null;
+  }
+  return session;
 }
 
 // Clean expired sessions and stale rate-limit records every hour
@@ -110,8 +129,6 @@ async function geocodeAddress(address: string, city: string, state: string): Pro
 export function registerRoutes(httpServer: Server, app: Express) {
   // ─── Authentication ─────────────────────────────────────────────────────────
 
-  const APP_PASSWORD = process.env.APP_PASSWORD || "fitzpatrick2026";
-
   app.post("/api/auth/login", (req, res) => {
     try {
       const ip = getClientIP(req);
@@ -123,19 +140,38 @@ export function registerRoutes(httpServer: Server, app: Express) {
         });
       }
 
-      const { password } = req.body;
-      if (typeof password !== "string" || !password) {
-        return res.status(400).json({ success: false, error: "Password required" });
+      const { username, password } = req.body;
+      if (typeof username !== "string" || !username || typeof password !== "string" || !password) {
+        return res.status(400).json({ success: false, error: "Username and password required" });
       }
 
-      if (safeCompare(password, APP_PASSWORD)) {
-        clearFailedLogins(ip);
-        const token = createSessionToken(ip);
-        return res.json({ success: true, token });
+      const user = storage.getUserByUsername(username);
+      if (!user || !user.active) {
+        recordFailedLogin(ip);
+        storage.createAuditEntry({ userId: null, username: username, action: "login_failed", details: "Unknown user or inactive" });
+        return res.status(401).json({ success: false, error: "Invalid username or password" });
       }
 
-      recordFailedLogin(ip);
-      return res.status(401).json({ success: false, error: "Incorrect password" });
+      if (!storage.verifyPassword(password, user.password)) {
+        recordFailedLogin(ip);
+        storage.createAuditEntry({ userId: user.id, username: user.username, action: "login_failed", details: "Wrong password" });
+        return res.status(401).json({ success: false, error: "Invalid username or password" });
+      }
+
+      clearFailedLogins(ip);
+      const token = createSessionToken(ip, { id: user.id, username: user.username, role: user.role });
+      storage.createAuditEntry({ userId: user.id, username: user.username, action: "login" });
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          role: user.role,
+          mustChangePassword: user.mustChangePassword,
+        },
+      });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: safeError(e) });
     }
@@ -144,8 +180,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/auth/verify", (req, res) => {
     try {
       const token = (req.headers.authorization || "").replace("Bearer ", "");
-      if (token && isValidSession(token)) {
-        return res.json({ authenticated: true });
+      const session = token ? getSessionUser(token) : null;
+      if (session) {
+        return res.json({
+          authenticated: true,
+          user: { id: session.userId, username: session.username, role: session.role },
+        });
       }
       return res.status(401).json({ authenticated: false });
     } catch (e: any) {
@@ -154,13 +194,48 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // Middleware to protect all other API routes — Bearer token only
+  // Attach user info to every authenticated request
   const requireAuth = (req: any, res: any, next: any) => {
     const token = (req.headers.authorization || "").replace("Bearer ", "");
-    if (token && isValidSession(token)) {
+    const session = token ? getSessionUser(token) : null;
+    if (session) {
+      req.user = { id: session.userId, username: session.username, role: session.role };
       return next();
     }
     return res.status(401).json({ error: "Unauthorized" });
   };
+
+  // Manager-only middleware
+  const requireManager = (req: any, res: any, next: any) => {
+    if (req.user?.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+    return next();
+  };
+
+  // Manager or Tech middleware (not staff)
+  const requireEditor = (req: any, res: any, next: any) => {
+    if (req.user?.role === "staff") {
+      return res.status(403).json({ error: "Edit access required" });
+    }
+    return next();
+  };
+
+  // Helper to log audit entries from route handlers
+  function logAudit(req: any, action: string, entityType?: string, entityId?: number, details?: string) {
+    try {
+      storage.createAuditEntry({
+        userId: req.user?.id || null,
+        username: req.user?.username || "system",
+        action,
+        entityType,
+        entityId,
+        details,
+      });
+    } catch (e) {
+      console.error("[audit] Failed to log:", e);
+    }
+  }
 
   // Apply auth middleware to all API routes except auth and backup endpoints
   // (backup routes have their own requireBackupAuth middleware)
@@ -168,6 +243,114 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (req.path.startsWith("/auth")) return next();
     if (req.path.startsWith("/backup")) return next();
     return requireAuth(req, res, next);
+  });
+
+  // ─── Password Change ──────────────────────────────────────────────────────
+  app.post("/api/auth/change-password", requireAuth, (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Current and new password required" });
+      }
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters" });
+      }
+      const user = storage.getUserById(req.user.id);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!storage.verifyPassword(currentPassword, user.password)) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+      storage.updateUser(user.id, { password: newPassword, mustChangePassword: 0 });
+      logAudit(req, "password_changed", "user", user.id);
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── User Management (Manager Only) ───────────────────────────────────────
+
+  app.get("/api/users", requireManager, (_req, res) => {
+    try {
+      const users = storage.getAllUsers();
+      res.json(users);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.post("/api/users", requireManager, (req, res) => {
+    try {
+      const { username, password, displayName, email, role } = req.body;
+      if (!username || !password || !displayName || !role) {
+        return res.status(400).json({ error: "Username, password, display name, and role are required" });
+      }
+      if (password.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters" });
+      }
+      if (!["manager", "tech", "staff"].includes(role)) {
+        return res.status(400).json({ error: "Role must be manager, tech, or staff" });
+      }
+      const existing = storage.getUserByUsername(username);
+      if (existing) return res.status(409).json({ error: "Username already exists" });
+      const user = storage.createUser({ username, password, displayName, email, role });
+      logAudit(req, "created_user", "user", user.id, JSON.stringify({ username, displayName, role }));
+      res.status(201).json(user);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.patch("/api/users/:id", requireManager, (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const { displayName, email, role, active, password } = req.body;
+      const updates: any = {};
+      if (displayName !== undefined) updates.displayName = displayName;
+      if (email !== undefined) updates.email = email;
+      if (role !== undefined) {
+        if (!["manager", "tech", "staff"].includes(role)) {
+          return res.status(400).json({ error: "Role must be manager, tech, or staff" });
+        }
+        updates.role = role;
+      }
+      if (active !== undefined) updates.active = active ? 1 : 0;
+      if (password !== undefined) {
+        if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters" });
+        updates.password = password;
+      }
+      const user = storage.updateUser(id, updates);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      const action = active === 0 ? "deactivated_user" : "edited_user";
+      logAudit(req, action, "user", id, JSON.stringify(updates));
+      // If this user has active sessions and was deactivated, invalidate them
+      if (active === 0 || active === false) {
+        activeSessions.forEach((session, token) => {
+          if (session.userId === id) activeSessions.delete(token);
+        });
+      }
+      res.json(user);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── System Audit Log (Manager Only) ──────────────────────────────────────
+
+  app.get("/api/audit-log", requireManager, (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.userId) filters.userId = parseInt(req.query.userId as string);
+      if (req.query.action) filters.action = req.query.action;
+      if (req.query.entityType) filters.entityType = req.query.entityType;
+      if (req.query.limit) filters.limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      if (req.query.offset) filters.offset = parseInt(req.query.offset as string) || 0;
+      const result = storage.getAuditLog(filters);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
   });
 
   // ─── Dashboard ──────────────────────────────────────────────────────────────
@@ -415,6 +598,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const data = insertContactSchema.parse(req.body);
       const contact = storage.createContact(data);
+      logAudit(req, "created_contact", "contact", contact.id, data.contactName);
       res.status(201).json(contact);
     } catch (e: any) {
       if (e instanceof z.ZodError) return res.status(400).json({ error: "Validation failed" });
@@ -474,6 +658,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         return res.status(400).json({ error: "Photo too large (max 10MB)" });
       }
       const photo = storage.createPhoto(data);
+      logAudit(req, "added_photo", "service_call", id, data.photoType);
       res.status(201).json(photo);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
@@ -533,6 +718,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const data = insertPartSchema.parse({ ...req.body, serviceCallId: id });
       const part = storage.createPart(data);
+      logAudit(req, "added_part", "service_call", id, data.partNumber);
       res.status(201).json(part);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
@@ -580,6 +766,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         return res.status(400).json({ error: "Note too long (max 10,000 characters)" });
       }
       const activity = storage.createActivity({ serviceCallId: id, note: note.trim() });
+      logAudit(req, "added_note", "service_call", id, note.trim().substring(0, 100));
       res.status(201).json(activity);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -1339,6 +1526,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const slotSize = fs.statSync(slotFile).size;
       const daySize = fs.statSync(dayFile).size;
 
+      logAudit(req, "ran_backup", undefined, undefined, `${amPm} + ${dayName}`);
       console.log(`[backup] Created ${slotFile} (${(slotSize / 1024).toFixed(0)}KB) and ${dayFile} (${(daySize / 1024).toFixed(0)}KB)`);
 
       res.json({

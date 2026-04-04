@@ -123,6 +123,43 @@ export const insertContactSchema = createInsertSchema(contacts).omit({ id: true,
 export type InsertContact = z.infer<typeof insertContactSchema>;
 export type Contact = typeof contacts.$inferSelect;
 
+// ─── Users ──────────────────────────────────────────────────────────────────
+
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  username: text("username").notNull().unique(),
+  password: text("password").notNull(), // bcrypt hashed
+  displayName: text("display_name").notNull(),
+  email: text("email"),
+  role: text("role").notNull().default("tech"), // "manager" | "tech" | "staff"
+  active: integer("active").notNull().default(1),
+  mustChangePassword: integer("must_change_password").notNull().default(1),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+
+export const USER_ROLES = ["manager", "tech", "staff"] as const;
+
+// ─── Audit Log (System-Wide) ────────────────────────────────────────────────
+
+export const auditLog = sqliteTable("audit_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id"),
+  username: text("username").notNull(),
+  action: text("action").notNull(),
+  entityType: text("entity_type"),
+  entityId: integer("entity_id"),
+  details: text("details"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLog).omit({ id: true, createdAt: true });
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLogEntry = typeof auditLog.$inferSelect;
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const MANUFACTURERS = [

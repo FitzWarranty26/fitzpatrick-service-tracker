@@ -6,7 +6,7 @@ import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { AppLayout } from "@/components/Layout";
 import { LoginScreen } from "@/components/LoginScreen";
-import { setToken, isAuthenticated } from "@/lib/auth";
+import { setAuth, isAuthenticated, getUser } from "@/lib/auth";
 import Dashboard from "@/pages/Dashboard";
 import ServiceCallList from "@/pages/ServiceCallList";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -18,6 +18,8 @@ const Analytics = lazy(() => import("@/pages/Analytics"));
 const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
 const Contacts = lazy(() => import("@/pages/Contacts"));
 const Reports = lazy(() => import("@/pages/Reports"));
+const Team = lazy(() => import("@/pages/Team"));
+const AuditLog = lazy(() => import("@/pages/AuditLog"));
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
@@ -31,6 +33,8 @@ function NotFound() {
 }
 
 function AppRouter() {
+  const user = getUser();
+
   return (
     <AppLayout>
       <Switch>
@@ -89,6 +93,24 @@ function AppRouter() {
             </Suspense>
           )}
         </Route>
+        {user?.role === "manager" && (
+          <>
+            <Route path="/team">
+              {() => (
+                <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+                  <Team />
+                </Suspense>
+              )}
+            </Route>
+            <Route path="/audit-log">
+              {() => (
+                <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+                  <AuditLog />
+                </Suspense>
+              )}
+            </Route>
+          </>
+        )}
         <Route component={NotFound} />
       </Switch>
       <PerplexityAttribution />
@@ -100,30 +122,51 @@ function App() {
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  // On mount, check if we already have a valid session
-  // (won't persist across page refreshes since we can't use localStorage in iframe)
   useEffect(() => {
     setChecking(false);
     setAuthed(isAuthenticated());
   }, []);
 
-  const handleLogin = async (pw: string): Promise<boolean> => {
+  const handleLogin = async (username: string, password: string): Promise<{ success: boolean; mustChangePassword?: boolean; error?: string }> => {
     try {
       const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pw }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
-      if (data.success && data.token) {
-        setToken(data.token);
+      if (data.success && data.token && data.user) {
+        setAuth(data.token, data.user);
+        if (data.user.mustChangePassword) {
+          return { success: true, mustChangePassword: true };
+        }
         setAuthed(true);
         queryClient.clear();
-        return true;
+        return { success: true };
       }
-      return false;
+      return { success: false, error: data.error };
     } catch {
-      return false;
+      return { success: false, error: "Connection error" };
+    }
+  };
+
+  const handleChangePassword = async (currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { getAuthHeaders } = await import("@/lib/auth");
+      const res = await fetch(`${API_BASE}/api/auth/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAuthed(true);
+        queryClient.clear();
+        return { success: true };
+      }
+      return { success: false, error: data.error };
+    } catch {
+      return { success: false, error: "Connection error" };
     }
   };
 
@@ -142,7 +185,7 @@ function App() {
           <AppRouter />
         </Router>
       ) : (
-        <LoginScreen onLogin={handleLogin} />
+        <LoginScreen onLogin={handleLogin} onChangePassword={handleChangePassword} />
       )}
       <Toaster />
     </QueryClientProvider>

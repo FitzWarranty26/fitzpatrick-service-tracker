@@ -54,17 +54,17 @@ app.use((_req, res, next) => {
 app.use(compression());
 
 // ─── Body Parsing ──────────────────────────────────────────────────────────────
-// 20mb limit — enough for compressed photos, but not unlimited
+// 1mb general limit — photo upload routes override with their own 20mb limit
 app.use(
   express.json({
-    limit: "20mb",
+    limit: "1mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false, limit: "20mb" }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 // ─── Request Logging (production: no response body to avoid logging sensitive data) ──
 export function log(message: string, source = "express") {

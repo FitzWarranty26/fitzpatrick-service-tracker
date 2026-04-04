@@ -1,12 +1,15 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcrypt";
 import {
   serviceCalls,
   photos,
   partsUsed,
   contacts,
   activityLog,
+  users,
+  auditLog,
   type ServiceCall,
   type InsertServiceCall,
   type Photo,
@@ -17,6 +20,8 @@ import {
   type InsertContact,
   type ActivityLog,
   type InsertActivityLog,
+  type User,
+  type AuditLogEntry,
 } from "@shared/schema";
 
 // Use persistent disk path on Render if available, otherwise local
@@ -100,6 +105,29 @@ sqlite.exec(`
     note TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    email TEXT,
+    role TEXT NOT NULL DEFAULT 'tech',
+    active INTEGER NOT NULL DEFAULT 1,
+    must_change_password INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS audit_log_system (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT NOT NULL,
+    action TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id INTEGER,
+    details TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // ─── Indexes for query performance ──────────────────────────────────────────
@@ -118,7 +146,7 @@ sqlite.exec(`
 // We check first to avoid errors on tables that already have the column.
 
 // Allow only known table names to prevent SQL injection
-const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log"]);
+const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system"]);
 
 function columnExists(table: string, column: string): boolean {
   if (!ALLOWED_TABLES.has(table)) throw new Error(`Unknown table: ${table}`);
@@ -194,6 +222,42 @@ if (!columnExists("service_calls", "claim_number")) {
 if (!columnExists("service_calls", "follow_up_date")) {
   sqlite.exec(`ALTER TABLE service_calls ADD COLUMN follow_up_date TEXT`);
   console.log("Migration: added follow_up_date column");
+}
+
+// Migration 11: Add created_by / updated_by to service_calls
+if (!columnExists("service_calls", "created_by")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN created_by INTEGER`);
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN updated_by INTEGER`);
+  console.log("Migration: added created_by/updated_by to service_calls");
+}
+
+// Migration 12: Add created_by to contacts
+if (!columnExists("contacts", "created_by")) {
+  sqlite.exec(`ALTER TABLE contacts ADD COLUMN created_by INTEGER`);
+  console.log("Migration: added created_by to contacts");
+}
+
+// Migration 13: Add username to activity_log for attribution
+if (!columnExists("activity_log", "username")) {
+  sqlite.exec(`ALTER TABLE activity_log ADD COLUMN username TEXT`);
+  console.log("Migration: added username to activity_log");
+}
+
+// Indexes for new tables
+sqlite.exec(`
+  CREATE INDEX IF NOT EXISTS idx_audit_log_system_created_at ON audit_log_system(created_at);
+  CREATE INDEX IF NOT EXISTS idx_audit_log_system_user_id ON audit_log_system(user_id);
+  CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+`);
+
+// Seed default admin user if users table is empty
+const userCount = (sqlite.prepare(`SELECT COUNT(*) as count FROM users`).get() as any).count;
+if (userCount === 0) {
+  const hashedPw = bcrypt.hashSync("fitzpatrick2026", 12);
+  sqlite.prepare(
+    `INSERT INTO users (username, password, display_name, email, role, active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run("admin", hashedPw, "Kevin Fitzpatrick", "kevin@fitzpatricksales.com", "manager", 1, 1, new Date().toISOString());
+  console.log("Seed: created default admin user (admin / fitzpatrick2026)");
 }
 
 export interface ServiceCallWithCounts extends ServiceCall {
@@ -861,6 +925,87 @@ export class SQLiteStorage implements IStorage {
 
   deleteActivity(id: number): void {
     db.delete(activityLog).where(eq(activityLog.id, id)).run();
+  }
+
+  // ─── Users ──────────────────────────────────────────────────────────────────
+
+  getAllUsers(): Omit<User, "password">[] {
+    const rows = sqlite.prepare(`SELECT id, username, display_name, email, role, active, must_change_password, created_at FROM users ORDER BY created_at ASC`).all() as any[];
+    return rows.map(r => ({
+      id: r.id, username: r.username, displayName: r.display_name, email: r.email,
+      role: r.role, active: r.active, mustChangePassword: r.must_change_password, createdAt: r.created_at,
+      password: "", // never returned
+    }));
+  }
+
+  getUserById(id: number): User | undefined {
+    const row = sqlite.prepare(`SELECT * FROM users WHERE id = ?`).get(id) as any;
+    if (!row) return undefined;
+    return { id: row.id, username: row.username, password: row.password, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
+  }
+
+  getUserByUsername(username: string): User | undefined {
+    const row = sqlite.prepare(`SELECT * FROM users WHERE LOWER(username) = LOWER(?)`).get(username) as any;
+    if (!row) return undefined;
+    return { id: row.id, username: row.username, password: row.password, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
+  }
+
+  createUser(data: { username: string; password: string; displayName: string; email?: string; role: string }): Omit<User, "password"> {
+    const hashed = bcrypt.hashSync(data.password, 12);
+    const now = new Date().toISOString();
+    const row = sqlite.prepare(
+      `INSERT INTO users (username, password, display_name, email, role, active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, 1, 1, ?) RETURNING *`
+    ).get(data.username, hashed, data.displayName, data.email || null, data.role, now) as any;
+    return { id: row.id, username: row.username, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at, password: "" };
+  }
+
+  updateUser(id: number, data: { displayName?: string; email?: string; role?: string; active?: number; password?: string; mustChangePassword?: number }): Omit<User, "password"> | undefined {
+    const updates: string[] = [];
+    const params: any[] = [];
+    if (data.displayName !== undefined) { updates.push("display_name = ?"); params.push(data.displayName); }
+    if (data.email !== undefined) { updates.push("email = ?"); params.push(data.email); }
+    if (data.role !== undefined) { updates.push("role = ?"); params.push(data.role); }
+    if (data.active !== undefined) { updates.push("active = ?"); params.push(data.active); }
+    if (data.password !== undefined) {
+      updates.push("password = ?"); params.push(bcrypt.hashSync(data.password, 12));
+      updates.push("must_change_password = 1");
+    }
+    if (data.mustChangePassword !== undefined) { updates.push("must_change_password = ?"); params.push(data.mustChangePassword); }
+    if (updates.length === 0) return this.getUserById(id) as any;
+    params.push(id);
+    const row = sqlite.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ? RETURNING *`).get(...params) as any;
+    if (!row) return undefined;
+    return { id: row.id, username: row.username, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at, password: "" };
+  }
+
+  verifyPassword(plaintext: string, hash: string): boolean {
+    return bcrypt.compareSync(plaintext, hash);
+  }
+
+  // ─── System Audit Log ─────────────────────────────────────────────────────
+
+  createAuditEntry(data: { userId: number | null; username: string; action: string; entityType?: string; entityId?: number; details?: string }): void {
+    sqlite.prepare(
+      `INSERT INTO audit_log_system (user_id, username, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(data.userId, data.username, data.action, data.entityType || null, data.entityId || null, data.details || null, new Date().toISOString());
+  }
+
+  getAuditLog(filters?: { userId?: number; action?: string; entityType?: string; limit?: number; offset?: number }): { entries: AuditLogEntry[]; total: number } {
+    const conditions: string[] = [];
+    const params: any[] = [];
+    if (filters?.userId) { conditions.push("user_id = ?"); params.push(filters.userId); }
+    if (filters?.action) { conditions.push("action = ?"); params.push(filters.action); }
+    if (filters?.entityType) { conditions.push("entity_type = ?"); params.push(filters.entityType); }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const total = (sqlite.prepare(`SELECT COUNT(*) as count FROM audit_log_system ${where}`).get(...params) as any).count;
+    const limit = filters?.limit || 50;
+    const offset = filters?.offset || 0;
+    const rows = sqlite.prepare(`SELECT * FROM audit_log_system ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as any[];
+    const entries = rows.map(r => ({
+      id: r.id, userId: r.user_id, username: r.username, action: r.action,
+      entityType: r.entity_type, entityId: r.entity_id, details: r.details, createdAt: r.created_at,
+    }));
+    return { entries, total };
   }
 }
 
