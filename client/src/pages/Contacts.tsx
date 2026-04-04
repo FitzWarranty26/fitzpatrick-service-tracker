@@ -339,7 +339,7 @@ export default function Contacts() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Type *</label>
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Type <span className="text-primary">*</span></label>
               <Select value={formData.contactType} onValueChange={v => updateField("contactType", v)}>
                 <SelectTrigger data-testid="dialog-contact-type"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -350,39 +350,39 @@ export default function Contacts() {
               </Select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Contact Name *</label>
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Contact Name <span className="text-primary">*</span></label>
               <Input value={formData.contactName} onChange={e => updateField("contactName", e.target.value)} placeholder="Full name" data-testid="dialog-contact-name" />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Company Name</label>
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Company Name</label>
               <Input value={formData.companyName} onChange={e => updateField("companyName", e.target.value)} placeholder="Company or business name" data-testid="dialog-company-name" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Phone</label>
+                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Phone</label>
                 <Input type="tel" value={formData.phone} onChange={e => updateField("phone", e.target.value)} placeholder="801-555-0000" data-testid="dialog-phone" />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Email</label>
+                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Email</label>
                 <Input type="email" value={formData.email} onChange={e => updateField("email", e.target.value)} placeholder="email@example.com" data-testid="dialog-email" />
               </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Address</label>
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Address</label>
               <Input value={formData.address} onChange={e => updateField("address", e.target.value)} placeholder="Street address" data-testid="dialog-address" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">City</label>
+                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">City</label>
                 <Input value={formData.city} onChange={e => updateField("city", e.target.value)} placeholder="City" data-testid="dialog-city" />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">State</label>
+                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">State</label>
                 <Input value={formData.state} onChange={e => updateField("state", e.target.value)} placeholder="UT" data-testid="dialog-state" />
               </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Notes</label>
               <Textarea rows={2} value={formData.notes} onChange={e => updateField("notes", e.target.value)} placeholder="Additional notes…" data-testid="dialog-notes" />
             </div>
           </div>
