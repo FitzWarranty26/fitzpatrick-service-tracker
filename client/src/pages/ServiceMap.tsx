@@ -11,6 +11,12 @@ import { Loader2, Navigation } from "lucide-react";
 import { MANUFACTURERS, SERVICE_STATUSES } from "@shared/schema";
 import { subDays, format } from "date-fns";
 
+// Escape user content before injecting into Leaflet popup HTML
+function escHtml(str: string | null | undefined): string {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 // Colored marker icons for manufacturers
 const MANUFACTURER_COLORS: Record<string, string> = {
   "A.O. Smith Water Heaters": "#2563EB",
@@ -140,14 +146,14 @@ export default function ServiceMap() {
 
       marker.bindPopup(`
         <div style="font-family: sans-serif; min-width: 200px;">
-          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">${call.customerName}</div>
-          <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">${call.jobSiteName}</div>
-          <div style="font-size: 11px; margin-bottom: 2px;"><strong>Manufacturer:</strong> ${call.manufacturer}</div>
-          <div style="font-size: 11px; margin-bottom: 2px;"><strong>Model:</strong> ${call.productModel}</div>
-          <div style="font-size: 11px; margin-bottom: 2px;"><strong>Date:</strong> ${call.callDate}</div>
-          <div style="font-size: 11px; margin-bottom: 6px;"><strong>Status:</strong> ${call.status}</div>
-          <div style="font-size: 11px; margin-bottom: 2px;">${call.jobSiteCity}, ${call.jobSiteState}</div>
-          <a href="#/calls/${call.id}" style="font-size: 11px; color: #2563EB; text-decoration: none; font-weight: 600;">View Details →</a>
+          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">${escHtml(call.customerName)}</div>
+          <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">${escHtml(call.jobSiteName)}</div>
+          <div style="font-size: 11px; margin-bottom: 2px;"><strong>Manufacturer:</strong> ${escHtml(call.manufacturer)}</div>
+          <div style="font-size: 11px; margin-bottom: 2px;"><strong>Model:</strong> ${escHtml(call.productModel)}</div>
+          <div style="font-size: 11px; margin-bottom: 2px;"><strong>Date:</strong> ${escHtml(call.callDate)}</div>
+          <div style="font-size: 11px; margin-bottom: 6px;"><strong>Status:</strong> ${escHtml(call.status)}</div>
+          <div style="font-size: 11px; margin-bottom: 2px;">${escHtml(call.jobSiteCity)}, ${escHtml(call.jobSiteState)}</div>
+          <a href="#/calls/${Number(call.id)}" style="font-size: 11px; color: hsl(200, 72%, 40%); text-decoration: none; font-weight: 600;">View Details →</a>
         </div>
       `);
 

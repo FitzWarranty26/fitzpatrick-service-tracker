@@ -201,6 +201,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const q = req.query.q as string;
       if (!q || q.length < 2) return res.json({ calls: [], contacts: [], activities: [] });
+      // Cap search length to prevent expensive LIKE queries
+      if (q.length > 200) return res.status(400).json({ error: "Search query too long" });
       const results = storage.globalSearch(q);
       res.json(results);
     } catch (e: any) {
@@ -459,6 +461,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const data = insertPhotoSchema.parse({ ...req.body, serviceCallId: id });
+      // Only allow data: URLs for photos — reject external URLs that could be used for SSRF or tracking
+      if (!data.photoUrl.startsWith("data:")) {
+        return res.status(400).json({ error: "Photo must be a data URL" });
+      }
+      // Reject unreasonably large photos (>10MB base64)
+      if (data.photoUrl.length > 10 * 1024 * 1024 * 1.37) {
+        return res.status(400).json({ error: "Photo too large (max 10MB)" });
+      }
       const photo = storage.createPhoto(data);
       res.status(201).json(photo);
     } catch (e: any) {
@@ -475,8 +485,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const { photoIds } = req.body;
       if (!Array.isArray(photoIds)) return res.status(400).json({ error: "photoIds array required" });
+      // Validate every element is a finite integer to prevent injection or junk data
       for (let i = 0; i < photoIds.length; i++) {
-        storage.updatePhotoSortOrder(photoIds[i], i);
+        const pid = Number(photoIds[i]);
+        if (!Number.isFinite(pid) || !Number.isInteger(pid) || pid < 1) {
+          return res.status(400).json({ error: "photoIds must contain positive integers" });
+        }
+        storage.updatePhotoSortOrder(pid, i);
       }
       res.json({ success: true });
     } catch (e: any) {
@@ -556,6 +571,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const { note } = req.body;
       if (typeof note !== "string" || !note.trim()) {
         return res.status(400).json({ error: "Note is required" });
+      }
+      if (note.length > 10000) {
+        return res.status(400).json({ error: "Note too long (max 10,000 characters)" });
       }
       const activity = storage.createActivity({ serviceCallId: id, note: note.trim() });
       res.status(201).json(activity);

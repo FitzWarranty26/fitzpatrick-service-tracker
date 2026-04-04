@@ -5,6 +5,12 @@ interface ServiceCallFull extends ServiceCall {
   parts: Part[];
 }
 
+// Escape user-provided strings before injecting into PDF HTML
+function esc(str: string | null | undefined): string {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
   try {
@@ -70,10 +76,10 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
           const p = call.photos[i];
           html += `
             <div class="photo-item">
-              <img src="${p.photoUrl}" alt="${p.caption || "Photo"}" />
+              <img src="${p.photoUrl}" alt="${esc(p.caption) || "Photo"}" />
               <div class="photo-label">
-                <strong>${p.photoType}</strong>
-                ${p.caption ? `<br/>${p.caption}` : ""}
+                <strong>${esc(p.photoType)}</strong>
+                ${p.caption ? `<br/>${esc(p.caption)}` : ""}
               </div>
             </div>`;
         }
@@ -99,10 +105,10 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
           <tbody>
             ${call.parts.map(p => `
               <tr>
-                <td><code>${p.partNumber}</code></td>
-                <td>${p.partDescription}</td>
+                <td><code>${esc(p.partNumber)}</code></td>
+                <td>${esc(p.partDescription)}</td>
                 <td style="text-align:center">${p.quantity}</td>
-                <td>${p.source ?? "—"}</td>
+                <td>${esc(p.source) || "—"}</td>
               </tr>
             `).join("")}
           </tbody>
@@ -117,12 +123,12 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
       <div class="field-grid">
         <div class="field">
           <label>Claim Status</label>
-          <span class="value">${call.claimStatus}</span>
+          <span class="value">${esc(call.claimStatus)}</span>
         </div>
         ${call.claimNotes ? `
           <div class="field full-width">
             <label>Claim Notes</label>
-            <p class="value">${call.claimNotes}</p>
+            <p class="value">${esc(call.claimNotes)}</p>
           </div>
         ` : ""}
         ${call.partsCost ? `
@@ -286,24 +292,24 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
   <div class="status-bar">
     <div class="status-item">
       <span class="status-label">Call Status</span>
-      <span class="badge ${getStatusBadgeClass(call.status)}">${call.status}</span>
+      <span class="badge ${getStatusBadgeClass(call.status)}">${esc(call.status)}</span>
     </div>
     <div class="status-item">
       <span class="status-label">Claim Status</span>
-      <span class="badge ${getClaimBadgeClass(call.claimStatus)}">${call.claimStatus}</span>
+      <span class="badge ${getClaimBadgeClass(call.claimStatus)}">${esc(call.claimStatus)}</span>
     </div>
     <div class="status-item">
       <span class="status-label">Manufacturer</span>
-      <span class="status-value">${manufacturerDisplay}</span>
+      <span class="status-value">${esc(manufacturerDisplay)}</span>
     </div>
     <div class="status-item">
       <span class="status-label">Model</span>
-      <span class="status-value" style="font-family:monospace">${call.productModel}</span>
+      <span class="status-value" style="font-family:monospace">${esc(call.productModel)}</span>
     </div>
     ${call.productSerial ? `
     <div class="status-item">
       <span class="status-label">Serial #</span>
-      <span class="status-value" style="font-family:monospace">${call.productSerial}</span>
+      <span class="status-value" style="font-family:monospace">${esc(call.productSerial)}</span>
     </div>
     ` : ""}
     ${call.scheduledDate ? `
@@ -320,15 +326,15 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
     <div class="field-grid">
       <div class="field">
         <label>Customer / Distributor</label>
-        <span class="value">${call.customerName}</span>
+        <span class="value">${esc(call.customerName)}</span>
       </div>
       <div class="field">
         <label>Job Site / Project</label>
-        <span class="value">${call.jobSiteName}</span>
+        <span class="value">${esc(call.jobSiteName)}</span>
       </div>
       <div class="field">
         <label>Address</label>
-        <span class="value">${call.jobSiteAddress}, ${call.jobSiteCity}, ${call.jobSiteState}</span>
+        <span class="value">${esc(call.jobSiteAddress)}, ${esc(call.jobSiteCity)}, ${esc(call.jobSiteState)}</span>
       </div>
       <div class="field">
         <label>Installation Date</label>
@@ -337,37 +343,37 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
       ${call.contactName ? `
       <div class="field">
         <label>Installing Contractor</label>
-        <span class="value">${call.contactName}</span>
+        <span class="value">${esc(call.contactName)}</span>
       </div>
       ` : ""}
       ${call.contactPhone ? `
       <div class="field">
         <label>Contractor Phone</label>
-        <span class="value">${call.contactPhone}</span>
+        <span class="value">${esc(call.contactPhone)}</span>
       </div>
       ` : ""}
       ${call.contactEmail ? `
       <div class="field">
         <label>Contractor Email</label>
-        <span class="value">${call.contactEmail}</span>
+        <span class="value">${esc(call.contactEmail)}</span>
       </div>
       ` : ""}
       ${call.siteContactName ? `
       <div class="field">
         <label>On-Site Contact</label>
-        <span class="value">${call.siteContactName}</span>
+        <span class="value">${esc(call.siteContactName)}</span>
       </div>
       ` : ""}
       ${call.siteContactPhone ? `
       <div class="field">
         <label>Site Contact Phone</label>
-        <span class="value">${call.siteContactPhone}</span>
+        <span class="value">${esc(call.siteContactPhone)}</span>
       </div>
       ` : ""}
       ${call.siteContactEmail ? `
       <div class="field">
         <label>Site Contact Email</label>
-        <span class="value">${call.siteContactEmail}</span>
+        <span class="value">${esc(call.siteContactEmail)}</span>
       </div>
       ` : ""}
     </div>
@@ -381,13 +387,13 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
       ${call.hoursOnJob ? `
       <div class="field">
         <label>Hours on Job</label>
-        <span class="value">${call.hoursOnJob} hrs</span>
+        <span class="value">${esc(call.hoursOnJob)} hrs</span>
       </div>
       ` : ""}
       ${call.milesTraveled ? `
       <div class="field">
         <label>Miles Traveled</label>
-        <span class="value">${call.milesTraveled} mi</span>
+        <span class="value">${esc(call.milesTraveled)} mi</span>
       </div>
       ` : ""}
     </div>
@@ -397,27 +403,27 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
   <!-- Issue Description -->
   <div class="section">
     <h2>Issue Description</h2>
-    <div class="narrative"><p>${call.issueDescription}</p></div>
+    <div class="narrative"><p>${esc(call.issueDescription)}</p></div>
   </div>
 
   ${call.diagnosis ? `
   <div class="section">
     <h2>Diagnosis</h2>
-    <div class="narrative"><p>${call.diagnosis}</p></div>
+    <div class="narrative"><p>${esc(call.diagnosis)}</p></div>
   </div>
   ` : ""}
 
   ${call.resolution ? `
   <div class="section">
     <h2>Resolution</h2>
-    <div class="narrative"><p>${call.resolution}</p></div>
+    <div class="narrative"><p>${esc(call.resolution)}</p></div>
   </div>
   ` : ""}
 
   ${call.techNotes ? `
   <div class="section">
     <h2>Technician Notes</h2>
-    <div class="narrative"><p>${call.techNotes}</p></div>
+    <div class="narrative"><p>${esc(call.techNotes)}</p></div>
   </div>
   ` : ""}
 

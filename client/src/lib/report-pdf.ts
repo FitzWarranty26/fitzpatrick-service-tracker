@@ -146,7 +146,7 @@ export async function generateReportPDF(reportType: string, data: any): Promise<
         body += `<tr>
           <td>${formatDate(c.callDate)}</td><td>${escapeHtml(c.customerName)}</td><td>${escapeHtml(c.jobSiteName)}</td>
           <td class="mono">${escapeHtml(c.productModel)}</td><td class="mono">${c.productSerial ? escapeHtml(c.productSerial) : "—"}</td>
-          <td>${c.status}</td><td>${c.claimStatus}</td><td>${c.claimNumber || "—"}</td>
+          <td>${escapeHtml(c.status)}</td><td>${escapeHtml(c.claimStatus)}</td><td>${c.claimNumber ? escapeHtml(c.claimNumber) : "—"}</td>
           <td class="right">${fmt$(c.partsCost)}</td><td class="right">${fmt$(c.laborCost)}</td><td class="right">${fmt$(c.claimAmount)}</td>
         </tr>`;
       }
@@ -229,7 +229,7 @@ export async function generateReportPDF(reportType: string, data: any): Promise<
           <td>${escapeHtml(c.manufacturer)}</td><td class="mono">${escapeHtml(c.productModel)}</td>
           <td class="mono">${c.productSerial ? escapeHtml(c.productSerial) : "—"}</td>
           <td>${escapeHtml(truncate(c.issueDescription, 80))}</td>
-          <td>${c.status}</td><td>${c.claimStatus}</td><td class="right">${fmt$(c.claimAmount)}</td>
+          <td>${escapeHtml(c.status)}</td><td>${escapeHtml(c.claimStatus)}</td><td class="right">${fmt$(c.claimAmount)}</td>
         </tr>`;
       }
       body += `</tbody></table>`;
@@ -257,7 +257,7 @@ export async function generateReportPDF(reportType: string, data: any): Promise<
         body += `<tr>
           <td>#${c.id}</td><td>${formatDate(c.callDate)}</td><td>${escapeHtml(c.customerName)}</td>
           <td>${escapeHtml(c.manufacturer)}</td><td class="mono">${escapeHtml(c.productModel)}</td>
-          <td>${c.claimNumber || "—"}</td><td>${c.claimStatus}</td>
+          <td>${c.claimNumber ? escapeHtml(c.claimNumber) : "—"}</td><td>${escapeHtml(c.claimStatus)}</td>
           <td class="right">${fmt$(c.claimAmount)}</td><td class="right">${c.daysPending}</td>
         </tr>`;
       }
