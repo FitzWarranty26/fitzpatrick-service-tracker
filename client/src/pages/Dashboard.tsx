@@ -130,16 +130,16 @@ export default function Dashboard() {
 
   const summaryCards = [
     {
-      title: "Total Service Calls",
+      title: "TOTAL SERVICE CALLS",
       value: stats?.totalCalls ?? 0,
       icon: ClipboardCheck,
-      color: "text-blue-600 dark:text-blue-400",
-      bg: "bg-blue-50 dark:bg-blue-900/20",
+      color: "text-cyan-700 dark:text-cyan-400",
+      bg: "bg-cyan-50 dark:bg-cyan-900/20",
       testId: "stat-total",
       href: "/calls",
     },
     {
-      title: "Open Calls",
+      title: "OPEN CALLS",
       value: stats?.openCalls ?? 0,
       icon: Clock,
       color: "text-amber-600 dark:text-amber-400",
@@ -148,25 +148,25 @@ export default function Dashboard() {
       href: "/calls/filter/open",
     },
     {
-      title: "Completed This Month",
+      title: "COMPLETED THIS MONTH",
       value: stats?.completedThisMonth ?? 0,
       icon: FileCheck,
-      color: "text-green-600 dark:text-green-400",
-      bg: "bg-green-50 dark:bg-green-900/20",
+      color: "text-emerald-600 dark:text-emerald-400",
+      bg: "bg-emerald-50 dark:bg-emerald-900/20",
       testId: "stat-completed",
       href: "/calls/filter/completed-month",
     },
     {
-      title: "Pending Claims",
+      title: "PENDING CLAIMS",
       value: stats?.pendingClaims ?? 0,
       icon: PackageSearch,
-      color: "text-purple-600 dark:text-purple-400",
-      bg: "bg-purple-50 dark:bg-purple-900/20",
+      color: "text-amber-600 dark:text-amber-400",
+      bg: "bg-amber-50 dark:bg-amber-900/20",
       testId: "stat-claims",
       href: "/calls/filter/pending-claims",
     },
     ...((stats?.followUpsDue ?? 0) > 0 ? [{
-      title: "Follow-ups Due",
+      title: "FOLLOW-UPS DUE",
       value: stats?.followUpsDue ?? 0,
       icon: Bell,
       color: "text-orange-600 dark:text-orange-400",
@@ -175,7 +175,7 @@ export default function Dashboard() {
       href: "/calls/filter/follow-ups-due",
     }] : []),
     ...(outOfWarrantyCount > 0 ? [{
-      title: "Out of Warranty",
+      title: "OUT OF WARRANTY",
       value: outOfWarrantyCount,
       icon: ShieldAlert,
       color: "text-red-600 dark:text-red-400",
@@ -236,33 +236,45 @@ export default function Dashboard() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        {summaryCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <div key={card.title} onClick={() => { window.location.hash = card.href; }} className="cursor-pointer">
-              <Card className="overflow-hidden hover:shadow-md hover:border-primary/30 transition-all" data-testid={card.testId}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs text-muted-foreground font-medium leading-tight mb-1">{card.title}</p>
-                      {statsLoading ? (
-                        <Skeleton className="h-8 w-12 mt-1" />
-                      ) : (
-                        <p className="text-2xl font-bold text-foreground" data-testid={`${card.testId}-value`}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {statsLoading ? (
+          [...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-24" />
+                    <Skeleton className="h-8 w-14" />
+                  </div>
+                  <Skeleton className="h-10 w-10 rounded-xl" />
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          summaryCards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <div key={card.title} onClick={() => { window.location.hash = card.href; }} className="cursor-pointer">
+                <Card className="overflow-hidden hover:shadow-md hover:border-primary/30 transition-all" data-testid={card.testId}>
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-[10px] tracking-widest text-muted-foreground font-semibold leading-tight mb-2">{card.title}</p>
+                        <p className="text-2xl font-bold text-foreground tracking-[-0.02em]" data-testid={`${card.testId}-value`}>
                           {card.value}
                         </p>
-                      )}
+                      </div>
+                      <div className={`p-2.5 rounded-xl ${card.bg}`}>
+                        <Icon className={`w-5 h-5 ${card.color}`} />
+                      </div>
                     </div>
-                    <div className={`p-2 rounded-lg ${card.bg}`}>
-                      <Icon className={`w-4 h-4 ${card.color}`} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          );
-        })}
+                  </CardContent>
+                </Card>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Follow-ups Due Alert */}
@@ -302,10 +314,10 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Recent Service Calls */}
+      {/* Service Calls */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold">Service Calls</CardTitle>
+          <CardTitle className="text-base font-semibold tracking-[-0.01em]">Service Calls</CardTitle>
           <Button variant="ghost" size="sm" asChild className="text-xs text-muted-foreground">
             <Link href="/calls">
               View all <ArrowRight className="w-3.5 h-3.5 ml-1" />
@@ -314,9 +326,16 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent className="p-0">
           {recentLoading ? (
-            <div className="p-4 space-y-3">
-              {[...Array(4)].map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full" />
+            <div className="p-4 space-y-2">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 py-2">
+                  <Skeleton className="h-4 w-20" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                </div>
               ))}
             </div>
           ) : !recent || recent.length === 0 ? (
@@ -334,13 +353,13 @@ export default function Dashboard() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border">
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Date</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Customer / Site</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Status</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Scheduled</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Manufacturer</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Model</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Claim</th>
+                      <th className="text-left px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Date</th>
+                      <th className="text-left px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customer / Site</th>
+                      <th className="text-left px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Status</th>
+                      <th className="text-left px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Scheduled</th>
+                      <th className="text-left px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Manufacturer</th>
+                      <th className="text-left px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
+                      <th className="text-left px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim</th>
                       <th className="w-8 px-4 py-2.5"></th>
                     </tr>
                   </thead>
@@ -349,20 +368,20 @@ export default function Dashboard() {
                       <tr
                         key={call.id}
                         className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors cursor-pointer"
-                        style={{ borderBottomWidth: '5px', borderBottomColor: 'transparent' }}
+
                         onClick={() => window.location.hash = `/calls/${call.id}`}
                         data-testid={`row-call-${call.id}`}
                       >
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatDate(call.callDate)}</td>
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-foreground">{call.customerName}</p>
+                        <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap text-xs">{formatDate(call.callDate)}</td>
+                        <td className="px-4 py-2.5">
+                          <p className="font-medium text-sm text-foreground">{call.customerName}</p>
                           <p className="text-xs text-muted-foreground">{call.jobSiteName}</p>
                           {(call.jobSiteCity || call.jobSiteState) && (
                             <p className="text-[10px] text-muted-foreground/60">{[call.jobSiteCity, call.jobSiteState].filter(Boolean).join(", ")}</p>
                           )}
                         </td>
-                        <td className="px-4 py-3"><StatusBadge status={call.status} /></td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
+                        <td className="px-4 py-2.5"><StatusBadge status={call.status} /></td>
+                        <td className="px-4 py-2.5 text-muted-foreground text-xs whitespace-nowrap">
                           {call.scheduledDate ? (
                             <>
                               {formatDate(call.scheduledDate)}
@@ -374,10 +393,10 @@ export default function Dashboard() {
                             <span className="text-muted-foreground/40">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{call.manufacturer}</td>
-                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{call.productModel}</td>
-                        <td className="px-4 py-3"><ClaimBadge status={call.claimStatus} /></td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="px-4 py-2.5 text-muted-foreground text-sm whitespace-nowrap">{call.manufacturer}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground font-mono text-xs">{call.productModel}</td>
+                        <td className="px-4 py-2.5"><ClaimBadge status={call.claimStatus} /></td>
+                        <td className="px-4 py-2.5 text-muted-foreground">
                           <ChevronRight className="w-4 h-4" />
                         </td>
                       </tr>
@@ -396,14 +415,17 @@ export default function Dashboard() {
                     data-testid={`card-call-${call.id}`}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-0.5">
                         <StatusBadge status={call.status} />
-                        <span className="text-xs text-muted-foreground">{formatDate(call.callDate)}</span>
+                        <span className="text-[10px] text-muted-foreground/70">{formatDate(call.callDate)}</span>
                       </div>
                       <p className="font-medium text-sm text-foreground truncate">{call.customerName}</p>
                       <p className="text-xs text-muted-foreground truncate">{call.manufacturer} · {call.productModel}</p>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
+                    <div className="flex flex-col items-end flex-shrink-0 gap-1">
+                      <ClaimBadge status={call.claimStatus} />
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
+                    </div>
                   </Link>
                 ))}
               </div>
