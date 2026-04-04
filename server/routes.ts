@@ -434,7 +434,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/service-calls", (req, res) => {
+  app.post("/api/service-calls", requireEditor, (req, res) => {
     try {
       const data = insertServiceCallSchema.parse(req.body);
       const call = storage.createServiceCall(data);
@@ -474,6 +474,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
         }
       });
+      logAudit(req, "created_call", "service_call", call.id, `${data.customerName || ""} - ${data.manufacturer}`);
       res.status(201).json(call);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
@@ -483,13 +484,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.patch("/api/service-calls/:id", (req, res) => {
+  app.patch("/api/service-calls/:id", requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const data = insertServiceCallSchema.partial().parse(req.body);
       const call = storage.updateServiceCall(id, data);
       if (!call) return res.status(404).json({ error: "Not found" });
+      logAudit(req, "edited_call", "service_call", id);
       res.json(call);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
@@ -499,11 +501,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/service-calls/:id", (req, res) => {
+  app.delete("/api/service-calls/:id", requireManager, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       storage.deleteServiceCall(id);
+      logAudit(req, "deleted_call", "service_call", id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -594,7 +597,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/contacts", (req, res) => {
+  app.post("/api/contacts", requireEditor, (req, res) => {
     try {
       const data = insertContactSchema.parse(req.body);
       const contact = storage.createContact(data);
@@ -606,7 +609,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.patch("/api/contacts/:id", (req, res) => {
+  app.patch("/api/contacts/:id", requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -620,7 +623,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/contacts/:id", (req, res) => {
+  app.delete("/api/contacts/:id", requireManager, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -644,7 +647,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/service-calls/:id/photos", (req, res) => {
+  app.post("/api/service-calls/:id/photos", express.json({ limit: "20mb" }), requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -712,7 +715,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/service-calls/:id/parts", (req, res) => {
+  app.post("/api/service-calls/:id/parts", requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });

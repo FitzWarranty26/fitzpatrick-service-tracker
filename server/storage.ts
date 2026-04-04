@@ -42,21 +42,21 @@ sqlite.exec(`
     call_date TEXT NOT NULL,
     manufacturer TEXT NOT NULL,
     manufacturer_other TEXT,
-    customer_name TEXT NOT NULL,
-    job_site_name TEXT NOT NULL,
-    job_site_address TEXT NOT NULL,
-    job_site_city TEXT NOT NULL,
-    job_site_state TEXT NOT NULL,
+    customer_name TEXT,
+    job_site_name TEXT,
+    job_site_address TEXT,
+    job_site_city TEXT,
+    job_site_state TEXT,
     contact_name TEXT,
     contact_phone TEXT,
     contact_email TEXT,
     site_contact_name TEXT,
     site_contact_phone TEXT,
     site_contact_email TEXT,
-    product_model TEXT NOT NULL,
+    product_model TEXT,
     product_serial TEXT,
     installation_date TEXT,
-    issue_description TEXT NOT NULL,
+    issue_description TEXT,
     diagnosis TEXT,
     resolution TEXT,
     status TEXT NOT NULL DEFAULT 'Scheduled',
@@ -241,6 +241,69 @@ if (!columnExists("contacts", "created_by")) {
 if (!columnExists("activity_log", "username")) {
   sqlite.exec(`ALTER TABLE activity_log ADD COLUMN username TEXT`);
   console.log("Migration: added username to activity_log");
+}
+
+// Migration 14: Remove NOT NULL from optional fields in service_calls
+// SQLite can't ALTER COLUMN, so we recreate the table
+const colInfo = sqlite.prepare(`PRAGMA table_info(service_calls)`).all() as any[];
+const customerNameCol = colInfo.find((c: any) => c.name === "customer_name");
+if (customerNameCol && customerNameCol.notnull === 1) {
+  console.log("Migration 14: Removing NOT NULL constraints from optional service_calls columns...");
+  sqlite.exec(`
+    CREATE TABLE service_calls_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_date TEXT NOT NULL,
+      manufacturer TEXT NOT NULL,
+      manufacturer_other TEXT,
+      customer_name TEXT,
+      job_site_name TEXT,
+      job_site_address TEXT,
+      job_site_city TEXT,
+      job_site_state TEXT,
+      contact_name TEXT,
+      contact_phone TEXT,
+      contact_email TEXT,
+      site_contact_name TEXT,
+      site_contact_phone TEXT,
+      site_contact_email TEXT,
+      product_model TEXT,
+      product_serial TEXT,
+      installation_date TEXT,
+      issue_description TEXT,
+      diagnosis TEXT,
+      resolution TEXT,
+      status TEXT NOT NULL DEFAULT 'Scheduled',
+      claim_status TEXT NOT NULL DEFAULT 'Not Filed',
+      claim_notes TEXT,
+      tech_notes TEXT,
+      latitude TEXT,
+      longitude TEXT,
+      created_at TEXT NOT NULL,
+      hours_on_job TEXT,
+      miles_traveled TEXT,
+      scheduled_date TEXT,
+      scheduled_time TEXT,
+      parent_call_id INTEGER,
+      product_type TEXT,
+      parts_cost TEXT,
+      labor_cost TEXT,
+      other_cost TEXT,
+      claim_amount TEXT,
+      claim_number TEXT,
+      follow_up_date TEXT,
+      created_by INTEGER,
+      updated_by INTEGER
+    );
+    INSERT INTO service_calls_new SELECT * FROM service_calls;
+    DROP TABLE service_calls;
+    ALTER TABLE service_calls_new RENAME TO service_calls;
+  `);
+  // Recreate indexes
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_service_calls_call_date ON service_calls(call_date);
+    CREATE INDEX IF NOT EXISTS idx_service_calls_status ON service_calls(status);
+  `);
+  console.log("Migration 14: Done — optional fields are now nullable");
 }
 
 // Indexes for new tables

@@ -105,7 +105,7 @@ export default function Team() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {Object.entries(ROLE_CONFIG).map(([role, config]) => {
           const count = activeUsers.filter(u => u.role === role).length;
           const Icon = config.icon;
