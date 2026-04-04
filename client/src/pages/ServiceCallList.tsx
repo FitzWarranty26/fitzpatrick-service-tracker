@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -42,6 +42,20 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
   const [filterState, setFilterState] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [presetFilter, setPresetFilter] = useState(presetProp || "");
+
+  // Sync presetFilter when navigating between routes that share this component
+  // (e.g. /calls -> /scheduled -> /calls). useState initializer only runs on mount,
+  // so without this effect the preset goes stale on re-navigation.
+  // Also reset manual filters so stale search/filter state doesn't carry over.
+  useEffect(() => {
+    setPresetFilter(presetProp || "");
+    setSearch("");
+    setFilterManufacturer("");
+    setFilterStatus("");
+    setFilterClaimStatus("");
+    setFilterState("");
+    setShowFilters(false);
+  }, [presetProp]);
 
   const params = new URLSearchParams();
   if (search) params.set("search", search);
