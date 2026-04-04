@@ -93,7 +93,7 @@ function GlobalSearch() {
           onKeyDown={handleKeyDown}
           onFocus={() => { if (results && query.length >= 2) setOpen(true); }}
           placeholder="Search…"
-          className="h-8 pl-8 text-xs bg-[hsl(217,28%,22%)] border-[hsl(217,28%,25%)] text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-blue-500"
+          className="h-8 pl-8 text-xs bg-[hsl(220,22%,20%)] border-[hsl(220,22%,22%)] text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-blue-500"
           data-testid="global-search-input"
         />
       </div>
@@ -197,7 +197,7 @@ function MobileBottomNav({ location }: { location: string }) {
       {showMore && (
         <div className="md:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setShowMore(false)}>
           <div
-            className="absolute bottom-[60px] left-0 right-0 bg-[hsl(217,32%,15%)] border-t border-[hsl(217,28%,20%)] rounded-t-xl p-2"
+            className="absolute bottom-[60px] left-0 right-0 bg-[hsl(220,22%,14%)] border-t border-[hsl(220,22%,18%)] rounded-t-xl p-2"
             onClick={e => e.stopPropagation()}
           >
             <div className="grid grid-cols-4 gap-1">
@@ -210,7 +210,7 @@ function MobileBottomNav({ location }: { location: string }) {
                     onClick={() => setShowMore(false)}
                     className={cn(
                       "flex flex-col items-center justify-center py-3 rounded-lg text-xs font-medium gap-1 transition-colors",
-                      isActive ? "text-white bg-[hsl(217,28%,22%)]" : "text-slate-400 hover:text-white"
+                      isActive ? "text-white bg-[hsl(220,22%,20%)]" : "text-slate-400 hover:text-white"
                     )}
                   >
                     <Icon size={22} />
@@ -224,7 +224,7 @@ function MobileBottomNav({ location }: { location: string }) {
       )}
 
       {/* Bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex bg-[hsl(217,32%,15%)] text-white border-t border-[hsl(217,28%,20%)]" aria-label="Bottom navigation">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex bg-[hsl(220,22%,14%)] text-white border-t border-[hsl(220,22%,18%)]" aria-label="Bottom navigation">
         {primaryNavItems.map(({ href, icon: Icon, label }) => {
           const isActive = href === "/" ? location === "/" : location.startsWith(href);
           return (
@@ -272,7 +272,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-dvh flex bg-background">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 flex-shrink-0 bg-[hsl(217,32%,15%)] text-white border-r border-[hsl(217,28%,20%)]">
+      <aside className="hidden md:flex flex-col w-64 flex-shrink-0 bg-[hsl(220,22%,14%)] text-white border-r border-[hsl(220,22%,18%)]">
         {/* Logo */}
         <div className="flex items-center px-4 py-4 border-b border-sidebar-border">
           <img
@@ -297,8 +297,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-[hsl(217,28%,22%)] text-white"
-                    : "text-slate-300 hover:bg-[hsl(217,28%,22%)] hover:text-white"
+                    ? "bg-[hsl(220,22%,20%)] text-white"
+                    : "text-slate-300 hover:bg-[hsl(220,22%,20%)] hover:text-white"
                 )}
               >
                 <Icon className="w-4.5 h-4.5" size={18} />
@@ -309,7 +309,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Bottom */}
-        <div className="p-4 border-t border-[hsl(217,28%,20%)] space-y-2">
+        <div className="p-4 border-t border-[hsl(220,22%,18%)] space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-300 font-medium">kevin@fitzpatricksales.com</span>
             <ThemeToggle />
@@ -319,7 +319,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 h-14 bg-[hsl(217,32%,15%)] text-white border-b border-[hsl(217,28%,20%)]">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 h-14 bg-[hsl(220,22%,14%)] text-white border-b border-[hsl(220,22%,18%)]">
         <div className="flex items-center">
           <img
             src={logoWhite}
@@ -350,7 +350,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           onClick={() => setMobileMenuOpen(false)}
         >
           <div
-            className="absolute top-14 left-0 right-0 bg-[hsl(217,32%,15%)] text-white border-b border-[hsl(217,28%,20%)] p-3 space-y-1"
+            className="absolute top-14 left-0 right-0 bg-[hsl(220,22%,14%)] text-white border-b border-[hsl(220,22%,18%)] p-3 space-y-1"
             onClick={e => e.stopPropagation()}
           >
             {navItems.map(({ href, icon: Icon, label }) => {
@@ -362,7 +362,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   onClick={() => setMobileMenuOpen(false)}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
-                    isActive ? "bg-[hsl(217,28%,22%)] text-white" : "text-slate-300 hover:bg-[hsl(217,28%,22%)] hover:text-white"
+                    isActive ? "bg-[hsl(220,22%,20%)] text-white" : "text-slate-300 hover:bg-[hsl(220,22%,20%)] hover:text-white"
                   )}
                 >
                   <Icon size={18} />

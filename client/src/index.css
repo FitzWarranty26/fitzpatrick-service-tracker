@@ -6,82 +6,82 @@
 
 @layer base {
   :root {
-    /* Steel blue industrial palette — light mode */
-    --background: 216 20% 97%;
-    --foreground: 217 32% 12%;
+    /* Fitzpatrick design system — light mode */
+    --background: 220 14% 96%;
+    --foreground: 220 22% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 217 32% 12%;
+    --card-foreground: 220 22% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 217 32% 12%;
-    --primary: 217 91% 40%;
+    --popover-foreground: 220 22% 12%;
+    --primary: 200 72% 40%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 215 16% 92%;
-    --secondary-foreground: 217 32% 20%;
-    --muted: 215 16% 92%;
-    --muted-foreground: 215 14% 48%;
-    --accent: 215 16% 92%;
-    --accent-foreground: 217 32% 20%;
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 220 22% 20%;
+    --muted: 220 14% 92%;
+    --muted-foreground: 220 10% 46%;
+    --accent: 220 14% 92%;
+    --accent-foreground: 220 22% 20%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 215 20% 85%;
-    --input: 215 20% 85%;
-    --ring: 217 91% 40%;
+    --border: 220 14% 86%;
+    --input: 220 14% 86%;
+    --ring: 200 72% 40%;
     --radius: 0.5rem;
 
     /* Chart colors */
-    --chart-1: 217 91% 40%;
-    --chart-2: 199 89% 38%;
+    --chart-1: 200 72% 40%;
+    --chart-2: 174 62% 38%;
     --chart-3: 142 71% 35%;
     --chart-4: 38 92% 50%;
     --chart-5: 356 72% 47%;
 
-    /* Sidebar — slightly darker panel */
-    --sidebar-background: 217 32% 15%;
-    --sidebar-foreground: 215 20% 88%;
-    --sidebar-primary: 217 91% 60%;
+    /* Sidebar — dark slate */
+    --sidebar-background: 220 22% 14%;
+    --sidebar-foreground: 220 14% 88%;
+    --sidebar-primary: 200 72% 56%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 28% 22%;
-    --sidebar-accent-foreground: 215 20% 92%;
-    --sidebar-border: 217 28% 20%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-accent: 220 22% 20%;
+    --sidebar-accent-foreground: 220 14% 92%;
+    --sidebar-border: 220 22% 18%;
+    --sidebar-ring: 200 72% 56%;
   }
 
   .dark {
-    /* Steel blue — dark mode */
-    --background: 220 17% 9%;
-    --foreground: 215 20% 88%;
-    --card: 220 17% 12%;
-    --card-foreground: 215 20% 88%;
-    --popover: 220 17% 12%;
-    --popover-foreground: 215 20% 88%;
-    --primary: 217 91% 60%;
+    /* Fitzpatrick design system — dark mode */
+    --background: 220 22% 9%;
+    --foreground: 220 14% 88%;
+    --card: 220 22% 12%;
+    --card-foreground: 220 14% 88%;
+    --popover: 220 22% 12%;
+    --popover-foreground: 220 14% 88%;
+    --primary: 200 72% 52%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 217 22% 18%;
-    --secondary-foreground: 215 20% 80%;
-    --muted: 217 22% 18%;
-    --muted-foreground: 215 14% 55%;
-    --accent: 217 22% 18%;
-    --accent-foreground: 215 20% 80%;
+    --secondary: 220 22% 18%;
+    --secondary-foreground: 220 14% 80%;
+    --muted: 220 22% 18%;
+    --muted-foreground: 220 10% 55%;
+    --accent: 220 22% 18%;
+    --accent-foreground: 220 14% 80%;
     --destructive: 0 62% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 217 22% 22%;
-    --input: 217 22% 22%;
-    --ring: 217 91% 60%;
+    --border: 220 22% 20%;
+    --input: 220 22% 20%;
+    --ring: 200 72% 52%;
 
-    --chart-1: 217 91% 60%;
-    --chart-2: 199 89% 56%;
+    --chart-1: 200 72% 52%;
+    --chart-2: 174 62% 50%;
     --chart-3: 142 71% 55%;
     --chart-4: 38 92% 66%;
     --chart-5: 356 72% 62%;
 
-    --sidebar-background: 220 17% 8%;
-    --sidebar-foreground: 215 20% 85%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-background: 220 22% 8%;
+    --sidebar-foreground: 220 14% 85%;
+    --sidebar-primary: 200 72% 56%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 22% 15%;
-    --sidebar-accent-foreground: 215 20% 88%;
-    --sidebar-border: 217 22% 14%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-accent: 220 22% 15%;
+    --sidebar-accent-foreground: 220 14% 88%;
+    --sidebar-border: 220 22% 14%;
+    --sidebar-ring: 200 72% 56%;
   }
 }
 
@@ -98,27 +98,28 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Satoshi', 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', 'Satoshi', system-ui, -apple-system, sans-serif;
     font-size: 1rem;
     line-height: 1.6;
     min-height: 100dvh;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'General Sans', 'Satoshi', system-ui, sans-serif;
+    font-family: 'Inter', 'General Sans', system-ui, -apple-system, sans-serif;
     line-height: 1.2;
+    letter-spacing: -0.025em;
     text-wrap: balance;
   }
 
   p, li { text-wrap: pretty; }
 }
 
-/* Status badge colors */
-.status-scheduled { @apply bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300; }
-.status-in-progress { @apply bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300; }
-.status-completed { @apply bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300; }
-.status-pending-parts { @apply bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300; }
-.status-escalated { @apply bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300; }
+/* Status badge colors — consistent tokens */
+.status-scheduled { @apply bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300; }
+.status-in-progress { @apply bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300; }
+.status-completed { @apply bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300; }
+.status-pending-parts { @apply bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300; }
+.status-escalated { @apply bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300; }
 
 /* Claim status badge colors */
 .claim-not-filed { @apply bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400; }

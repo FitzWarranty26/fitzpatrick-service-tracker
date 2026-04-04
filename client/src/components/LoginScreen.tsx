@@ -36,7 +36,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   };
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center bg-[hsl(217,32%,12%)] px-4">
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-[hsl(220,22%,10%)] px-4">
       <div className="w-full max-w-sm space-y-8">
         {/* Logo */}
         <div className="flex justify-center">
@@ -48,7 +48,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         </div>
 
         {/* Login Card */}
-        <div className="bg-[hsl(217,32%,18%)] rounded-xl border border-[hsl(217,28%,24%)] p-6 space-y-5">
+        <div className="bg-[hsl(220,22%,16%)] rounded-xl border border-[hsl(220,22%,20%)] p-6 space-y-5">
           <div className="text-center space-y-1">
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-blue-600/20 mb-2">
               <Lock className="w-5 h-5 text-blue-400" />
@@ -64,7 +64,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                className="bg-[hsl(217,32%,14%)] border-[hsl(217,28%,28%)] text-white placeholder:text-slate-500 h-11 pr-10"
+                className="bg-[hsl(220,22%,14%)] border-[hsl(220,22%,22%)] text-white placeholder:text-slate-500 h-11 pr-10"
                 data-testid="input-password"
                 autoFocus
                 autoComplete="current-password"
