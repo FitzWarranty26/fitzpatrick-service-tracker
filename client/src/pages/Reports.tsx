@@ -390,7 +390,7 @@ export default function Reports() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
             {/* Report type */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Report Type</label>
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Report Type</label>
               <Select value={reportType} onValueChange={v => setReportType(v as ReportType)}>
                 <SelectTrigger data-testid="select-report-type">
                   <SelectValue placeholder="Report Type" />
@@ -405,7 +405,7 @@ export default function Reports() {
 
             {/* Date from */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">From</label>
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">From</label>
               <Input
                 type="date"
                 value={dateFrom}
@@ -416,7 +416,7 @@ export default function Reports() {
 
             {/* Date to */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">To</label>
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">To</label>
               <Input
                 type="date"
                 value={dateTo}
@@ -428,7 +428,7 @@ export default function Reports() {
             {/* Conditional filter */}
             {(reportType === "manufacturer-summary" || reportType === "claim-status" || reportType === "product-failure") && (
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">
+                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">
                   Manufacturer{reportType === "manufacturer-summary" ? " *" : ""}
                 </label>
                 <Select
@@ -452,7 +452,7 @@ export default function Reports() {
 
             {reportType === "customer-history" && (
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Customer *</label>
+                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Customer *</label>
                 <Select
                   value={customer || "__none__"}
                   onValueChange={v => setCustomer(v === "__none__" ? "" : v)}
@@ -472,7 +472,7 @@ export default function Reports() {
 
             {reportType === "claim-status" && (
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Claim Status</label>
+                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Claim Status</label>
                 <Select
                   value={claimStatusFilter}
                   onValueChange={v => setClaimStatusFilter(v)}
@@ -493,7 +493,7 @@ export default function Reports() {
 
             {reportType === "product-failure" && (
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Min Occurrences</label>
+                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Min Occurrences</label>
                 <Input
                   type="number"
                   min={1}

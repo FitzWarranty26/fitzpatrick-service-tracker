@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Lock, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import logoWhite from "@assets/logo-white.jpg";
 
 interface LoginScreenProps {
@@ -52,10 +52,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         {/* Login Card */}
         <div className="bg-[hsl(220,22%,16%)] rounded-xl border border-[hsl(220,22%,20%)] p-6 space-y-5">
           <div className="text-center space-y-1">
-            <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-blue-600/20 mb-2">
-              <Lock className="w-5 h-5 text-blue-400" />
-            </div>
-            <h1 className="text-lg font-bold text-white">Service Tracker</h1>
+            <h1 className="text-lg font-bold text-white tracking-[-0.01em]">Warranty Service Tracker</h1>
             <p className="text-sm text-slate-400">Enter password to continue</p>
           </div>
 
@@ -90,7 +87,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium"
+              className="w-full h-11 bg-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,35%)] text-white font-medium"
               data-testid="button-login"
             >
               {loading ? "Signing in..." : "Sign In"}
@@ -98,8 +95,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </form>
         </div>
 
-        <p className="text-center text-xs text-slate-500">
-          Fitzpatrick Warranty Service, LLC
+        <p className="text-center text-xs text-slate-500 tracking-wide">
+          © {new Date().getFullYear()} Fitzpatrick Warranty Service, LLC
         </p>
       </div>
     </div>

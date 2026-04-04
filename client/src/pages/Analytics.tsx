@@ -215,7 +215,7 @@ export default function Analytics() {
 
   const summaryCards = [
     {
-      title: "Total Service Calls",
+      title: "TOTAL SERVICE CALLS",
       value: summary?.totalCalls ?? 0,
       icon: ClipboardCheck,
       color: "text-blue-600 dark:text-blue-400",
@@ -223,7 +223,7 @@ export default function Analytics() {
       testId: "analytics-total",
     },
     {
-      title: "Unique Models",
+      title: "UNIQUE MODELS",
       value: summary?.uniqueModels ?? 0,
       icon: Boxes,
       color: "text-emerald-600 dark:text-emerald-400",
@@ -231,7 +231,7 @@ export default function Analytics() {
       testId: "analytics-models",
     },
     {
-      title: "Unique Customers",
+      title: "UNIQUE CUSTOMERS",
       value: summary?.uniqueCustomers ?? 0,
       icon: Users,
       color: "text-violet-600 dark:text-violet-400",
@@ -239,7 +239,7 @@ export default function Analytics() {
       testId: "analytics-customers",
     },
     {
-      title: "Repeat Failures",
+      title: "REPEAT FAILURES",
       value: repeatCount,
       icon: AlertTriangle,
       color: "text-amber-600 dark:text-amber-400",
@@ -286,7 +286,7 @@ export default function Analytics() {
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             <div className="flex-1 min-w-0">
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">
                 From
               </label>
               <Input
@@ -298,7 +298,7 @@ export default function Analytics() {
               />
             </div>
             <div className="flex-1 min-w-0">
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">
                 To
               </label>
               <Input
@@ -310,7 +310,7 @@ export default function Analytics() {
               />
             </div>
             <div className="flex-1 min-w-0">
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">
                 Manufacturer
               </label>
               <Select
@@ -352,30 +352,30 @@ export default function Analytics() {
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {summaryCards.map((card) => {
           const Icon = card.icon;
           return (
             <Card key={card.title} className="overflow-hidden" data-testid={card.testId}>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium leading-tight mb-1">
+                    <p className="text-[10px] tracking-widest text-muted-foreground font-semibold leading-tight mb-2">
                       {card.title}
                     </p>
                     {summaryLoading || repeatLoading ? (
-                      <Skeleton className="h-8 w-12 mt-1" />
+                      <Skeleton className="h-8 w-14" />
                     ) : (
                       <p
-                        className="text-2xl font-bold text-foreground"
+                        className="text-2xl font-bold text-foreground tracking-[-0.02em]"
                         data-testid={`${card.testId}-value`}
                       >
                         {card.value}
                       </p>
                     )}
                   </div>
-                  <div className={`p-2 rounded-lg ${card.bg}`}>
-                    <Icon className={`w-4 h-4 ${card.color}`} />
+                  <div className={`p-2.5 rounded-xl ${card.bg}`}>
+                    <Icon className={`w-5 h-5 ${card.color}`} />
                   </div>
                 </div>
               </CardContent>
@@ -530,7 +530,7 @@ export default function Analytics() {
                   />
                   <Bar
                     dataKey="count"
-                    fill="#2563EB"
+                    fill="hsl(200, 72%, 40%)"
                     radius={[0, 4, 4, 0]}
                     maxBarSize={32}
                   />
@@ -675,9 +675,9 @@ export default function Analytics() {
                   type="monotone"
                   dataKey="count"
                   name="Total Calls"
-                  stroke="#2563EB"
+                  stroke="hsl(200, 72%, 40%)"
                   strokeWidth={2}
-                  dot={{ r: 4, fill: "#2563EB" }}
+                  dot={{ r: 4, fill: "hsl(200, 72%, 40%)" }}
                   activeDot={{ r: 6 }}
                 />
                 <Line

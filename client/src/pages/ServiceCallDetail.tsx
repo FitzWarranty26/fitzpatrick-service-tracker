@@ -1030,7 +1030,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         if (!isEditing && !value) return null;
         return (
           <Card key={field}>
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 border-b border-border">
               <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 {labels[field]}
               </CardTitle>
