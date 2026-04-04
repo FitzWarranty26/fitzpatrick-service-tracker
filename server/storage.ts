@@ -249,6 +249,7 @@ const colInfo = sqlite.prepare(`PRAGMA table_info(service_calls)`).all() as any[
 const customerNameCol = colInfo.find((c: any) => c.name === "customer_name");
 if (customerNameCol && customerNameCol.notnull === 1) {
   console.log("Migration 14: Removing NOT NULL constraints from optional service_calls columns...");
+  sqlite.exec(`DROP TABLE IF EXISTS service_calls_new`);
   sqlite.exec(`
     CREATE TABLE service_calls_new (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
