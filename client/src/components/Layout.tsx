@@ -154,7 +154,7 @@ function GlobalSearch() {
   );
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ variant = "sidebar" }: { variant?: "sidebar" | "main" }) {
   const [isDark, setIsDark] = useState(() =>
     document.documentElement.classList.contains("dark")
   );
@@ -169,6 +169,10 @@ export function ThemeToggle() {
     }
   };
 
+  const styles = variant === "main"
+    ? "w-9 h-9 text-muted-foreground hover:text-foreground hover:bg-muted"
+    : "w-9 h-9 text-slate-300 hover:text-white hover:bg-sidebar-accent";
+
   return (
     <Button
       variant="ghost"
@@ -176,7 +180,7 @@ export function ThemeToggle() {
       onClick={toggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       data-testid="theme-toggle"
-      className="w-9 h-9 text-slate-300 hover:text-white hover:bg-sidebar-accent"
+      className={styles}
     >
       {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
     </Button>
@@ -325,7 +329,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-300 font-medium">{getUser()?.displayName || "User"}</span>
             <span className="text-[10px] text-slate-500 uppercase tracking-wider">{getUser()?.role || ""}</span>
-            <ThemeToggle />
           </div>
           <OfflineIndicatorDesktop />
         </div>
@@ -391,6 +394,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-auto">
+        {/* Desktop top bar with theme toggle */}
+        <div className="hidden md:flex items-center justify-end px-6 py-2 border-b border-border bg-background">
+          <ThemeToggle variant="main" />
+        </div>
         <div className="flex-1 pt-14 md:pt-0">
           {children}
         </div>

@@ -10,10 +10,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Users, Plus, Shield, Wrench, Eye, Briefcase } from "lucide-react";
 
 const ROLE_CONFIG = {
-  manager: { label: "Manager", icon: Shield, color: "text-amber-600 bg-amber-50 border-amber-200" },
-  tech: { label: "Technician", icon: Wrench, color: "text-sky-600 bg-sky-50 border-sky-200" },
-  sales: { label: "Sales Team", icon: Briefcase, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
-  staff: { label: "Staff", icon: Eye, color: "text-violet-600 bg-violet-50 border-violet-200" },
+  manager: { label: "Manager", icon: Shield, color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800" },
+  tech: { label: "Technician", icon: Wrench, color: "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20 border-sky-200 dark:border-sky-800" },
+  sales: { label: "Sales Team", icon: Briefcase, color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800" },
+  staff: { label: "Staff", icon: Eye, color: "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800" },
 } as const;
 
 interface UserData {
@@ -110,7 +110,7 @@ export default function Team() {
           const count = activeUsers.filter(u => u.role === role).length;
           const Icon = config.icon;
           return (
-            <div key={role} className="bg-white rounded-lg border p-5 flex items-center justify-between">
+            <div key={role} className="bg-card rounded-lg border p-5 flex items-center justify-between">
               <div>
                 <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">{config.label}s</p>
                 <p className="text-2xl font-bold mt-1">{count}</p>
@@ -127,7 +127,7 @@ export default function Team() {
       {isLoading ? (
         <div className="text-center text-muted-foreground text-sm py-12">Loading...</div>
       ) : (
-        <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="bg-card rounded-lg border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -152,9 +152,9 @@ export default function Team() {
                       </td>
                       <td className="p-3">
                         {user.active ? (
-                          <Badge variant="outline" className="text-emerald-600 bg-emerald-50 border-emerald-200 text-xs">Active</Badge>
+                          <Badge variant="outline" className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-xs">Active</Badge>
                         ) : (
-                          <Badge variant="outline" className="text-red-600 bg-red-50 border-red-200 text-xs">Inactive</Badge>
+                          <Badge variant="outline" className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-xs">Inactive</Badge>
                         )}
                       </td>
                       <td className="p-3 text-right space-x-2">

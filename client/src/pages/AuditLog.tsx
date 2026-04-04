@@ -7,23 +7,23 @@ import { Badge } from "@/components/ui/badge";
 import { ClipboardList, ChevronLeft, ChevronRight } from "lucide-react";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
-  login: { label: "Login", color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
-  login_failed: { label: "Login Failed", color: "text-red-600 bg-red-50 border-red-200" },
-  password_changed: { label: "Password Changed", color: "text-amber-600 bg-amber-50 border-amber-200" },
-  created_call: { label: "Created Call", color: "text-sky-600 bg-sky-50 border-sky-200" },
-  edited_call: { label: "Edited Call", color: "text-blue-600 bg-blue-50 border-blue-200" },
-  deleted_call: { label: "Deleted Call", color: "text-red-600 bg-red-50 border-red-200" },
-  added_photo: { label: "Added Photo", color: "text-violet-600 bg-violet-50 border-violet-200" },
-  deleted_photo: { label: "Deleted Photo", color: "text-red-600 bg-red-50 border-red-200" },
-  added_part: { label: "Added Part", color: "text-teal-600 bg-teal-50 border-teal-200" },
-  deleted_part: { label: "Deleted Part", color: "text-red-600 bg-red-50 border-red-200" },
-  added_note: { label: "Added Note", color: "text-indigo-600 bg-indigo-50 border-indigo-200" },
-  created_contact: { label: "Created Contact", color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
-  edited_contact: { label: "Edited Contact", color: "text-blue-600 bg-blue-50 border-blue-200" },
-  created_user: { label: "Created User", color: "text-violet-600 bg-violet-50 border-violet-200" },
-  edited_user: { label: "Edited User", color: "text-blue-600 bg-blue-50 border-blue-200" },
-  deactivated_user: { label: "Deactivated User", color: "text-red-600 bg-red-50 border-red-200" },
-  ran_backup: { label: "Ran Backup", color: "text-slate-600 bg-slate-50 border-slate-200" },
+  login: { label: "Login", color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800" },
+  login_failed: { label: "Login Failed", color: "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800" },
+  password_changed: { label: "Password Changed", color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800" },
+  created_call: { label: "Created Call", color: "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20 border-sky-200 dark:border-sky-800" },
+  edited_call: { label: "Edited Call", color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800" },
+  deleted_call: { label: "Deleted Call", color: "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800" },
+  added_photo: { label: "Added Photo", color: "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800" },
+  deleted_photo: { label: "Deleted Photo", color: "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800" },
+  added_part: { label: "Added Part", color: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800" },
+  deleted_part: { label: "Deleted Part", color: "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800" },
+  added_note: { label: "Added Note", color: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800" },
+  created_contact: { label: "Created Contact", color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800" },
+  edited_contact: { label: "Edited Contact", color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800" },
+  created_user: { label: "Created User", color: "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800" },
+  edited_user: { label: "Edited User", color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800" },
+  deactivated_user: { label: "Deactivated User", color: "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800" },
+  ran_backup: { label: "Ran Backup", color: "text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/20 border-slate-200 dark:border-slate-800" },
 };
 
 interface AuditEntry {
@@ -68,7 +68,7 @@ export default function AuditLog() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg border p-4">
+      <div className="bg-card rounded-lg border p-4">
         <div className="flex items-center gap-4 flex-wrap">
           <div>
             <label className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground block mb-1">Action</label>
@@ -95,7 +95,7 @@ export default function AuditLog() {
           <p className="text-sm text-muted-foreground mt-1">Actions will appear here as users interact with the system.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="bg-card rounded-lg border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -108,7 +108,7 @@ export default function AuditLog() {
               </thead>
               <tbody>
                 {entries.map(entry => {
-                  const actionConf = ACTION_LABELS[entry.action] || { label: entry.action, color: "text-slate-600 bg-slate-50 border-slate-200" };
+                  const actionConf = ACTION_LABELS[entry.action] || { label: entry.action, color: "text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/20 border-slate-200 dark:border-slate-800" };
                   const time = new Date(entry.createdAt);
                   const timeStr = time.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " + time.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
                   return (
