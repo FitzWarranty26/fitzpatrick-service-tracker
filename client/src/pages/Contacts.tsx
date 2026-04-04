@@ -221,7 +221,7 @@ export default function Contacts() {
       </div>
 
       {/* Search + Filter */}
-      <div className="flex gap-2 mb-5">
+      <div className="flex gap-2 mb-5 bg-background border border-border rounded-lg p-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -252,14 +252,15 @@ export default function Contacts() {
         </div>
       ) : !contactsList || contactsList.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <User className="w-12 h-12 text-muted-foreground/30 mb-3" />
-          <p className="text-sm font-medium text-muted-foreground">No contacts found.</p>
+          <User className="w-12 h-12 text-muted-foreground/30 mb-4" />
+          <p className="text-base font-semibold text-foreground mb-1">No contacts found</p>
+          <p className="text-sm text-muted-foreground">Try adjusting your search or add a new contact.</p>
         </div>
       ) : (
         <div className="space-y-2">
           {contactsList.map(contact => (
-            <Card key={contact.id} className="overflow-hidden" data-testid={`contact-card-${contact.id}`}>
-              <CardContent className="p-4">
+            <Card key={contact.id} className="overflow-hidden hover:bg-muted/40 transition-colors group" data-testid={`contact-card-${contact.id}`}>
+              <CardContent className="px-5 py-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
@@ -294,7 +295,7 @@ export default function Contacts() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(contact)} data-testid={`button-edit-contact-${contact.id}`}>
                       <Edit3 className="w-3.5 h-3.5" />
                     </Button>

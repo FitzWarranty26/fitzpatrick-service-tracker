@@ -450,11 +450,11 @@ export default function Analytics() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border">
-                      <th className="text-left py-2 text-xs font-medium text-muted-foreground">Month</th>
-                      <th className="text-right py-2 text-xs font-medium text-muted-foreground">Calls</th>
-                      <th className="text-right py-2 text-xs font-medium text-muted-foreground">Hours</th>
-                      <th className="text-right py-2 text-xs font-medium text-muted-foreground">Miles</th>
-                      <th className="text-right py-2 text-xs font-medium text-muted-foreground">Mileage $</th>
+                      <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Month</th>
+                      <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Calls</th>
+                      <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Hours</th>
+                      <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Miles</th>
+                      <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Mileage $</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -463,11 +463,11 @@ export default function Analytics() {
                       const label = new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
                       return (
                         <tr key={row.month} className="border-b border-border last:border-0">
-                          <td className="py-2 font-medium">{label}</td>
-                          <td className="py-2 text-right text-muted-foreground">{row.calls}</td>
-                          <td className="py-2 text-right">{row.hours}</td>
-                          <td className="py-2 text-right">{row.miles}</td>
-                          <td className="py-2 text-right text-green-600 dark:text-green-400">${(row.miles * 0.70).toFixed(2)}</td>
+                          <td className="px-5 py-3 font-medium">{label}</td>
+                          <td className="px-5 py-3 text-right text-muted-foreground">{row.calls}</td>
+                          <td className="px-5 py-3 text-right">{row.hours}</td>
+                          <td className="px-5 py-3 text-right">{row.miles}</td>
+                          <td className="px-5 py-3 text-right text-green-600 dark:text-green-400">${(row.miles * 0.70).toFixed(2)}</td>
                         </tr>
                       );
                     })}
@@ -576,19 +576,19 @@ export default function Analytics() {
               <table className="w-full text-sm" data-testid="table-models">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                    <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">
                       Model
                     </th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                    <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">
                       Manufacturer
                     </th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                    <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">
                       Times Serviced
                     </th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                    <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">
                       Serial Numbers
                     </th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                    <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">
                       Last Service
                     </th>
                   </tr>
@@ -600,25 +600,25 @@ export default function Analytics() {
                       className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors"
                       data-testid={`row-model-${i}`}
                     >
-                      <td className="px-4 py-3 font-mono text-xs font-medium text-foreground">
+                      <td className="px-5 py-3 font-mono text-xs font-medium text-foreground">
                         {m.model}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      <td className="px-5 py-3 text-muted-foreground whitespace-nowrap">
                         {m.manufacturer}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-3">
                         <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs font-bold">
                           {m.count}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground max-w-[200px]">
+                      <td className="px-5 py-3 font-mono text-xs text-muted-foreground max-w-[200px]">
                         <span className="line-clamp-2">
                           {m.serialNumbers.length > 0
                             ? m.serialNumbers.join(", ")
                             : "—"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      <td className="px-5 py-3 text-muted-foreground whitespace-nowrap">
                         {formatDateStr(m.lastServiceDate)}
                       </td>
                     </tr>
@@ -725,16 +725,16 @@ export default function Analytics() {
               <table className="w-full text-sm" data-testid="table-repeat-failures">
                 <thead>
                   <tr className="border-b border-border bg-amber-50/50 dark:bg-amber-900/10">
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                    <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">
                       Model
                     </th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                    <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">
                       Manufacturer
                     </th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                    <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">
                       Times Serviced
                     </th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
+                    <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">
                       Serial Numbers
                     </th>
                   </tr>
@@ -746,18 +746,18 @@ export default function Analytics() {
                       className="border-b border-border last:border-0 hover:bg-amber-50/30 dark:hover:bg-amber-900/10 transition-colors"
                       data-testid={`row-repeat-${i}`}
                     >
-                      <td className="px-4 py-3 font-mono text-xs font-medium text-foreground">
+                      <td className="px-5 py-3 font-mono text-xs font-medium text-foreground">
                         {r.model}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      <td className="px-5 py-3 text-muted-foreground whitespace-nowrap">
                         {r.manufacturer}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-3">
                         <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-xs font-bold">
                           {r.count}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground max-w-[240px]">
+                      <td className="px-5 py-3 font-mono text-xs text-muted-foreground max-w-[240px]">
                         <span className="line-clamp-2">
                           {r.serialNumbers.length > 0
                             ? r.serialNumbers.join(", ")

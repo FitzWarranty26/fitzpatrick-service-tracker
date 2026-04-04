@@ -521,8 +521,9 @@ export default function Reports() {
         </div>
       ) : !canFetch ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <FileBarChart className="w-12 h-12 text-muted-foreground/30 mb-3" />
-          <p className="text-sm font-medium text-muted-foreground">Select required filters to generate a report.</p>
+          <FileBarChart className="w-12 h-12 text-muted-foreground/30 mb-4" />
+          <p className="text-base font-semibold text-foreground mb-1">Select required filters</p>
+          <p className="text-sm text-muted-foreground">Choose the required filters above to generate a report.</p>
         </div>
       ) : reportData ? (
         <Card>
@@ -536,8 +537,9 @@ export default function Reports() {
         </Card>
       ) : (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <FileBarChart className="w-12 h-12 text-muted-foreground/30 mb-3" />
-          <p className="text-sm font-medium text-muted-foreground">No data returned.</p>
+          <FileBarChart className="w-12 h-12 text-muted-foreground/30 mb-4" />
+          <p className="text-base font-semibold text-foreground mb-1">No data returned</p>
+          <p className="text-sm text-muted-foreground">Try adjusting your date range or filters.</p>
         </div>
       )}
     </div>
@@ -582,40 +584,40 @@ function ManufacturerSummaryPreview({ data }: { data: ManufacturerSummaryReport 
         <table className="w-full text-sm" data-testid="report-table">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Date</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Customer</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Site</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Model</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Serial</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Status</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Claim</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Claim #</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Parts</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Labor</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Claim $</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Date</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customer</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Site</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Serial</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Status</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim #</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Parts</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Labor</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim $</th>
             </tr>
           </thead>
           <tbody>
             {data.calls.map(c => (
               <tr key={c.id} className="border-b border-border/50">
-                <td className="px-3 py-2 text-xs whitespace-nowrap">{formatDate(c.callDate)}</td>
-                <td className="px-3 py-2 text-xs">{c.customerName}</td>
-                <td className="px-3 py-2 text-xs">{c.jobSiteName}</td>
-                <td className="px-3 py-2 text-xs font-mono">{c.productModel}</td>
-                <td className="px-3 py-2 text-xs font-mono">{c.productSerial || "—"}</td>
-                <td className="px-3 py-2 text-xs">{c.status}</td>
-                <td className="px-3 py-2 text-xs">{c.claimStatus}</td>
-                <td className="px-3 py-2 text-xs">{c.claimNumber || "—"}</td>
-                <td className="px-3 py-2 text-xs text-right">{fmt$(c.partsCost)}</td>
-                <td className="px-3 py-2 text-xs text-right">{fmt$(c.laborCost)}</td>
-                <td className="px-3 py-2 text-xs text-right font-medium">{fmt$(c.claimAmount)}</td>
+                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(c.callDate)}</td>
+                <td className="px-5 py-3 text-xs">{c.customerName}</td>
+                <td className="px-5 py-3 text-xs">{c.jobSiteName}</td>
+                <td className="px-5 py-3 text-xs font-mono">{c.productModel}</td>
+                <td className="px-5 py-3 text-xs font-mono">{c.productSerial || "—"}</td>
+                <td className="px-5 py-3 text-xs">{c.status}</td>
+                <td className="px-5 py-3 text-xs">{c.claimStatus}</td>
+                <td className="px-5 py-3 text-xs">{c.claimNumber || "—"}</td>
+                <td className="px-5 py-3 text-xs text-right">{fmt$(c.partsCost)}</td>
+                <td className="px-5 py-3 text-xs text-right">{fmt$(c.laborCost)}</td>
+                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(c.claimAmount)}</td>
               </tr>
             ))}
             <tr className="bg-muted/30 font-semibold">
-              <td colSpan={8} className="px-3 py-2 text-xs text-right">Totals:</td>
-              <td className="px-3 py-2 text-xs text-right">{fmt$(data.summary.totalPartsCost)}</td>
-              <td className="px-3 py-2 text-xs text-right">{fmt$(data.summary.totalLaborCost)}</td>
-              <td className="px-3 py-2 text-xs text-right">{fmt$(data.summary.totalClaimAmount)}</td>
+              <td colSpan={8} className="px-5 py-3 text-xs text-right">Totals:</td>
+              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalPartsCost)}</td>
+              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalLaborCost)}</td>
+              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalClaimAmount)}</td>
             </tr>
           </tbody>
         </table>
@@ -647,44 +649,44 @@ function MonthlyExpensePreview({ data }: { data: MonthlyExpenseReport }) {
         <table className="w-full text-sm" data-testid="report-table">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Month</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Calls</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Hours</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Miles</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Mileage $</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Parts</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Labor</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Other</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Total</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Claim $</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Month</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Calls</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Hours</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Miles</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Mileage $</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Parts</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Labor</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Other</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Total</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim $</th>
             </tr>
           </thead>
           <tbody>
             {data.months.map(m => (
               <tr key={m.month} className="border-b border-border/50">
-                <td className="px-3 py-2 text-xs">{monthLabel(m.month)}</td>
-                <td className="px-3 py-2 text-xs text-right">{m.calls}</td>
-                <td className="px-3 py-2 text-xs text-right">{m.hours}</td>
-                <td className="px-3 py-2 text-xs text-right">{m.miles}</td>
-                <td className="px-3 py-2 text-xs text-right">{fmt$(m.mileageCost)}</td>
-                <td className="px-3 py-2 text-xs text-right">{fmt$(m.partsCost)}</td>
-                <td className="px-3 py-2 text-xs text-right">{fmt$(m.laborCost)}</td>
-                <td className="px-3 py-2 text-xs text-right">{fmt$(m.otherCost)}</td>
-                <td className="px-3 py-2 text-xs text-right font-medium">{fmt$(m.totalCosts)}</td>
-                <td className="px-3 py-2 text-xs text-right font-medium">{fmt$(m.claimAmount)}</td>
+                <td className="px-5 py-3 text-xs">{monthLabel(m.month)}</td>
+                <td className="px-5 py-3 text-xs text-right">{m.calls}</td>
+                <td className="px-5 py-3 text-xs text-right">{m.hours}</td>
+                <td className="px-5 py-3 text-xs text-right">{m.miles}</td>
+                <td className="px-5 py-3 text-xs text-right">{fmt$(m.mileageCost)}</td>
+                <td className="px-5 py-3 text-xs text-right">{fmt$(m.partsCost)}</td>
+                <td className="px-5 py-3 text-xs text-right">{fmt$(m.laborCost)}</td>
+                <td className="px-5 py-3 text-xs text-right">{fmt$(m.otherCost)}</td>
+                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(m.totalCosts)}</td>
+                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(m.claimAmount)}</td>
               </tr>
             ))}
             <tr className="bg-muted/30 font-semibold">
-              <td className="px-3 py-2 text-xs">Grand Total</td>
-              <td className="px-3 py-2 text-xs text-right">{data.months.reduce((s, m) => s + m.calls, 0)}</td>
-              <td className="px-3 py-2 text-xs text-right">{data.summary.totalHours}</td>
-              <td className="px-3 py-2 text-xs text-right">{data.summary.totalMiles}</td>
-              <td className="px-3 py-2 text-xs text-right">{fmt$(data.summary.totalMileageCost)}</td>
-              <td className="px-3 py-2 text-xs text-right">{fmt$(data.summary.totalPartsCost)}</td>
-              <td className="px-3 py-2 text-xs text-right">{fmt$(data.summary.totalLaborCost)}</td>
-              <td className="px-3 py-2 text-xs text-right">{fmt$(data.summary.totalOtherCost)}</td>
-              <td className="px-3 py-2 text-xs text-right">{fmt$(data.summary.totalCosts)}</td>
-              <td className="px-3 py-2 text-xs text-right">{fmt$(data.summary.totalClaimAmount)}</td>
+              <td className="px-5 py-3 text-xs">Grand Total</td>
+              <td className="px-5 py-3 text-xs text-right">{data.months.reduce((s, m) => s + m.calls, 0)}</td>
+              <td className="px-5 py-3 text-xs text-right">{data.summary.totalHours}</td>
+              <td className="px-5 py-3 text-xs text-right">{data.summary.totalMiles}</td>
+              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalMileageCost)}</td>
+              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalPartsCost)}</td>
+              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalLaborCost)}</td>
+              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalOtherCost)}</td>
+              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalCosts)}</td>
+              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalClaimAmount)}</td>
             </tr>
           </tbody>
         </table>
@@ -718,29 +720,29 @@ function CustomerHistoryPreview({ data }: { data: CustomerHistoryReport }) {
         <table className="w-full text-sm" data-testid="report-table">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Date</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Site</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Manufacturer</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Model</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Serial</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Issue</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Status</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Claim</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Claim $</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Date</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Site</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Manufacturer</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Serial</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Issue</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Status</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim $</th>
             </tr>
           </thead>
           <tbody>
             {data.calls.map(c => (
               <tr key={c.id} className="border-b border-border/50">
-                <td className="px-3 py-2 text-xs whitespace-nowrap">{formatDate(c.callDate)}</td>
-                <td className="px-3 py-2 text-xs">{c.jobSiteName}</td>
-                <td className="px-3 py-2 text-xs">{c.manufacturer}</td>
-                <td className="px-3 py-2 text-xs font-mono">{c.productModel}</td>
-                <td className="px-3 py-2 text-xs font-mono">{c.productSerial || "—"}</td>
-                <td className="px-3 py-2 text-xs max-w-[200px] truncate">{truncate(c.issueDescription, 60)}</td>
-                <td className="px-3 py-2 text-xs">{c.status}</td>
-                <td className="px-3 py-2 text-xs">{c.claimStatus}</td>
-                <td className="px-3 py-2 text-xs text-right font-medium">{fmt$(c.claimAmount)}</td>
+                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(c.callDate)}</td>
+                <td className="px-5 py-3 text-xs">{c.jobSiteName}</td>
+                <td className="px-5 py-3 text-xs">{c.manufacturer}</td>
+                <td className="px-5 py-3 text-xs font-mono">{c.productModel}</td>
+                <td className="px-5 py-3 text-xs font-mono">{c.productSerial || "—"}</td>
+                <td className="px-5 py-3 text-xs max-w-[200px] truncate">{truncate(c.issueDescription, 60)}</td>
+                <td className="px-5 py-3 text-xs">{c.status}</td>
+                <td className="px-5 py-3 text-xs">{c.claimStatus}</td>
+                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(c.claimAmount)}</td>
               </tr>
             ))}
           </tbody>
@@ -774,29 +776,29 @@ function ClaimStatusPreview({ data }: { data: ClaimStatusReport }) {
         <table className="w-full text-sm" data-testid="report-table">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Call #</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Date</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Customer</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Manufacturer</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Model</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Claim #</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Status</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Amount</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Days</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Call #</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Date</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customer</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Manufacturer</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim #</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Status</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Amount</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Days</th>
             </tr>
           </thead>
           <tbody>
             {data.calls.map(c => (
               <tr key={c.id} className="border-b border-border/50">
-                <td className="px-3 py-2 text-xs">#{c.id}</td>
-                <td className="px-3 py-2 text-xs whitespace-nowrap">{formatDate(c.callDate)}</td>
-                <td className="px-3 py-2 text-xs">{c.customerName}</td>
-                <td className="px-3 py-2 text-xs">{c.manufacturer}</td>
-                <td className="px-3 py-2 text-xs font-mono">{c.productModel}</td>
-                <td className="px-3 py-2 text-xs">{c.claimNumber || "—"}</td>
-                <td className="px-3 py-2 text-xs">{c.claimStatus}</td>
-                <td className="px-3 py-2 text-xs text-right font-medium">{fmt$(c.claimAmount)}</td>
-                <td className="px-3 py-2 text-xs text-right">{c.daysPending}</td>
+                <td className="px-5 py-3 text-xs">#{c.id}</td>
+                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(c.callDate)}</td>
+                <td className="px-5 py-3 text-xs">{c.customerName}</td>
+                <td className="px-5 py-3 text-xs">{c.manufacturer}</td>
+                <td className="px-5 py-3 text-xs font-mono">{c.productModel}</td>
+                <td className="px-5 py-3 text-xs">{c.claimNumber || "—"}</td>
+                <td className="px-5 py-3 text-xs">{c.claimStatus}</td>
+                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(c.claimAmount)}</td>
+                <td className="px-5 py-3 text-xs text-right">{c.daysPending}</td>
               </tr>
             ))}
           </tbody>
@@ -820,25 +822,25 @@ function ProductFailurePreview({ data }: { data: ProductFailureReport }) {
         <table className="w-full text-sm" data-testid="report-table">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Manufacturer</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Model</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Calls</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Serials</th>
-              <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Customers</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Last Service</th>
-              <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Common Issues</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Manufacturer</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Calls</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Serials</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customers</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Last Service</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Common Issues</th>
             </tr>
           </thead>
           <tbody>
             {data.models.map((m, i) => (
               <tr key={i} className="border-b border-border/50">
-                <td className="px-3 py-2 text-xs">{m.manufacturer}</td>
-                <td className="px-3 py-2 text-xs font-mono">{m.model}</td>
-                <td className="px-3 py-2 text-xs text-right font-bold">{m.count}</td>
-                <td className="px-3 py-2 text-xs text-right">{m.uniqueSerials}</td>
-                <td className="px-3 py-2 text-xs text-right">{m.uniqueCustomers}</td>
-                <td className="px-3 py-2 text-xs whitespace-nowrap">{formatDate(m.lastServiceDate)}</td>
-                <td className="px-3 py-2 text-xs max-w-[300px]">
+                <td className="px-5 py-3 text-xs">{m.manufacturer}</td>
+                <td className="px-5 py-3 text-xs font-mono">{m.model}</td>
+                <td className="px-5 py-3 text-xs text-right font-bold">{m.count}</td>
+                <td className="px-5 py-3 text-xs text-right">{m.uniqueSerials}</td>
+                <td className="px-5 py-3 text-xs text-right">{m.uniqueCustomers}</td>
+                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(m.lastServiceDate)}</td>
+                <td className="px-5 py-3 text-xs max-w-[300px]">
                   <ul className="list-disc list-inside space-y-0.5">
                     {m.issues.slice(0, 3).map((issue, j) => (
                       <li key={j}>{truncate(issue, 80)}</li>

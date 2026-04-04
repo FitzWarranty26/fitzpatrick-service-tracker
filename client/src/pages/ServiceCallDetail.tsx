@@ -623,7 +623,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       <div className="grid md:grid-cols-2 gap-4">
         {/* Call Info */}
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Call Information</CardTitle></CardHeader>
+          <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Call Information</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {!isEditing ? (
               <>
@@ -703,7 +703,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
         {/* Customer & Site */}
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Customer & Site</CardTitle></CardHeader>
+          <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Customer & Site</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {!isEditing ? (
               <>
@@ -855,7 +855,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       {/* Scheduling */}
       {(call.scheduledDate || call.scheduledTime || isEditing) && (
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Scheduling</CardTitle></CardHeader>
+          <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Scheduling</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {!isEditing ? (
@@ -898,7 +898,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
       {/* Product with Warranty Badge */}
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Product</CardTitle></CardHeader>
+        <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Product</CardTitle></CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {!isEditing ? (
@@ -971,7 +971,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       {/* Job Logistics */}
       {(call.hoursOnJob || call.milesTraveled || isEditing) && (
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Job Logistics</CardTitle></CardHeader>
+          <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Job Logistics</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {!isEditing ? (
@@ -1031,7 +1031,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         return (
           <Card key={field}>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 {labels[field]}
               </CardTitle>
             </CardHeader>
@@ -1054,7 +1054,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
       {/* Claim Tracking */}
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Warranty Claim</CardTitle></CardHeader>
+        <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Warranty Claim</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-3">
             <ClaimBadge status={displayCall.claimStatus ?? call.claimStatus} />
@@ -1147,8 +1147,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
       {/* Activity Log */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+        <CardHeader className="pb-3 border-b border-border">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             <span className="flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> Activity Log ({call.activities?.length || 0})</span>
           </CardTitle>
         </CardHeader>
@@ -1209,8 +1209,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       {/* Visit History (Follow-up chain) */}
       {relatedCalls && relatedCalls.length > 0 && (
         <Card data-testid="visit-history-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Visit History</CardTitle>
+          <CardHeader className="pb-3 border-b border-border">
+            <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Visit History</CardTitle>
           </CardHeader>
           <CardContent>
             {call.parentCallId && (
@@ -1257,8 +1257,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
       {/* Photos */}
       <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Photos ({call.photos.length})</CardTitle>
+        <CardHeader className="pb-3 border-b border-border flex flex-row items-center justify-between">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Photos ({call.photos.length})</CardTitle>
           <div className="flex items-center gap-2">
             {isUploading && (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1338,8 +1338,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
       {/* Parts Used */}
       <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Parts Used ({call.parts.length})</CardTitle>
+        <CardHeader className="pb-3 border-b border-border flex flex-row items-center justify-between">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Parts Used ({call.parts.length})</CardTitle>
           <Button variant="outline" size="sm" onClick={() => setShowAddPart(!showAddPart)} data-testid="button-add-part">
             <Plus className="w-3.5 h-3.5 mr-1" /> Add Part
           </Button>
@@ -1394,21 +1394,21 @@ export default function ServiceCallDetail({ id }: { id: string }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left py-2 text-xs font-medium text-muted-foreground">Part #</th>
-                    <th className="text-left py-2 text-xs font-medium text-muted-foreground">Description</th>
-                    <th className="text-center py-2 text-xs font-medium text-muted-foreground">Qty</th>
-                    <th className="text-left py-2 text-xs font-medium text-muted-foreground">Source</th>
-                    <th className="w-8 py-2"></th>
+                    <th className="text-left px-5 py-2.5 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Part #</th>
+                    <th className="text-left px-5 py-2.5 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Description</th>
+                    <th className="text-center px-5 py-2.5 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Qty</th>
+                    <th className="text-left px-5 py-2.5 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Source</th>
+                    <th className="w-8 px-5 py-2.5"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {call.parts.map((part) => (
                     <tr key={part.id} className="border-b border-border last:border-0 group" data-testid={`part-row-${part.id}`}>
-                      <td className="py-2 pr-3 font-mono text-xs">{part.partNumber}</td>
-                      <td className="py-2 pr-3">{part.partDescription}</td>
-                      <td className="py-2 pr-3 text-center">{part.quantity}</td>
-                      <td className="py-2 text-muted-foreground text-xs">{part.source || "—"}</td>
-                      <td className="py-2">
+                      <td className="px-5 py-2.5 font-mono text-xs">{part.partNumber}</td>
+                      <td className="px-5 py-2.5">{part.partDescription}</td>
+                      <td className="px-5 py-2.5 text-center">{part.quantity}</td>
+                      <td className="px-5 py-2.5 text-muted-foreground text-xs">{part.source || "—"}</td>
+                      <td className="px-5 py-2.5">
                         <button
                           onClick={() => deletePartMutation.mutate(part.id)}
                           className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"

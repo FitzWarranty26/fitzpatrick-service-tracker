@@ -133,7 +133,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
       </div>
 
       {/* Search + Filter bar */}
-      <div className="space-y-3 mb-5">
+      <div className="space-y-3 mb-5 bg-background border border-border rounded-lg p-3">
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -220,8 +220,9 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
         </div>
       ) : !filteredCalls || filteredCalls.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <ClipboardList className="w-12 h-12 text-muted-foreground/30 mb-3" />
-          <p className="text-sm font-medium text-muted-foreground">No service calls found.</p>
+          <ClipboardList className="w-12 h-12 text-muted-foreground/30 mb-4" />
+          <p className="text-base font-semibold text-foreground mb-1">No service calls found</p>
+          <p className="text-sm text-muted-foreground">Try adjusting your filters or create a new call.</p>
           {(activeFilters > 0 || search) && (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="mt-2 text-primary">
               Clear filters
@@ -242,42 +243,41 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Date</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Customer / Site</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Manufacturer</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Model</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">City</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Status</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Claim</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Docs</th>
-                      <th className="w-8 px-4 py-3"></th>
+                      <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Date</th>
+                      <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customer / Site</th>
+                      <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Manufacturer</th>
+                      <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
+                      <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">City</th>
+                      <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Status</th>
+                      <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim</th>
+                      <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Docs</th>
+                      <th className="w-8 px-5 py-3"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredCalls.map((call) => (
                       <tr
                         key={call.id}
-                        className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
-                        style={{ borderBottomWidth: '5px', borderBottomColor: 'transparent' }}
+                        className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer transition-colors"
                         onClick={() => window.location.hash = `/calls/${call.id}`}
                         data-testid={`row-call-${call.id}`}
                       >
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">
+                        <td className="px-5 py-3 text-muted-foreground whitespace-nowrap text-xs">
                           <span className="inline-flex items-center gap-1.5">
                             <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
                             {formatDate(call.callDate)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 min-w-[180px]">
-                          <p className="font-medium text-foreground">{call.customerName}</p>
+                        <td className="px-5 py-3 min-w-[180px]">
+                          <p className="font-semibold tracking-[-0.01em] text-foreground">{call.customerName}</p>
                           <p className="text-xs text-muted-foreground truncate max-w-[200px]">{call.jobSiteName}</p>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{call.manufacturer}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{call.productModel}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{call.jobSiteCity}, {call.jobSiteState}</td>
-                        <td className="px-4 py-3"><StatusBadge status={call.status} /></td>
-                        <td className="px-4 py-3"><ClaimBadge status={call.claimStatus} /></td>
-                        <td className="px-4 py-3">
+                        <td className="px-5 py-3 text-sm text-muted-foreground whitespace-nowrap">{call.manufacturer}</td>
+                        <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{call.productModel}</td>
+                        <td className="px-5 py-3 text-sm text-muted-foreground whitespace-nowrap">{call.jobSiteCity}, {call.jobSiteState}</td>
+                        <td className="px-5 py-3"><StatusBadge status={call.status} /></td>
+                        <td className="px-5 py-3"><ClaimBadge status={call.claimStatus} /></td>
+                        <td className="px-5 py-3">
                           <div className="flex items-center gap-2 text-muted-foreground">
                             {call.photoCount > 0 && (
                               <span className="flex items-center gap-0.5 text-xs">
@@ -291,7 +291,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="px-5 py-3 text-muted-foreground">
                           <ChevronRight className="w-4 h-4" />
                         </td>
                       </tr>
@@ -311,7 +311,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                 data-testid={`card-call-${call.id}`}
               >
                 <Card className="overflow-hidden hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
+                  <CardContent className="px-5 py-3.5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
