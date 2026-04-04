@@ -7,11 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Plus, Shield, Wrench, Eye } from "lucide-react";
+import { Users, Plus, Shield, Wrench, Eye, Briefcase } from "lucide-react";
 
 const ROLE_CONFIG = {
   manager: { label: "Manager", icon: Shield, color: "text-amber-600 bg-amber-50 border-amber-200" },
   tech: { label: "Technician", icon: Wrench, color: "text-sky-600 bg-sky-50 border-sky-200" },
+  sales: { label: "Sales Team", icon: Briefcase, color: "text-violet-600 bg-violet-50 border-violet-200" },
   staff: { label: "Staff", icon: Eye, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
 } as const;
 
@@ -203,6 +204,7 @@ export default function Team() {
                 <SelectContent>
                   <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="tech">Technician</SelectItem>
+                  <SelectItem value="sales">Sales Team</SelectItem>
                   <SelectItem value="staff">Staff (View Only)</SelectItem>
                 </SelectContent>
               </Select>

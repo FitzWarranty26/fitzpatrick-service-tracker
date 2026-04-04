@@ -10,7 +10,7 @@ export interface AuthUser {
   id: number;
   username: string;
   displayName: string;
-  role: "manager" | "tech" | "staff";
+  role: "manager" | "tech" | "sales" | "staff";
   mustChangePassword?: number;
 }
 

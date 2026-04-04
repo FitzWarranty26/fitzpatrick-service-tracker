@@ -131,7 +131,7 @@ export const users = sqliteTable("users", {
   password: text("password").notNull(), // bcrypt hashed
   displayName: text("display_name").notNull(),
   email: text("email"),
-  role: text("role").notNull().default("tech"), // "manager" | "tech" | "staff"
+  role: text("role").notNull().default("tech"), // "manager" | "tech" | "sales" | "staff"
   active: integer("active").notNull().default(1),
   mustChangePassword: integer("must_change_password").notNull().default(1),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
@@ -141,7 +141,7 @@ export const insertUserSchema = createInsertSchema(users).omit({ id: true, creat
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
-export const USER_ROLES = ["manager", "tech", "staff"] as const;
+export const USER_ROLES = ["manager", "tech", "sales", "staff"] as const;
 
 // ─── Audit Log (System-Wide) ────────────────────────────────────────────────
 

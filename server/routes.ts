@@ -288,8 +288,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (password.length < 8) {
         return res.status(400).json({ error: "Password must be at least 8 characters" });
       }
-      if (!["manager", "tech", "staff"].includes(role)) {
-        return res.status(400).json({ error: "Role must be manager, tech, or staff" });
+      if (!["manager", "tech", "sales", "staff"].includes(role)) {
+        return res.status(400).json({ error: "Role must be manager, tech, sales, or staff" });
       }
       const existing = storage.getUserByUsername(username);
       if (existing) return res.status(409).json({ error: "Username already exists" });
@@ -310,8 +310,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (displayName !== undefined) updates.displayName = displayName;
       if (email !== undefined) updates.email = email;
       if (role !== undefined) {
-        if (!["manager", "tech", "staff"].includes(role)) {
-          return res.status(400).json({ error: "Role must be manager, tech, or staff" });
+        if (!["manager", "tech", "sales", "staff"].includes(role)) {
+          return res.status(400).json({ error: "Role must be manager, tech, sales, or staff" });
         }
         updates.role = role;
       }
