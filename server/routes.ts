@@ -1,7 +1,9 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import crypto from "crypto";
-import { storage } from "./storage";
+import path from "path";
+import fs from "fs";
+import { storage, sqlite as sqliteHandle, DB_PATH } from "./storage";
 import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -160,9 +162,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     return res.status(401).json({ error: "Unauthorized" });
   };
 
-  // Apply auth middleware to all API routes except auth endpoints
+  // Apply auth middleware to all API routes except auth and backup endpoints
+  // (backup routes have their own requireBackupAuth middleware)
   app.use("/api", (req, res, next) => {
     if (req.path.startsWith("/auth")) return next();
+    if (req.path.startsWith("/backup")) return next();
     return requireAuth(req, res, next);
   });
 
@@ -1283,6 +1287,109 @@ export function registerRoutes(httpServer: Server, app: Express) {
         default:
           return res.status(400).json({ error: "Unknown report type" });
       }
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── Database Backup ─────────────────────────────────────────────────────────
+  // Uses SQLite's built-in .backup() API for a safe, consistent point-in-time copy
+  // even while the database is being written to. Twice-daily rolling backups:
+  //   backup-am.db  (morning run)
+  //   backup-pm.db  (evening run)
+  // Plus day-of-week backups for 7-day retention:
+  //   backup-mon.db through backup-sun.db
+  //
+  // Intended to be called by a Render Cron Job (e.g. every 12 hours).
+  // Also callable manually for an on-demand backup.
+
+  const BACKUP_SECRET = process.env.BACKUP_SECRET || "";
+
+  // Middleware: backup endpoints accept either the session Bearer token
+  // OR a dedicated BACKUP_SECRET via x-backup-secret header (for cron jobs)
+  const requireBackupAuth = (req: any, res: any, next: any) => {
+    // Try session token first
+    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    if (token && isValidSession(token)) return next();
+    // Try backup secret (for Render Cron Job)
+    const secret = req.headers["x-backup-secret"] || req.query.secret;
+    if (BACKUP_SECRET && secret === BACKUP_SECRET) return next();
+    return res.status(401).json({ error: "Unauthorized" });
+  };
+
+  app.post("/api/backup", requireBackupAuth, async (_req, res) => {
+    try {
+      const dbDir = path.dirname(path.resolve(DB_PATH));
+      const now = new Date();
+      const hour = now.getUTCHours();
+      const amPm = hour < 12 ? "am" : "pm";
+      const dayNames = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+      const dayName = dayNames[now.getUTCDay()];
+
+      // Create two backups:
+      //   1. AM/PM slot (overwritten each half-day)
+      //   2. Day-of-week slot (overwritten weekly → 7-day retention)
+      const slotFile = path.join(dbDir, `backup-${amPm}.db`);
+      const dayFile = path.join(dbDir, `backup-${dayName}.db`);
+
+      // Use SQLite's .backup() API — safe even during concurrent writes
+      await sqliteHandle.backup(slotFile);
+      await sqliteHandle.backup(dayFile);
+
+      const slotSize = fs.statSync(slotFile).size;
+      const daySize = fs.statSync(dayFile).size;
+
+      console.log(`[backup] Created ${slotFile} (${(slotSize / 1024).toFixed(0)}KB) and ${dayFile} (${(daySize / 1024).toFixed(0)}KB)`);
+
+      res.json({
+        success: true,
+        backups: [
+          { file: `backup-${amPm}.db`, size: slotSize, timestamp: now.toISOString() },
+          { file: `backup-${dayName}.db`, size: daySize, timestamp: now.toISOString() },
+        ],
+      });
+    } catch (e: any) {
+      console.error("[backup] Failed:", e);
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.get("/api/backup/status", requireBackupAuth, (_req, res) => {
+    try {
+      const dbDir = path.dirname(path.resolve(DB_PATH));
+      const backupFiles = [
+        "backup-am.db", "backup-pm.db",
+        "backup-sun.db", "backup-mon.db", "backup-tue.db",
+        "backup-wed.db", "backup-thu.db", "backup-fri.db", "backup-sat.db",
+      ];
+
+      const backups = backupFiles
+        .map(f => {
+          const fullPath = path.join(dbDir, f);
+          try {
+            const stat = fs.statSync(fullPath);
+            return {
+              file: f,
+              size: stat.size,
+              lastModified: stat.mtime.toISOString(),
+            };
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
+
+      // Main database info
+      const mainStat = fs.statSync(path.resolve(DB_PATH));
+
+      res.json({
+        database: {
+          file: path.basename(DB_PATH),
+          size: mainStat.size,
+          lastModified: mainStat.mtime.toISOString(),
+        },
+        backups,
+      });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }

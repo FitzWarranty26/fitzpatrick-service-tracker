@@ -20,9 +20,12 @@ import {
 } from "@shared/schema";
 
 // Use persistent disk path on Render if available, otherwise local
-const DB_PATH = process.env.DB_PATH || "warranty_tracker.db";
+export const DB_PATH = process.env.DB_PATH || "warranty_tracker.db";
 const sqlite = new Database(DB_PATH);
 export const db = drizzle(sqlite);
+
+// Export raw SQLite handle for backup API
+export { sqlite };
 if (process.env.NODE_ENV !== "production") {
   console.log(`Database: ${DB_PATH}`);
 }
