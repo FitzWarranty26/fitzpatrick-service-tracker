@@ -501,7 +501,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/service-calls/:id", requireManager, (req, res) => {
+  app.delete("/api/service-calls/:id", requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
