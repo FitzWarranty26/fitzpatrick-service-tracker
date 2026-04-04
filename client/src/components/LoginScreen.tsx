@@ -40,11 +40,13 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       <div className="w-full max-w-sm space-y-8">
         {/* Logo */}
         <div className="flex justify-center">
-          <img
-            src={logoWhite}
-            alt="Fitzpatrick Warranty Service, LLC"
-            className="h-20 w-auto"
-          />
+          <div className="bg-[hsl(220,24%,16%)] rounded-2xl p-4 shadow-lg shadow-black/20 border border-white/[0.06]">
+            <img
+              src={logoWhite}
+              alt="Fitzpatrick Warranty Service, LLC"
+              className="h-14 w-auto object-contain"
+            />
+          </div>
         </div>
 
         {/* Login Card */}

@@ -274,12 +274,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 flex-shrink-0 bg-[hsl(220,22%,14%)] text-white border-r border-[hsl(220,22%,18%)]">
         {/* Logo */}
-        <div className="flex items-center px-4 py-4 border-b border-sidebar-border">
-          <img
-            src={logoWhite}
-            alt="Fitzpatrick Warranty Service, LLC"
-            className="h-16 w-auto object-contain"
-          />
+        <div className="flex items-center px-4 py-3.5 border-b border-sidebar-border">
+          <div className="bg-[hsl(220,24%,17%)] rounded-xl px-3 py-2 border border-white/[0.06]">
+            <img
+              src={logoWhite}
+              alt="Fitzpatrick Warranty Service, LLC"
+              className="h-10 w-auto object-contain"
+            />
+          </div>
         </div>
 
         {/* Search */}
@@ -321,11 +323,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 h-14 bg-[hsl(220,22%,14%)] text-white border-b border-[hsl(220,22%,18%)]">
         <div className="flex items-center">
-          <img
-            src={logoWhite}
-            alt="Fitzpatrick Warranty Service, LLC"
-            className="h-10 w-auto object-contain"
-          />
+          <div className="bg-[hsl(220,24%,17%)] rounded-lg px-2.5 py-1.5 border border-white/[0.06]">
+            <img
+              src={logoWhite}
+              alt="Fitzpatrick Warranty Service, LLC"
+              className="h-7 w-auto object-contain"
+            />
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <OfflineIndicatorMobile />
