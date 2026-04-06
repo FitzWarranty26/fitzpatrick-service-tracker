@@ -1523,6 +1523,51 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── Calendar ───────────────────────────────────────────────────────────────
+
+  app.get("/api/calendar", (req, res) => {
+    try {
+      const from = req.query.from as string;
+      const to = req.query.to as string;
+
+      // Get all service calls in the date range, using scheduled_date if set, else call_date
+      const calls = sqliteHandle
+        .prepare(`
+          SELECT
+            sc.id, sc.call_date, sc.scheduled_date, sc.scheduled_time,
+            sc.customer_name, sc.job_site_name, sc.job_site_city, sc.job_site_state,
+            sc.manufacturer, sc.status, sc.created_by,
+            u.username as created_by_username
+          FROM service_calls sc
+          LEFT JOIN users u ON sc.created_by = u.id
+          WHERE
+            (sc.scheduled_date IS NOT NULL AND sc.scheduled_date >= ? AND sc.scheduled_date <= ?)
+            OR
+            (sc.scheduled_date IS NULL AND sc.call_date >= ? AND sc.call_date <= ?)
+          ORDER BY COALESCE(sc.scheduled_date, sc.call_date) ASC, sc.scheduled_time ASC
+        `)
+        .all(from || "1900-01-01", to || "2999-12-31", from || "1900-01-01", to || "2999-12-31") as any[];
+
+      const result = calls.map(c => ({
+        id: c.id,
+        callDate: c.call_date,
+        scheduledDate: c.scheduled_date,
+        scheduledTime: c.scheduled_time,
+        customerName: c.customer_name,
+        jobSiteName: c.job_site_name,
+        jobSiteCity: c.job_site_city,
+        jobSiteState: c.job_site_state,
+        manufacturer: c.manufacturer,
+        status: c.status,
+        createdByUsername: c.created_by_username,
+      }));
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   // ─── Database Backup ─────────────────────────────────────────────────────────
   // Uses SQLite's built-in .backup() API for a safe, consistent point-in-time copy
   // even while the database is being written to. Twice-daily rolling backups:

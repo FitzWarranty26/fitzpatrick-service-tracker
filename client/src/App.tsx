@@ -18,6 +18,7 @@ const Analytics = lazy(() => import("@/pages/Analytics"));
 const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
 const Contacts = lazy(() => import("@/pages/Contacts"));
 const Reports = lazy(() => import("@/pages/Reports"));
+const CalendarPage = lazy(() => import("@/pages/Calendar"));
 const Team = lazy(() => import("@/pages/Team"));
 const AuditLog = lazy(() => import("@/pages/AuditLog"));
 
@@ -83,6 +84,13 @@ function AppRouter() {
           {() => (
             <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading map...</div>}>
               <ServiceMap />
+            </Suspense>
+          )}
+        </Route>
+        <Route path="/calendar">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading calendar...</div>}>
+              <CalendarPage />
             </Suspense>
           )}
         </Route>
