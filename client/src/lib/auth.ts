@@ -58,3 +58,20 @@ export function getAuthHeaders(): Record<string, string> {
   }
   return {};
 }
+
+const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
+
+export async function logout(): Promise<void> {
+  try {
+    if (_token) {
+      await fetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${_token}` },
+      });
+    }
+  } catch {
+    // Best-effort — clear client state regardless
+  } finally {
+    clearToken();
+  }
+}

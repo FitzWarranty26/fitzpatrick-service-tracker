@@ -203,6 +203,16 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  app.post("/api/auth/logout", (req, res) => {
+    try {
+      const token = (req.headers.authorization || "").replace("Bearer ", "");
+      if (token) activeSessions.delete(token);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   app.get("/api/auth/verify", (req, res) => {
     try {
       const token = (req.headers.authorization || "").replace("Bearer ", "");

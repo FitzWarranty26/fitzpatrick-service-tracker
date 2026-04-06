@@ -3,9 +3,9 @@ import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
-import { getUser, isManager } from "@/lib/auth";
+import { getUser, isManager, logout } from "@/lib/auth";
 import {
-  LayoutDashboard, ClipboardList, CalendarClock, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search, MoreHorizontal, Shield, ScrollText
+  LayoutDashboard, ClipboardList, CalendarClock, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search, MoreHorizontal, Shield, ScrollText, LogOut
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -327,8 +327,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Bottom */}
         <div className="p-4 border-t border-[hsl(220,22%,18%)] space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-300 font-medium">{getUser()?.displayName || "User"}</span>
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider">{getUser()?.role || ""}</span>
+            <div className="min-w-0">
+              <div className="text-xs text-slate-300 font-medium truncate">{getUser()?.displayName || "User"}</div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider">{getUser()?.role || ""}</div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={async () => { await logout(); window.location.reload(); }}
+              title="Sign out"
+              className="w-8 h-8 text-slate-500 hover:text-red-400 hover:bg-red-400/10 flex-shrink-0"
+              data-testid="button-logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
           </div>
           <OfflineIndicatorDesktop />
         </div>
