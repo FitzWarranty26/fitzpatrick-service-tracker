@@ -15,20 +15,20 @@ import logoDark from "@assets/logo-dark.jpg";
 
 const baseNavItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/calls", icon: ClipboardList, label: "Service Calls" },
+  { href: "/calendar", icon: Calendar, label: "Calendar" },
   { href: "/scheduled", icon: CalendarClock, label: "Scheduled" },
-  { href: "/new", icon: PlusCircle, label: "New Call" },
+  { href: "/calls", icon: ClipboardList, label: "Service Calls" },
+  { href: "/new", icon: PlusCircle, label: "New Service Call" },
+  { href: "/map", icon: MapPin, label: "Map" },
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/reports", icon: FileBarChart, label: "Reports" },
   { href: "/contacts", icon: Users, label: "Contacts" },
-  { href: "/map", icon: MapPin, label: "Map" },
-  { href: "/calendar", icon: Calendar, label: "Calendar" },
   { href: "/invoices", icon: Receipt, label: "Invoices" },
 ];
 
 const managerNavItems = [
-  { href: "/team", icon: Shield, label: "Team" },
   { href: "/audit-log", icon: ScrollText, label: "Activity Log" },
+  { href: "/team", icon: Shield, label: "Team" },
 ];
 
 function getNavItems() {
@@ -191,16 +191,18 @@ export function ThemeToggle({ variant = "sidebar" }: { variant?: "sidebar" | "ma
 
 const primaryNavItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/calendar", icon: Calendar, label: "Calendar" },
   { href: "/calls", icon: ClipboardList, label: "Calls" },
-  { href: "/scheduled", icon: CalendarClock, label: "Scheduled" },
   { href: "/new", icon: PlusCircle, label: "New Call" },
 ];
 
 const moreNavItems = [
+  { href: "/scheduled", icon: CalendarClock, label: "Scheduled" },
+  { href: "/map", icon: MapPin, label: "Map" },
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/reports", icon: FileBarChart, label: "Reports" },
   { href: "/contacts", icon: Users, label: "Contacts" },
-  { href: "/map", icon: MapPin, label: "Map" },
+  { href: "/invoices", icon: Receipt, label: "Invoices" },
 ];
 
 function MobileBottomNav({ location }: { location: string }) {
