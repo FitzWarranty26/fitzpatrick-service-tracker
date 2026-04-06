@@ -10,6 +10,8 @@ import {
   activityLog,
   users,
   auditLog,
+  invoices,
+  invoiceItems,
   type ServiceCall,
   type InsertServiceCall,
   type Photo,
@@ -22,6 +24,10 @@ import {
   type InsertActivityLog,
   type User,
   type AuditLogEntry,
+  type Invoice,
+  type InsertInvoice,
+  type InvoiceItem,
+  type InsertInvoiceItem,
 } from "@shared/schema";
 
 // Use persistent disk path on Render if available, otherwise local
@@ -116,6 +122,41 @@ sqlite.exec(`
     active INTEGER NOT NULL DEFAULT 1,
     must_change_password INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_number TEXT NOT NULL UNIQUE,
+    service_call_id INTEGER,
+    bill_to_type TEXT NOT NULL DEFAULT 'contractor',
+    bill_to_name TEXT NOT NULL,
+    bill_to_address TEXT,
+    bill_to_city TEXT,
+    bill_to_state TEXT,
+    bill_to_email TEXT,
+    bill_to_phone TEXT,
+    issue_date TEXT NOT NULL,
+    due_date TEXT,
+    payment_terms TEXT DEFAULT 'Net 30',
+    status TEXT NOT NULL DEFAULT 'Draft',
+    notes TEXT,
+    subtotal TEXT NOT NULL DEFAULT '0',
+    total TEXT NOT NULL DEFAULT '0',
+    paid_date TEXT,
+    created_by INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS invoice_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id INTEGER NOT NULL,
+    type TEXT NOT NULL DEFAULT 'other',
+    description TEXT NOT NULL,
+    quantity TEXT NOT NULL DEFAULT '1',
+    unit_price TEXT NOT NULL DEFAULT '0',
+    amount TEXT NOT NULL DEFAULT '0',
+    sort_order INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS audit_log_system (
@@ -1065,6 +1106,143 @@ export class SQLiteStorage implements IStorage {
     sqlite.prepare(
       `INSERT INTO audit_log_system (user_id, username, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(data.userId, data.username, data.action, data.entityType || null, data.entityId || null, data.details || null, new Date().toISOString());
+  }
+
+  // ─── Invoices ───────────────────────────────────────────────────────────
+
+  generateInvoiceNumber(): string {
+    const year = new Date().getFullYear();
+    const row = sqlite.prepare(`SELECT COUNT(*) as count FROM invoices WHERE invoice_number LIKE ?`).get(`INV-${year}-%`) as any;
+    const seq = String((row.count || 0) + 1).padStart(3, "0");
+    return `INV-${year}-${seq}`;
+  }
+
+  private mapInvoiceRow(r: any): Invoice {
+    return {
+      id: r.id, invoiceNumber: r.invoice_number, serviceCallId: r.service_call_id,
+      billToType: r.bill_to_type, billToName: r.bill_to_name, billToAddress: r.bill_to_address,
+      billToCity: r.bill_to_city, billToState: r.bill_to_state, billToEmail: r.bill_to_email,
+      billToPhone: r.bill_to_phone, issueDate: r.issue_date, dueDate: r.due_date,
+      paymentTerms: r.payment_terms, status: r.status, notes: r.notes,
+      subtotal: r.subtotal, total: r.total, paidDate: r.paid_date,
+      createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
+    };
+  }
+
+  private mapItemRow(r: any): InvoiceItem {
+    return {
+      id: r.id, invoiceId: r.invoice_id, type: r.type, description: r.description,
+      quantity: r.quantity, unitPrice: r.unit_price, amount: r.amount, sortOrder: r.sort_order,
+    };
+  }
+
+  getAllInvoices(filters?: { status?: string; billToType?: string; search?: string }): (Invoice & { itemCount: number })[] {
+    const conditions: string[] = [];
+    const params: any[] = [];
+    if (filters?.status) { conditions.push("status = ?"); params.push(filters.status); }
+    if (filters?.billToType) { conditions.push("bill_to_type = ?"); params.push(filters.billToType); }
+    if (filters?.search) {
+      conditions.push("(invoice_number LIKE ? OR bill_to_name LIKE ?)");
+      params.push(`%${filters.search}%`, `%${filters.search}%`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const rows = sqlite.prepare(`
+      SELECT i.*, (SELECT COUNT(*) FROM invoice_items WHERE invoice_id = i.id) as item_count
+      FROM invoices i ${where} ORDER BY i.created_at DESC
+    `).all(...params) as any[];
+    return rows.map(r => ({ ...this.mapInvoiceRow(r), itemCount: r.item_count }));
+  }
+
+  getInvoiceById(id: number): (Invoice & { items: InvoiceItem[] }) | undefined {
+    const row = sqlite.prepare(`SELECT * FROM invoices WHERE id = ?`).get(id) as any;
+    if (!row) return undefined;
+    const items = sqlite.prepare(`SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sort_order ASC`).all(id) as any[];
+    return { ...this.mapInvoiceRow(row), items: items.map(i => this.mapItemRow(i)) };
+  }
+
+  getInvoicesByServiceCallId(serviceCallId: number): Invoice[] {
+    const rows = sqlite.prepare(`SELECT * FROM invoices WHERE service_call_id = ? ORDER BY created_at DESC`).all(serviceCallId) as any[];
+    return rows.map(r => this.mapInvoiceRow(r));
+  }
+
+  createInvoice(data: InsertInvoice): Invoice {
+    const now = new Date().toISOString();
+    const row = sqlite.prepare(`
+      INSERT INTO invoices (invoice_number, service_call_id, bill_to_type, bill_to_name,
+        bill_to_address, bill_to_city, bill_to_state, bill_to_email, bill_to_phone,
+        issue_date, due_date, payment_terms, status, notes, subtotal, total, paid_date,
+        created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      RETURNING *
+    `).get(
+      data.invoiceNumber, data.serviceCallId || null, data.billToType, data.billToName,
+      data.billToAddress || null, data.billToCity || null, data.billToState || null,
+      data.billToEmail || null, data.billToPhone || null,
+      data.issueDate, data.dueDate || null, data.paymentTerms || "Net 30",
+      data.status || "Draft", data.notes || null,
+      data.subtotal || "0", data.total || "0", data.paidDate || null,
+      data.createdBy || null, now, now
+    ) as any;
+    return this.mapInvoiceRow(row);
+  }
+
+  updateInvoice(id: number, data: Partial<InsertInvoice>): Invoice | undefined {
+    const now = new Date().toISOString();
+    const allowed = ["billToType","billToName","billToAddress","billToCity","billToState",
+      "billToEmail","billToPhone","issueDate","dueDate","paymentTerms","status",
+      "notes","subtotal","total","paidDate","serviceCallId"];
+    const colMap: Record<string,string> = {
+      billToType:"bill_to_type", billToName:"bill_to_name", billToAddress:"bill_to_address",
+      billToCity:"bill_to_city", billToState:"bill_to_state", billToEmail:"bill_to_email",
+      billToPhone:"bill_to_phone", issueDate:"issue_date", dueDate:"due_date",
+      paymentTerms:"payment_terms", status:"status", notes:"notes",
+      subtotal:"subtotal", total:"total", paidDate:"paid_date", serviceCallId:"service_call_id",
+    };
+    const updates: string[] = ["updated_at = ?"];
+    const params: any[] = [now];
+    for (const key of allowed) {
+      if (key in data) { updates.push(`${colMap[key]} = ?`); params.push((data as any)[key]); }
+    }
+    params.push(id);
+    const row = sqlite.prepare(`UPDATE invoices SET ${updates.join(", ")} WHERE id = ? RETURNING *`).get(...params) as any;
+    return row ? this.mapInvoiceRow(row) : undefined;
+  }
+
+  deleteInvoice(id: number): void {
+    sqlite.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(id);
+    sqlite.prepare(`DELETE FROM invoices WHERE id = ?`).run(id);
+  }
+
+  // Invoice items
+  createInvoiceItem(data: InsertInvoiceItem): InvoiceItem {
+    const row = sqlite.prepare(`
+      INSERT INTO invoice_items (invoice_id, type, description, quantity, unit_price, amount, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
+    `).get(data.invoiceId, data.type, data.description, data.quantity, data.unitPrice, data.amount, data.sortOrder || 0) as any;
+    return this.mapItemRow(row);
+  }
+
+  updateInvoiceItem(id: number, data: Partial<InsertInvoiceItem>): InvoiceItem | undefined {
+    const allowed = ["type","description","quantity","unitPrice","amount","sortOrder"];
+    const colMap: Record<string,string> = { type:"type", description:"description", quantity:"quantity", unitPrice:"unit_price", amount:"amount", sortOrder:"sort_order" };
+    const updates: string[] = [];
+    const params: any[] = [];
+    for (const key of allowed) {
+      if (key in data) { updates.push(`${colMap[key]} = ?`); params.push((data as any)[key]); }
+    }
+    if (!updates.length) return undefined;
+    params.push(id);
+    const row = sqlite.prepare(`UPDATE invoice_items SET ${updates.join(", ")} WHERE id = ? RETURNING *`).get(...params) as any;
+    return row ? this.mapItemRow(row) : undefined;
+  }
+
+  deleteInvoiceItem(id: number): void {
+    sqlite.prepare(`DELETE FROM invoice_items WHERE id = ?`).run(id);
+  }
+
+  replaceInvoiceItems(invoiceId: number, items: InsertInvoiceItem[]): InvoiceItem[] {
+    sqlite.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(invoiceId);
+    return items.map((item, idx) => this.createInvoiceItem({ ...item, invoiceId, sortOrder: idx }));
   }
 
   getAuditLog(filters?: { userId?: number; action?: string; entityType?: string; limit?: number; offset?: number }): { entries: AuditLogEntry[]; total: number } {

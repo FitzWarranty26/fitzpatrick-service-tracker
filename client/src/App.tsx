@@ -19,6 +19,9 @@ const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
 const Contacts = lazy(() => import("@/pages/Contacts"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const CalendarPage = lazy(() => import("@/pages/Calendar"));
+const Invoices = lazy(() => import("@/pages/Invoices"));
+const InvoiceDetail = lazy(() => import("@/pages/InvoiceDetail"));
+const NewInvoice = lazy(() => import("@/pages/NewInvoice"));
 const Team = lazy(() => import("@/pages/Team"));
 const AuditLog = lazy(() => import("@/pages/AuditLog"));
 
@@ -84,6 +87,27 @@ function AppRouter() {
           {() => (
             <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading map...</div>}>
               <ServiceMap />
+            </Suspense>
+          )}
+        </Route>
+        <Route path="/invoices/new">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+              <NewInvoice />
+            </Suspense>
+          )}
+        </Route>
+        <Route path="/invoices/:id">
+          {(params) => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+              <InvoiceDetail id={params.id} />
+            </Suspense>
+          )}
+        </Route>
+        <Route path="/invoices">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading invoices...</div>}>
+              <Invoices />
             </Suspense>
           )}
         </Route>

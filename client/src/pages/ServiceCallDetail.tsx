@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PRODUCT_TYPES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
-  ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus,
+  ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Receipt,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
   Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell
 } from "lucide-react";
@@ -562,6 +562,12 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <FileText className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">PDF</span>
               </Button>
+              <Link href={`/invoices/new?callId=${id}`}>
+                <Button variant="outline" size="sm" data-testid="button-create-invoice" className="text-[hsl(200,72%,40%)] border-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,40%)]/10">
+                  <Receipt className="w-4 h-4 mr-1.5" />
+                  <span className="hidden sm:inline">Invoice</span>
+                </Button>
+              </Link>
               <Button size="sm" onClick={startEdit} data-testid="button-edit">
                 <Edit3 className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">Edit</span>

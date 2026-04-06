@@ -1523,6 +1523,93 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── Invoices ───────────────────────────────────────────────────────────────
+
+  // Generate next invoice number — must be BEFORE /api/invoices/:id to avoid route collision
+  app.get("/api/invoices/next-number", (req: any, res: any) => {
+    try {
+      res.json({ invoiceNumber: storage.generateInvoiceNumber() });
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+  app.get("/api/invoices", (req: any, res: any) => {
+    try {
+      const filters: any = {};
+      if (req.query.status) filters.status = req.query.status;
+      if (req.query.billToType) filters.billToType = req.query.billToType;
+      if (req.query.search) filters.search = req.query.search;
+      res.json(storage.getAllInvoices(Object.keys(filters).length ? filters : undefined));
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+  app.get("/api/invoices/:id", (req: any, res: any) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const invoice = storage.getInvoiceById(id);
+      if (!invoice) return res.status(404).json({ error: "Not found" });
+      res.json(invoice);
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+  app.get("/api/service-calls/:id/invoices", (req: any, res: any) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      res.json(storage.getInvoicesByServiceCallId(id));
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+  app.post("/api/invoices", requireEditor, (req: any, res: any) => {
+    try {
+      const data = req.body;
+      if (!data.billToName || !data.issueDate) {
+        return res.status(400).json({ error: "Bill To Name and Issue Date are required" });
+      }
+      data.invoiceNumber = data.invoiceNumber || storage.generateInvoiceNumber();
+      data.createdBy = req.user?.id || null;
+      const items = data.items || [];
+      delete data.items;
+      const invoice = storage.createInvoice(data);
+      if (items.length) {
+        storage.replaceInvoiceItems(invoice.id, items.map((item: any) => ({ ...item, invoiceId: invoice.id })));
+      }
+      logAudit(req, "created_invoice", "invoice", invoice.id, `${invoice.invoiceNumber} - ${invoice.billToName}`);
+      res.status(201).json(storage.getInvoiceById(invoice.id));
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+  app.patch("/api/invoices/:id", requireEditor, (req: any, res: any) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const { items, ...data } = req.body;
+      const invoice = storage.updateInvoice(id, data);
+      if (!invoice) return res.status(404).json({ error: "Not found" });
+      if (items !== undefined) {
+        storage.replaceInvoiceItems(id, items.map((item: any) => ({ ...item, invoiceId: id })));
+      }
+      // Auto-set paid_date when status changes to Paid
+      if (data.status === "Paid" && !invoice.paidDate) {
+        storage.updateInvoice(id, { paidDate: new Date().toISOString().split("T")[0] });
+      }
+      logAudit(req, "edited_invoice", "invoice", id, data.status ? `Status: ${data.status}` : undefined);
+      res.json(storage.getInvoiceById(id));
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+  app.delete("/api/invoices/:id", requireManager, (req: any, res: any) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const invoice = storage.getInvoiceById(id);
+      if (!invoice) return res.status(404).json({ error: "Not found" });
+      storage.deleteInvoice(id);
+      logAudit(req, "deleted_invoice", "invoice", id, invoice.invoiceNumber);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
   // ─── Calendar ───────────────────────────────────────────────────────────────
 
   app.get("/api/calendar", (req, res) => {

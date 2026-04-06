@@ -160,6 +160,54 @@ export const insertAuditLogSchema = createInsertSchema(auditLog).omit({ id: true
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 
+// ─── Invoices ───────────────────────────────────────────────────────────────
+
+export const invoices = sqliteTable("invoices", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceNumber: text("invoice_number").notNull().unique(), // e.g. INV-2026-001
+  serviceCallId: integer("service_call_id"),               // linked service call
+  billToType: text("bill_to_type").notNull().default("contractor"), // "contractor" | "manufacturer"
+  billToName: text("bill_to_name").notNull(),
+  billToAddress: text("bill_to_address"),
+  billToCity: text("bill_to_city"),
+  billToState: text("bill_to_state"),
+  billToEmail: text("bill_to_email"),
+  billToPhone: text("bill_to_phone"),
+  issueDate: text("issue_date").notNull(),
+  dueDate: text("due_date"),
+  paymentTerms: text("payment_terms").default("Net 30"),  // e.g. "Net 30", "Due on Receipt"
+  status: text("status").notNull().default("Draft"),       // "Draft" | "Sent" | "Paid" | "Overdue"
+  notes: text("notes"),                                    // internal or customer-facing notes
+  subtotal: text("subtotal").notNull().default("0"),
+  total: text("total").notNull().default("0"),
+  paidDate: text("paid_date"),
+  createdBy: integer("created_by"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const invoiceItems = sqliteTable("invoice_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceId: integer("invoice_id").notNull(),
+  type: text("type").notNull().default("other"), // "labor" | "parts" | "travel" | "other"
+  description: text("description").notNull(),
+  quantity: text("quantity").notNull().default("1"),
+  unitPrice: text("unit_price").notNull().default("0"),
+  amount: text("amount").notNull().default("0"),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertInvoiceItemSchema = createInsertSchema(invoiceItems).omit({ id: true });
+export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
+export type InsertInvoiceItem = z.infer<typeof insertInvoiceItemSchema>;
+export type Invoice = typeof invoices.$inferSelect;
+export type InvoiceItem = typeof invoiceItems.$inferSelect;
+
+export const INVOICE_STATUSES = ["Draft", "Sent", "Paid", "Overdue"] as const;
+export const INVOICE_ITEM_TYPES = ["labor", "parts", "travel", "other"] as const;
+export const PAYMENT_TERMS = ["Due on Receipt", "Net 15", "Net 30", "Net 60"] as const;
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const MANUFACTURERS = [

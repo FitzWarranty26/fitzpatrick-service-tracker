@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
 import { getUser, isManager, logout } from "@/lib/auth";
 import {
-  LayoutDashboard, ClipboardList, CalendarClock, Calendar, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search, MoreHorizontal, Shield, ScrollText, LogOut
+  LayoutDashboard, ClipboardList, CalendarClock, Calendar, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search, MoreHorizontal, Shield, ScrollText, LogOut, Receipt
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ const baseNavItems = [
   { href: "/contacts", icon: Users, label: "Contacts" },
   { href: "/map", icon: MapPin, label: "Map" },
   { href: "/calendar", icon: Calendar, label: "Calendar" },
+  { href: "/invoices", icon: Receipt, label: "Invoices" },
 ];
 
 const managerNavItems = [
