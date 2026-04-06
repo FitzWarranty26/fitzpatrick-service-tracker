@@ -287,7 +287,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ─── Password Change ──────────────────────────────────────────────────────
-  app.post("/api/auth/change-password", requireAuth, (req, res) => {
+  app.post("/api/auth/change-password", requireAuth, (req: any, res: any) => {
     try {
       const { currentPassword, newPassword } = req.body;
       if (!currentPassword || !newPassword) {
@@ -1548,7 +1548,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     return res.status(401).json({ error: "Unauthorized" });
   };
 
-  app.post("/api/backup", requireBackupAuth, async (_req, res) => {
+  app.post("/api/backup", requireBackupAuth, async (req, res) => {
     try {
       const dbDir = path.dirname(path.resolve(DB_PATH));
       const now = new Date();

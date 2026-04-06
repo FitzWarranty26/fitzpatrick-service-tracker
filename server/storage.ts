@@ -1012,7 +1012,6 @@ export class SQLiteStorage implements IStorage {
     return rows.map(r => ({
       id: r.id, username: r.username, displayName: r.display_name, email: r.email,
       role: r.role, active: r.active, mustChangePassword: r.must_change_password, createdAt: r.created_at,
-      password: "", // never returned
     }));
   }
 
@@ -1034,7 +1033,7 @@ export class SQLiteStorage implements IStorage {
     const row = sqlite.prepare(
       `INSERT INTO users (username, password, display_name, email, role, active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, 1, 1, ?) RETURNING *`
     ).get(data.username, hashed, data.displayName, data.email || null, data.role, now) as any;
-    return { id: row.id, username: row.username, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at, password: "" };
+    return { id: row.id, username: row.username, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
   }
 
   updateUser(id: number, data: { displayName?: string; email?: string; role?: string; active?: number; password?: string; mustChangePassword?: number }): Omit<User, "password"> | undefined {
@@ -1053,7 +1052,7 @@ export class SQLiteStorage implements IStorage {
     params.push(id);
     const row = sqlite.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ? RETURNING *`).get(...params) as any;
     if (!row) return undefined;
-    return { id: row.id, username: row.username, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at, password: "" };
+    return { id: row.id, username: row.username, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
   }
 
   verifyPassword(plaintext: string, hash: string): boolean {

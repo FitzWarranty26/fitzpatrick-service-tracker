@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,7 +50,7 @@ export default function AuditLog() {
 
   const { data, isLoading } = useQuery<{ entries: AuditEntry[]; total: number }>({
     queryKey: ["/api/audit-log", actionFilter, offset],
-    queryFn: () => apiRequest("GET", `/api/audit-log?${params.toString()}`).then(r => r.json()),
+    queryFn: async () => { const r = await apiRequest("GET", `/api/audit-log?${params.toString()}`); return r.json(); },
   });
 
   const entries = data?.entries || [];
