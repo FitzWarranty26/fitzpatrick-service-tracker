@@ -83,10 +83,10 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
   doc.setFillColor(...BRAND_BLUE);
   doc.rect(0, 0, PW, 4, "F");
 
-  // Logo — transparent PNG from logo-white.jpg (white text/shield on dark bg)
-  // logo-white.jpg: 2174×1080, aspect ~2.01:1 — displayed at 210pt wide
+  // Logo — transparent PNG (shield + white text on transparent bg)
+  // Source: LLC logo 2278×589 → aspect ~3.87:1 — displayed at 210pt wide
   const logoW = 210;
-  const logoH = Math.round(logoW * 1080 / 2174);
+  const logoH = Math.round(logoW * 589 / 2278);
   const logoY = (HEADER_H - logoH) / 2;
   doc.addImage(LOGO_WHITE_DATA_URL, "PNG", margin - 4, logoY, logoW, logoH);
 
