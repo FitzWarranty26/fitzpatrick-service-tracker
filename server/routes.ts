@@ -16,6 +16,32 @@ function safeError(e: any): string {
 }
 
 // ─── Rate Limiter (in-memory, no dependencies) ──────────────────────────────
+
+// General API rate limit: 300 requests per minute per IP
+// Blocks automated hammering while allowing normal app usage
+const apiRequestCounts = new Map<string, { count: number; windowStart: number }>();
+const API_RATE_LIMIT = 300;
+const API_RATE_WINDOW_MS = 60 * 1000; // 1 minute
+
+function isApiRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const record = apiRequestCounts.get(ip);
+  if (!record || now - record.windowStart > API_RATE_WINDOW_MS) {
+    apiRequestCounts.set(ip, { count: 1, windowStart: now });
+    return false;
+  }
+  record.count++;
+  return record.count > API_RATE_LIMIT;
+}
+
+// Clean up the API rate limit map every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - API_RATE_WINDOW_MS;
+  apiRequestCounts.forEach((record, ip) => {
+    if (record.windowStart < cutoff) apiRequestCounts.delete(ip);
+  });
+}, 5 * 60 * 1000);
+
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
@@ -239,7 +265,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // Apply auth middleware to all API routes except auth and backup endpoints
   // (backup routes have their own requireBackupAuth middleware)
+  // Also apply general rate limiting to all API routes
   app.use("/api", (req, res, next) => {
+    const ip = getClientIP(req);
+    if (isApiRateLimited(ip)) {
+      return res.status(429).json({ error: "Too many requests. Please slow down." });
+    }
     if (req.path.startsWith("/auth")) return next();
     if (req.path.startsWith("/backup")) return next();
     return requireAuth(req, res, next);

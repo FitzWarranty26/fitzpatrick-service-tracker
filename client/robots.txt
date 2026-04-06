@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /
+
+# This is a private business application.
+# Automated access, scraping, and indexing are not permitted.
