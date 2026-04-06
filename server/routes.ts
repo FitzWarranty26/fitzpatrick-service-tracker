@@ -1534,6 +1534,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   app.get("/api/invoices", (req: any, res: any) => {
     try {
+      // Auto-mark overdue: any Sent invoice past its due date becomes Overdue
+      const today = new Date().toISOString().split("T")[0];
+      storage.markOverdueInvoices(today);
+
       const filters: any = {};
       if (req.query.status) filters.status = req.query.status;
       if (req.query.billToType) filters.billToType = req.query.billToType;

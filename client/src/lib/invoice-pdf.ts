@@ -64,7 +64,7 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
   const contentWidth = PW - margin * 2;
   let y = margin;
 
-  function setFont(size: number, style: "normal" | "bold" = "normal", rgb = DARK_TEXT) {
+  function setFont(size: number, style: "normal" | "bold" = "normal", rgb: readonly [number, number, number] = DARK_TEXT) {
     doc.setFontSize(size);
     doc.setFont("helvetica", style);
     doc.setTextColor(...rgb);
@@ -193,20 +193,27 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
     labor: "Labor", parts: "Parts / Materials", travel: "Travel / Mileage", other: "Other",
   };
   const ROW_H = 40;
+  const DESC_MAX_W = colW.desc - 10; // 10pt total side padding, prevents overflow into QTY col
 
   invoice.items?.forEach((item, idx) => {
     if (y > PH - 140) { doc.addPage(); y = margin; }
 
+    // Wrap long descriptions to up to 2 lines, compute actual row height
+    setFont(9.5, "bold");
+    const descLines = doc.splitTextToSize(item.description || "—", DESC_MAX_W).slice(0, 2) as string[];
+    const rowH = descLines.length > 1 ? ROW_H + 11 : ROW_H; // extra line = +11pt
+
     if (idx % 2 === 1) {
       doc.setFillColor(250, 251, 252);
-      doc.rect(margin, y - ROW_H + 4, cw, ROW_H, "F");
+      doc.rect(margin, y - rowH + 4, cw, rowH, "F");
     }
 
     setFont(7, "bold", BRAND_BLUE);
     doc.text((ITEM_TYPES[item.type] || item.type).toUpperCase(), c.desc + 4, y);
     setFont(9.5, "bold");
-    doc.text(item.description || "—", c.desc + 4, y + 12);
+    doc.text(descLines, c.desc + 4, y + 12);
 
+    // Numbers align to the first description line
     setFont(9.5, "normal", DARK_TEXT);
     doc.text(item.quantity || "1", c.qty + colW.qty - 4, y + 12, { align: "right" });
     doc.text(fmt$(item.unitPrice), c.price + colW.price - 4, y + 12, { align: "right" });
@@ -215,9 +222,9 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
 
     doc.setDrawColor(232, 236, 240);
     doc.setLineWidth(0.4);
-    doc.line(margin, y - ROW_H + 4 + ROW_H, PW - margin, y - ROW_H + 4 + ROW_H);
+    doc.line(margin, y - rowH + 4 + rowH, PW - margin, y - rowH + 4 + rowH);
 
-    y += ROW_H + 4;
+    y += rowH + 4;
   });
 
   y += 10;

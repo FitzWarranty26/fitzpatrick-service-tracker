@@ -1213,6 +1213,13 @@ export class SQLiteStorage implements IStorage {
     sqlite.prepare(`DELETE FROM invoices WHERE id = ?`).run(id);
   }
 
+  // Mark any Sent invoice whose due_date < today as Overdue
+  markOverdueInvoices(today: string): void {
+    sqlite.prepare(
+      `UPDATE invoices SET status = 'Overdue', updated_at = ? WHERE status = 'Sent' AND due_date IS NOT NULL AND due_date < ?`
+    ).run(new Date().toISOString(), today);
+  }
+
   // Invoice items
   createInvoiceItem(data: InsertInvoiceItem): InvoiceItem {
     const row = sqlite.prepare(`

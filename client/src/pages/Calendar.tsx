@@ -28,6 +28,7 @@ interface CalendarUser {
   username: string;
   displayName: string;
   role: string;
+  active: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
