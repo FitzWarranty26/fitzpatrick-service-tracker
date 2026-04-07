@@ -102,8 +102,8 @@ function buildPage(logoUrl: string, title: string, filters: Array<{ label: strin
   ${filterHtml}
   ${body}
   <div class="footer">
-    <div>Fitzpatrick Warranty Service, LLC<br/>Utah &amp; Southern Idaho · Fitz.warranty@fitzpatrickwarranty.com</div>
-    <div style="text-align:right">${escapeHtml(title)}<br/>Fitzpatrick Warranty Service, LLC</div>
+    <div>Copyright Fitzpatrick Warranty Service, LLC. 2026</div>
+    <div style="text-align:right">${escapeHtml(title)}</div>
   </div>
 </div></body></html>`;
 }

@@ -272,7 +272,7 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
   doc.setFillColor(...BRAND_BLUE);
   doc.rect(0, PH - 42, PW, 2, "F");
   setFont(8, "normal", ACCENT_MID);
-  doc.text("Fitzpatrick Warranty Service, LLC  ·  PO Box 157, West Jordan, UT 84088", PW / 2, PH - 22, { align: "center" });
+  doc.text("Copyright Fitzpatrick Warranty Service, LLC. 2026", PW / 2, PH - 22, { align: "center" });
   setFont(7.5, "normal", ACCENT_MID);
   doc.text(`Invoice ${invoice.invoiceNumber}  ·  ${fmtDate(invoice.issueDate)}${invoice.dueDate ? "  ·  Due " + fmtDate(invoice.dueDate) : ""}`, PW / 2, PH - 10, { align: "center" });
 

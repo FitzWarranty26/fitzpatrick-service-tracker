@@ -434,12 +434,10 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
   <!-- Footer -->
   <div class="footer">
     <div class="footer-left">
-      Fitzpatrick Warranty Service, LLC<br/>
-      Utah &amp; Southern Idaho · Fitz.warranty@fitzpatrickwarranty.com
+      Copyright Fitzpatrick Warranty Service, LLC. 2026
     </div>
     <div class="footer-right">
-      Service Call #${call.id} · ${formatDate(call.callDate)}<br/>
-      Fitzpatrick Warranty Service, LLC
+      Service Call #${call.id} · ${formatDate(call.callDate)}
     </div>
   </div>
 
