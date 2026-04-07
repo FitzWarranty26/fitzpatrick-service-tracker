@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -207,6 +208,23 @@ export type InvoiceItem = typeof invoiceItems.$inferSelect;
 export const INVOICE_STATUSES = ["Draft", "Sent", "Paid", "Overdue"] as const;
 export const INVOICE_ITEM_TYPES = ["labor", "parts", "travel", "other"] as const;
 export const PAYMENT_TERMS = ["Due on Receipt", "Net 15", "Net 30", "Net 60"] as const;
+
+// ─── Service Call Visits (Return Visits) ────────────────────────────────────
+
+export const serviceCallVisits = sqliteTable("service_call_visits", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  serviceCallId: integer("service_call_id").notNull(),
+  visitNumber: integer("visit_number").notNull(),
+  visitDate: text("visit_date").notNull(),
+  technicianId: integer("technician_id"),
+  notes: text("notes"),
+  status: text("status").notNull().default("Scheduled"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export type ServiceCallVisit = typeof serviceCallVisits.$inferSelect;
+export type InsertServiceCallVisit = typeof serviceCallVisits.$inferInsert;
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

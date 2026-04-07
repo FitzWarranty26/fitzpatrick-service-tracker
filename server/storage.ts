@@ -28,6 +28,8 @@ import {
   type InsertInvoice,
   type InvoiceItem,
   type InsertInvoiceItem,
+  type ServiceCallVisit,
+  type InsertServiceCallVisit,
 } from "@shared/schema";
 
 // Use persistent disk path on Render if available, otherwise local
@@ -368,6 +370,26 @@ sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_audit_log_system_user_id ON audit_log_system(user_id);
   CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 `);
+
+// Migration 15: Create service_call_visits table for return visits
+{
+  const hasTable = (sqlite.prepare(`SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name='service_call_visits'`).get() as any).c > 0;
+  if (!hasTable) {
+    sqlite.exec(`CREATE TABLE IF NOT EXISTS service_call_visits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      service_call_id INTEGER NOT NULL REFERENCES service_calls(id) ON DELETE CASCADE,
+      visit_number INTEGER NOT NULL,
+      visit_date TEXT NOT NULL,
+      technician_id INTEGER REFERENCES users(id),
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'Scheduled',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_call_visits_call_id ON service_call_visits(service_call_id)`);
+    console.log("Migration 15: created service_call_visits table");
+  }
+}
 
 // Seed default admin user if users table is empty
 const userCount = (sqlite.prepare(`SELECT COUNT(*) as count FROM users`).get() as any).count;
@@ -1250,6 +1272,74 @@ export class SQLiteStorage implements IStorage {
   replaceInvoiceItems(invoiceId: number, items: InsertInvoiceItem[]): InvoiceItem[] {
     sqlite.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(invoiceId);
     return items.map((item, idx) => this.createInvoiceItem({ ...item, invoiceId, sortOrder: idx }));
+  }
+
+  // ─── Service Call Visits (Return Visits) ──────────────────────────────────
+
+  private mapVisitRow(r: any): ServiceCallVisit {
+    return {
+      id: r.id,
+      serviceCallId: r.service_call_id,
+      visitNumber: r.visit_number,
+      visitDate: r.visit_date,
+      technicianId: r.technician_id,
+      notes: r.notes,
+      status: r.status,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  }
+
+  getVisitsForCall(serviceCallId: number): ServiceCallVisit[] {
+    const rows = sqlite.prepare(
+      `SELECT * FROM service_call_visits WHERE service_call_id = ? ORDER BY visit_number ASC`
+    ).all(serviceCallId) as any[];
+    return rows.map(r => this.mapVisitRow(r));
+  }
+
+  createVisit(data: InsertServiceCallVisit): ServiceCallVisit {
+    const nextNum = (sqlite.prepare(
+      `SELECT COALESCE(MAX(visit_number), 1) + 1 AS next_num FROM service_call_visits WHERE service_call_id = ?`
+    ).get(data.serviceCallId) as any).next_num;
+    const now = new Date().toISOString();
+    const row = sqlite.prepare(`
+      INSERT INTO service_call_visits (service_call_id, visit_number, visit_date, technician_id, notes, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
+    `).get(
+      data.serviceCallId, nextNum, data.visitDate,
+      data.technicianId || null, data.notes || null,
+      data.status || "Scheduled", now, now
+    ) as any;
+    return this.mapVisitRow(row);
+  }
+
+  updateVisit(id: number, data: Partial<Pick<ServiceCallVisit, 'visitDate' | 'technicianId' | 'notes' | 'status'>>): ServiceCallVisit | undefined {
+    const allowed = ["visitDate", "technicianId", "notes", "status"];
+    const colMap: Record<string, string> = {
+      visitDate: "visit_date", technicianId: "technician_id", notes: "notes", status: "status",
+    };
+    const updates: string[] = ["updated_at = ?"];
+    const params: any[] = [new Date().toISOString()];
+    for (const key of allowed) {
+      if (key in data) {
+        updates.push(`${colMap[key]} = ?`);
+        params.push((data as any)[key] ?? null);
+      }
+    }
+    params.push(id);
+    const row = sqlite.prepare(
+      `UPDATE service_call_visits SET ${updates.join(", ")} WHERE id = ? RETURNING *`
+    ).get(...params) as any;
+    return row ? this.mapVisitRow(row) : undefined;
+  }
+
+  deleteVisit(id: number): void {
+    sqlite.prepare(`DELETE FROM service_call_visits WHERE id = ?`).run(id);
+  }
+
+  getVisitById(id: number): ServiceCallVisit | undefined {
+    const row = sqlite.prepare(`SELECT * FROM service_call_visits WHERE id = ?`).get(id) as any;
+    return row ? this.mapVisitRow(row) : undefined;
   }
 
   getAuditLog(filters?: { userId?: number; action?: string; entityType?: string; limit?: number; offset?: number }): { entries: AuditLogEntry[]; total: number } {

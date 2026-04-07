@@ -20,9 +20,13 @@ import { useToast } from "@/hooks/use-toast";
 import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PRODUCT_TYPES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { getUser } from "@/lib/auth";
+import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Receipt,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
-  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell
+  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, CalendarDays
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -39,6 +43,43 @@ interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
   parts: Part[];
   activities: Array<{ id: number; serviceCallId: number; note: string; createdAt: string }>;
+}
+
+interface ServiceCallVisit {
+  id: number;
+  serviceCallId: number;
+  visitNumber: number;
+  visitDate: string;
+  technicianId: number | null;
+  notes: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface AppUser {
+  id: number;
+  username: string;
+  displayName: string;
+  role: string;
+  active: number;
+}
+
+const VISIT_STATUSES = ["Scheduled", "In Progress", "Completed", "Needs Return Visit", "Cancelled"] as const;
+
+function VisitStatusBadge({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    "Scheduled": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+    "In Progress": "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
+    "Completed": "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+    "Needs Return Visit": "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+    "Cancelled": "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+  };
+  return (
+    <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${colors[status] || colors["Scheduled"]}`}>
+      {status}
+    </span>
+  );
 }
 
 function DetailRow({ label, value }: { label: string; value?: string | null }) {
@@ -371,6 +412,124 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
     },
   });
+
+  // ─── Return Visits ──────────────────────────────────────────────────────────
+  const currentUser = getUser();
+  const canEdit = currentUser && currentUser.role !== "staff";
+  const canDelete = currentUser && currentUser.role === "manager";
+
+  const { data: visits = [], refetch: refetchVisits } = useQuery<ServiceCallVisit[]>({
+    queryKey: ["/api/service-calls", callId, "visits"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/service-calls/${callId}/visits`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!call,
+  });
+
+  const { data: allUsers = [] } = useQuery<AppUser[]>({
+    queryKey: ["/api/users"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/users`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!canEdit,
+  });
+  const techUsers = allUsers.filter(u => u.active && ["tech", "manager", "sales"].includes(u.role));
+
+  const [showAddVisit, setShowAddVisit] = useState(false);
+  const [editingVisit, setEditingVisit] = useState<ServiceCallVisit | null>(null);
+  const [visitForm, setVisitForm] = useState({
+    visitDate: new Date().toISOString().split("T")[0],
+    status: "Scheduled",
+    technicianId: "",
+    notes: "",
+  });
+  const [visitDateError, setVisitDateError] = useState("");
+  const [visit1Expanded, setVisit1Expanded] = useState(false);
+
+  const openAddVisit = () => {
+    setVisitForm({
+      visitDate: new Date().toISOString().split("T")[0],
+      status: "Scheduled",
+      technicianId: "",
+      notes: "",
+    });
+    setVisitDateError("");
+    setEditingVisit(null);
+    setShowAddVisit(true);
+  };
+
+  const openEditVisit = (v: ServiceCallVisit) => {
+    setVisitForm({
+      visitDate: v.visitDate,
+      status: v.status,
+      technicianId: v.technicianId ? String(v.technicianId) : "",
+      notes: v.notes || "",
+    });
+    setVisitDateError("");
+    setEditingVisit(v);
+    setShowAddVisit(true);
+  };
+
+  const createVisitMutation = useMutation({
+    mutationFn: async (data: { visitDate: string; status: string; technicianId: number | null; notes: string }) => {
+      const res = await apiRequest("POST", `/api/service-calls/${callId}/visits`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setShowAddVisit(false);
+      refetchVisits();
+      toast({ title: "Return visit added" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const updateVisitMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("PUT", `/api/service-calls/${callId}/visits/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setShowAddVisit(false);
+      setEditingVisit(null);
+      refetchVisits();
+      toast({ title: "Visit updated" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteVisitMutation = useMutation({
+    mutationFn: async (vid: number) => {
+      const res = await apiRequest("DELETE", `/api/service-calls/${callId}/visits/${vid}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchVisits();
+      toast({ title: "Visit deleted" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const handleVisitSubmit = () => {
+    if (!visitForm.visitDate) {
+      setVisitDateError("Visit date is required");
+      return;
+    }
+    const payload = {
+      visitDate: visitForm.visitDate,
+      status: visitForm.status,
+      technicianId: visitForm.technicianId ? parseInt(visitForm.technicianId) : null,
+      notes: visitForm.notes || null,
+    };
+    if (editingVisit) {
+      updateVisitMutation.mutate({ id: editingVisit.id, data: payload });
+    } else {
+      createVisitMutation.mutate(payload as any);
+    }
+  };
 
   const handleDirectPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!call) return;
@@ -1212,54 +1371,164 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </CardContent>
       </Card>
 
-      {/* Visit History (Follow-up chain) */}
-      {relatedCalls && relatedCalls.length > 0 && (
-        <Card data-testid="visit-history-card">
-          <CardHeader className="pb-3 border-b border-border">
-            <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Visit History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {call.parentCallId && (
-              <p className="text-xs text-muted-foreground mb-3">
-                Follow-up to{" "}
-                <Link href={`/calls/${call.parentCallId}`} className="text-primary font-medium underline" data-testid="parent-call-link">
-                  Call #{call.parentCallId}
-                </Link>
-              </p>
-            )}
-            <div className="space-y-2">
-              {relatedCalls.map((rc) => {
-                const isCurrent = rc.id === callId;
-                return (
-                  <div
-                    key={rc.id}
-                    className={`flex items-center gap-3 p-2 rounded-lg text-sm ${isCurrent ? "bg-primary/10 border border-primary/30" : "hover:bg-muted/30"}`}
-                    data-testid={`visit-${rc.id}`}
-                  >
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: isCurrent ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        {isCurrent ? (
-                          <span className="font-medium">Call #{rc.id} (current)</span>
-                        ) : (
-                          <Link href={`/calls/${rc.id}`} className="font-medium text-primary hover:underline">
-                            Call #{rc.id}
-                          </Link>
-                        )}
-                        <StatusBadge status={rc.status} />
-                        <span className="text-xs text-muted-foreground">{formatDate(rc.callDate)}</span>
-                      </div>
-                      {rc.issueDescription && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{rc.issueDescription.slice(0, 80)}{rc.issueDescription.length > 80 ? "…" : ""}</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+      {/* Visit History (Return Visits) */}
+      <Card data-testid="visit-history-card">
+        <CardHeader className="pb-3 border-b border-border flex flex-row items-center justify-between">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Visit History</CardTitle>
+          {canEdit && (
+            <Button variant="outline" size="sm" onClick={openAddVisit} data-testid="button-add-visit"
+              className="text-[hsl(200,72%,40%)] border-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,40%)]/10">
+              <Plus className="w-3.5 h-3.5 mr-1" /> Add Return Visit
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Visit 1 — synthesized from call */}
+          <div className="rounded-lg border border-border bg-card p-4" data-testid="visit-1-card">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold bg-[hsl(220_22%_14%)] text-white px-2 py-0.5 rounded">VISIT 1</span>
+              <span className="text-sm text-foreground">{formatDate(call.callDate)}</span>
+              <StatusBadge status={call.status} />
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div className="mt-2">
+              <p className="text-xs text-muted-foreground">Notes:</p>
+              {call.techNotes || call.issueDescription ? (
+                <div>
+                  <p className={`text-sm text-foreground ${!visit1Expanded ? "line-clamp-2" : ""}`}>
+                    {call.techNotes || call.issueDescription || "—"}
+                  </p>
+                  {(call.techNotes || call.issueDescription || "").length > 120 && (
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:underline mt-0.5"
+                      onClick={() => setVisit1Expanded(!visit1Expanded)}
+                    >
+                      {visit1Expanded ? "show less" : "show more"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">—</p>
+              )}
+            </div>
+          </div>
+
+          {/* Visit N cards */}
+          {visits.map((v) => {
+            const tech = techUsers.find(u => u.id === v.technicianId);
+            return (
+              <div key={v.id} className="rounded-lg border border-border bg-card p-4" data-testid={`visit-${v.visitNumber}-card`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold bg-[hsl(200_72%_40%)] text-white px-2 py-0.5 rounded">VISIT {v.visitNumber}</span>
+                  <span className="text-sm text-foreground">{formatDate(v.visitDate)}</span>
+                  <VisitStatusBadge status={v.status} />
+                  <div className="ml-auto flex items-center gap-1">
+                    {canEdit && (
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => openEditVisit(v)} data-testid={`button-edit-visit-${v.id}`}>
+                        <Edit3 className="w-3 h-3 mr-1" /> Edit
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" data-testid={`button-delete-visit-${v.id}`}>
+                            <Trash2 className="w-3 h-3 mr-1" /> Delete
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Visit {v.visitNumber}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently remove Visit {v.visitNumber} from this service call.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteVisitMutation.mutate(v.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-muted-foreground">Technician: <span className="text-foreground">{tech ? tech.displayName : "—"}</span></p>
+                  <p className="text-xs text-muted-foreground">Notes: <span className="text-sm text-foreground">{v.notes || "—"}</span></p>
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      {/* Add / Edit Visit Dialog */}
+      <Dialog open={showAddVisit} onOpenChange={(open) => { if (!open) { setShowAddVisit(false); setEditingVisit(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingVisit ? `Edit Visit ${editingVisit.visitNumber}` : "Add Return Visit"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Visit Date *</label>
+              <Input
+                type="date"
+                value={visitForm.visitDate}
+                onChange={e => { setVisitForm(f => ({ ...f, visitDate: e.target.value })); setVisitDateError(""); }}
+                className="h-8 text-sm"
+                data-testid="input-visit-date"
+              />
+              {visitDateError && <p className="text-xs text-destructive mt-1">{visitDateError}</p>}
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Status</label>
+              <Select value={visitForm.status} onValueChange={v => setVisitForm(f => ({ ...f, status: v }))}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-visit-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VISIT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Technician</label>
+              <Select value={visitForm.technicianId || "__none__"} onValueChange={v => setVisitForm(f => ({ ...f, technicianId: v === "__none__" ? "" : v }))}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-visit-tech">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Select —</SelectItem>
+                  {techUsers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
+              <Textarea
+                rows={3}
+                value={visitForm.notes}
+                onChange={e => setVisitForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Visit notes…"
+                className="text-sm"
+                data-testid="input-visit-notes"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowAddVisit(false); setEditingVisit(null); }}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleVisitSubmit} disabled={createVisitMutation.isPending || updateVisitMutation.isPending} data-testid="button-save-visit">
+                {(createVisitMutation.isPending || updateVisitMutation.isPending) ? "Saving…" : (editingVisit ? "Update Visit" : "Add Visit")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Photos */}
       <Card>
