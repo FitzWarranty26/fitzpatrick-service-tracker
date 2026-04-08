@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Plus, Shield, Wrench, Eye, Briefcase } from "lucide-react";
+import { Users, Plus, Shield, Wrench, Eye, Briefcase, Trash2 } from "lucide-react";
 
 const ROLE_CONFIG = {
   manager: { label: "Manager", icon: Shield, color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800" },
@@ -29,8 +30,10 @@ interface UserData {
 
 export default function Team() {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [showDialog, setShowDialog] = useState(false);
   const [editUser, setEditUser] = useState<UserData | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserData | null>(null);
   const [form, setForm] = useState({ username: "", displayName: "", email: "", password: "", confirmPassword: "", role: "tech" });
   const [passwordError, setPasswordError] = useState("");
 
@@ -100,6 +103,16 @@ export default function Team() {
   const toggleActive = (user: UserData) => {
     updateMutation.mutate({ id: user.id, data: { active: user.active ? 0 : 1 } });
   };
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/users/${id}`, undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      setDeleteTarget(null);
+      toast({ title: "User permanently deleted" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const activeUsers = users.filter(u => u.active);
   const inactiveUsers = users.filter(u => !u.active);
@@ -171,9 +184,14 @@ export default function Team() {
                       </td>
                       <td className="p-3 text-right space-x-2">
                         <Button variant="ghost" size="sm" onClick={() => openEdit(user)}>Edit</Button>
-                        <Button variant="ghost" size="sm" onClick={() => toggleActive(user)} className={user.active ? "text-red-500 hover:text-red-700" : "text-emerald-500 hover:text-emerald-700"}>
+                        <Button variant="ghost" size="sm" onClick={() => toggleActive(user)} className={user.active ? "text-amber-500 hover:text-amber-700" : "text-emerald-500 hover:text-emerald-700"}>
                           {user.active ? "Deactivate" : "Activate"}
                         </Button>
+                        {currentUser?.id !== user.id && (
+                          <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(user)} className="text-red-500 hover:text-red-700">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -183,6 +201,29 @@ export default function Team() {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Permanently Delete User?</DialogTitle>
+            <DialogDescription>
+              This will permanently remove <strong>{deleteTarget?.displayName}</strong> ({deleteTarget?.username}) from the system. This cannot be undone.
+              Their activity log entries will be retained but unlinked from this account.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete Permanently"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>

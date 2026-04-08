@@ -377,6 +377,41 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  app.delete("/api/users/:id", requireManager, (req: any, res: any) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      // Cannot delete yourself
+      if (req.user?.id === id) {
+        return res.status(400).json({ error: "You cannot delete your own account" });
+      }
+
+      const target = storage.getUserById(id);
+      if (!target) return res.status(404).json({ error: "User not found" });
+
+      // Cannot delete the last active manager
+      if (target.role === "manager") {
+        const allUsers = storage.getAllUsers();
+        const activeManagers = allUsers.filter((u: any) => u.role === "manager" && u.active && u.id !== id);
+        if (activeManagers.length === 0) {
+          return res.status(400).json({ error: "Cannot delete the last manager account" });
+        }
+      }
+
+      // Invalidate any active sessions for this user
+      activeSessions.forEach((session, token) => {
+        if (session.userId === id) activeSessions.delete(token);
+      });
+
+      logAudit(req, "deleted_user", "user", id, JSON.stringify({ username: target.username, displayName: target.displayName, role: target.role }));
+      storage.deleteUser(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   // ─── System Audit Log (Manager Only) ──────────────────────────────────────
 
   app.get("/api/audit-log", requireManager, (req, res) => {

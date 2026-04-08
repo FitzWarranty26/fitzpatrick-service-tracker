@@ -1099,6 +1099,13 @@ export class SQLiteStorage implements IStorage {
     return { id: row.id, username: row.username, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
   }
 
+  deleteUser(id: number): void {
+    // Nullify references so history is preserved
+    sqlite.prepare(`UPDATE audit_log_system SET user_id = NULL WHERE user_id = ?`).run(id);
+    sqlite.prepare(`UPDATE service_call_visits SET technician_id = NULL WHERE technician_id = ?`).run(id);
+    sqlite.prepare(`DELETE FROM users WHERE id = ?`).run(id);
+  }
+
   updateUser(id: number, data: { displayName?: string; email?: string; role?: string; active?: number; password?: string; mustChangePassword?: number }): Omit<User, "password"> | undefined {
     const updates: string[] = [];
     const params: any[] = [];
