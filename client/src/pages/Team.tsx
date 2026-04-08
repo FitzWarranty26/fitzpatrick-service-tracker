@@ -31,7 +31,8 @@ export default function Team() {
   const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
   const [editUser, setEditUser] = useState<UserData | null>(null);
-  const [form, setForm] = useState({ username: "", displayName: "", email: "", password: "", role: "tech" });
+  const [form, setForm] = useState({ username: "", displayName: "", email: "", password: "", confirmPassword: "", role: "tech" });
+  const [passwordError, setPasswordError] = useState("");
 
   const { data: users = [], isLoading } = useQuery<UserData[]>({
     queryKey: ["/api/users"],
@@ -60,7 +61,7 @@ export default function Team() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const resetForm = () => setForm({ username: "", displayName: "", email: "", password: "", role: "tech" });
+  const resetForm = () => { setForm({ username: "", displayName: "", email: "", password: "", confirmPassword: "", role: "tech" }); setPasswordError(""); };
 
   const openCreate = () => {
     resetForm();
@@ -76,11 +77,22 @@ export default function Team() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordError("");
     if (editUser) {
+      // Editing: if a new password is entered, confirm must match
+      if (form.password && form.password !== form.confirmPassword) {
+        setPasswordError("Passwords do not match");
+        return;
+      }
       const data: any = { displayName: form.displayName, email: form.email || null, role: form.role };
       if (form.password) data.password = form.password;
       updateMutation.mutate({ id: editUser.id, data });
     } else {
+      // Creating: confirm password required and must match
+      if (form.password !== form.confirmPassword) {
+        setPasswordError("Passwords do not match");
+        return;
+      }
       createMutation.mutate(form);
     }
   };
@@ -197,6 +209,13 @@ export default function Team() {
               <label className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">{editUser ? "Reset Password (leave blank to keep)" : "Password"}</label>
               <Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required={!editUser} placeholder={editUser ? "Leave blank to keep current" : "Min 8 characters"} />
             </div>
+            {(!editUser || form.password) && (
+              <div>
+                <label className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Confirm Password</label>
+                <Input type="password" value={form.confirmPassword} onChange={e => setForm({ ...form, confirmPassword: e.target.value })} required={!editUser || !!form.password} placeholder="Re-enter password" />
+                {passwordError && <p className="text-xs text-destructive mt-1">{passwordError}</p>}
+              </div>
+            )}
             <div>
               <label className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Role</label>
               <Select value={form.role} onValueChange={v => setForm({ ...form, role: v })}>
