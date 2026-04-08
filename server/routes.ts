@@ -1678,10 +1678,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
         milesTraveled: milesTraveled || null,
       };
       const visit = storage.createVisit(visitData);
-      // Propagate visit status to parent service call
+      // Propagate visit status + date to parent service call so it surfaces on dashboard/scheduled/calendar
       const statusesToPropagate = ['Scheduled', 'In Progress', 'Needs Return Visit'];
       if (statusesToPropagate.includes(visitData.status)) {
-        storage.updateServiceCall(callId, { status: visitData.status });
+        storage.updateServiceCall(callId, { status: visitData.status, scheduledDate: visitData.visitDate });
       }
       logAudit(req, "create_visit", "service_call", callId, `Visit ${visit.visitNumber} added to call #${callId}`);
       res.status(201).json(visit);
@@ -1703,11 +1703,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (milesTraveled !== undefined) data.milesTraveled = milesTraveled;
       const visit = storage.updateVisit(vid, data);
       if (!visit) return res.status(404).json({ error: "Visit not found" });
-      // Propagate visit status to parent service call
+      // Propagate visit status + date to parent service call
       if (status !== undefined && !isNaN(callId)) {
         const statusesToPropagate = ['Scheduled', 'In Progress', 'Needs Return Visit'];
         if (statusesToPropagate.includes(status)) {
-          storage.updateServiceCall(callId, { status });
+          const updatePayload: any = { status };
+          if (visitDate !== undefined) updatePayload.scheduledDate = visitDate;
+          storage.updateServiceCall(callId, updatePayload);
         }
       }
       res.json(visit);
@@ -1764,9 +1766,51 @@ export function registerRoutes(httpServer: Server, app: Express) {
         manufacturer: c.manufacturer,
         status: c.status,
         createdByUsername: c.created_by_username,
+        isReturnVisit: false,
+        visitNumber: 1,
       }));
 
-      res.json(result);
+      // Also include return visits (visit_number >= 2) in the date range
+      const returnVisits = sqliteHandle
+        .prepare(`
+          SELECT
+            sc.id as service_call_id,
+            scv.visit_number,
+            scv.visit_date,
+            scv.status,
+            sc.customer_name, sc.job_site_name, sc.job_site_city, sc.job_site_state,
+            sc.manufacturer,
+            u.display_name as technician_name
+          FROM service_call_visits scv
+          JOIN service_calls sc ON sc.id = scv.service_call_id
+          LEFT JOIN users u ON scv.technician_id = u.id
+          WHERE scv.visit_date >= ? AND scv.visit_date <= ?
+          ORDER BY scv.visit_date ASC
+        `)
+        .all(from || "1900-01-01", to || "2999-12-31") as any[];
+
+      const visitEvents = returnVisits.map(v => ({
+        id: v.service_call_id,           // navigate to parent call
+        callDate: v.visit_date,
+        scheduledDate: v.visit_date,
+        scheduledTime: null,
+        customerName: v.customer_name,
+        jobSiteName: v.job_site_name,
+        jobSiteCity: v.job_site_city,
+        jobSiteState: v.job_site_state,
+        manufacturer: v.manufacturer,
+        status: v.status,
+        createdByUsername: v.technician_name,
+        isReturnVisit: true,
+        visitNumber: v.visit_number,
+      }));
+
+      // Merge and sort by date
+      const allEvents = [...result, ...visitEvents].sort((a, b) =>
+        (a.scheduledDate || a.callDate).localeCompare(b.scheduledDate || b.callDate)
+      );
+
+      res.json(allEvents);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }

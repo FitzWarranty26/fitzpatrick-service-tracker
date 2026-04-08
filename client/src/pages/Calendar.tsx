@@ -21,6 +21,8 @@ interface CalendarCall {
   manufacturer: string;
   status: string;
   createdByUsername: string | null;
+  isReturnVisit?: boolean;
+  visitNumber?: number;
 }
 
 interface CalendarUser {
@@ -179,7 +181,7 @@ export default function CalendarPage() {
                           onClick={() => setSelectedCall(call)}
                           className={`w-full text-left text-[10px] leading-tight px-1 py-0.5 rounded border-l-2 truncate block ${STATUS_COLORS[call.status] || STATUS_COLORS["Scheduled"]}`}
                         >
-                          {call.scheduledTime ? `${formatTime(call.scheduledTime)} ` : ""}{call.customerName || call.jobSiteName || call.manufacturer}
+                          {call.isReturnVisit && <span className="opacity-90">↩ </span>}{call.scheduledTime ? `${formatTime(call.scheduledTime)} ` : ""}{call.customerName || call.jobSiteName || call.manufacturer}
                         </button>
                       ))}
                       {dayCalls.length > 3 && (
@@ -238,6 +240,7 @@ export default function CalendarPage() {
                     className={`w-full text-left text-[10px] leading-tight px-1.5 py-1 rounded border-l-2 block ${STATUS_COLORS[call.status] || STATUS_COLORS["Scheduled"]}`}
                   >
                     {call.scheduledTime && <div className="font-medium">{formatTime(call.scheduledTime)}</div>}
+                    {call.isReturnVisit && <div className="text-[9px] font-bold opacity-90">↩ VISIT {call.visitNumber}</div>}
                     <div className="truncate">{call.customerName || call.jobSiteName || "—"}</div>
                     <div className="truncate text-[9px] opacity-75">{call.manufacturer}</div>
                   </button>
