@@ -189,7 +189,7 @@ sqlite.exec(`
 // We check first to avoid errors on tables that already have the column.
 
 // Allow only known table names to prevent SQL injection
-const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system", "service_call_visits"]);
+const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system", "service_call_visits", "invoice_items"]);
 
 function columnExists(table: string, column: string): boolean {
   if (!ALLOWED_TABLES.has(table)) throw new Error(`Unknown table: ${table}`);
@@ -405,6 +405,12 @@ sqlite.exec(`
     sqlite.exec(`ALTER TABLE photos ADD COLUMN visit_number INTEGER NOT NULL DEFAULT 1`);
     console.log("Migration 16: added visit_number to photos");
   }
+}
+
+// Migration 17: Add visit_number to invoice_items for visit-grouped line items
+if (!columnExists("invoice_items", "visit_number")) {
+  sqlite.exec(`ALTER TABLE invoice_items ADD COLUMN visit_number INTEGER`);
+  console.log("Migration 17: added visit_number to invoice_items");
 }
 
 // Seed default admin user if users table is empty
@@ -1183,6 +1189,7 @@ export class SQLiteStorage implements IStorage {
     return {
       id: r.id, invoiceId: r.invoice_id, type: r.type, description: r.description,
       quantity: r.quantity, unitPrice: r.unit_price, amount: r.amount, sortOrder: r.sort_order,
+      visitNumber: r.visit_number ?? null,
     };
   }
 
@@ -1273,15 +1280,15 @@ export class SQLiteStorage implements IStorage {
   // Invoice items
   createInvoiceItem(data: InsertInvoiceItem): InvoiceItem {
     const row = sqlite.prepare(`
-      INSERT INTO invoice_items (invoice_id, type, description, quantity, unit_price, amount, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
-    `).get(data.invoiceId, data.type, data.description, data.quantity, data.unitPrice, data.amount, data.sortOrder || 0) as any;
+      INSERT INTO invoice_items (invoice_id, type, description, quantity, unit_price, amount, sort_order, visit_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
+    `).get(data.invoiceId, data.type, data.description, data.quantity, data.unitPrice, data.amount, data.sortOrder || 0, data.visitNumber ?? null) as any;
     return this.mapItemRow(row);
   }
 
   updateInvoiceItem(id: number, data: Partial<InsertInvoiceItem>): InvoiceItem | undefined {
-    const allowed = ["type","description","quantity","unitPrice","amount","sortOrder"];
-    const colMap: Record<string,string> = { type:"type", description:"description", quantity:"quantity", unitPrice:"unit_price", amount:"amount", sortOrder:"sort_order" };
+    const allowed = ["type","description","quantity","unitPrice","amount","sortOrder","visitNumber"];
+    const colMap: Record<string,string> = { type:"type", description:"description", quantity:"quantity", unitPrice:"unit_price", amount:"amount", sortOrder:"sort_order", visitNumber:"visit_number" };
     const updates: string[] = [];
     const params: any[] = [];
     for (const key of allowed) {

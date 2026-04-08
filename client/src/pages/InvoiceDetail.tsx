@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Plus, Trash2, Send, CheckCircle, FileDown, Mail, Pencil } from "lucide-react";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
+import { getAuthHeaders } from "@/lib/auth";
 
 interface InvoiceItem {
   id?: number;
@@ -19,6 +20,7 @@ interface InvoiceItem {
   unitPrice: string;
   amount: string;
   sortOrder?: number;
+  visitNumber?: number | null;
 }
 
 interface Invoice {
@@ -80,6 +82,19 @@ export default function InvoiceDetail({ id }: { id: string }) {
     },
   });
 
+  // Fetch visits for the linked service call (for visit grouping)
+  const { data: callVisits = [] } = useQuery<any[]>({
+    queryKey: ["/api/service-calls", invoice?.serviceCallId, "visits"],
+    queryFn: async () => {
+      const res = await fetch(`/api/service-calls/${invoice!.serviceCallId}/visits`, {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!invoice?.serviceCallId,
+  });
+
   useEffect(() => {
     if (invoice && !isEditing) {
       setForm(invoice);
@@ -127,7 +142,7 @@ export default function InvoiceDetail({ id }: { id: string }) {
   }
 
   function addItem(type: string) {
-    setItems(prev => [...prev, { type, description: ITEM_TYPE_LABELS[type] || "", quantity: "1", unitPrice: "0", amount: "0" }]);
+    setItems(prev => [...prev, { type, description: ITEM_TYPE_LABELS[type] || "", quantity: "1", unitPrice: "0", amount: "0", visitNumber: null }]);
   }
 
   function updateItem(idx: number, field: string, value: string) {
@@ -180,6 +195,46 @@ export default function InvoiceDetail({ id }: { id: string }) {
   const displayInvoice = isEditing ? form : invoice;
   const displayItems = isEditing ? items : invoice.items;
   const subtotal = displayItems?.reduce((s, i) => s + parseFloat(i.amount || "0"), 0) || 0;
+
+  // Visit grouping logic
+  const hasVisitGrouping = displayItems?.some(i => i.visitNumber != null) || false;
+  const hasVisits = callVisits.length > 0;
+  const maxVisitNumber = hasVisits
+    ? Math.max(1, ...callVisits.map((v: any) => v.visitNumber))
+    : (hasVisitGrouping ? Math.max(...displayItems!.filter(i => i.visitNumber != null).map(i => i.visitNumber!)) : 0);
+  const showVisitDropdown = hasVisitGrouping || (!!invoice.serviceCallId && hasVisits);
+
+  // Build visit date map for section headers
+  const visitDateMap: Record<number, string> = {};
+  callVisits.forEach((v: any) => {
+    visitDateMap[v.visitNumber] = v.visitDate;
+  });
+
+  // Group items by visitNumber for display
+  function groupItemsByVisit(itemsToGroup: InvoiceItem[]) {
+    const groups: { key: number | null; label: string; visitDate?: string; items: { item: InvoiceItem; originalIndex: number }[] }[] = [];
+    const visitNumbers = new Set<number | null>();
+    itemsToGroup.forEach(i => visitNumbers.add(i.visitNumber ?? null));
+    // Sort: numbered visits first, then null (General)
+    const sorted = [...visitNumbers].sort((a, b) => {
+      if (a == null && b == null) return 0;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      return a - b;
+    });
+    for (const vn of sorted) {
+      const groupItems = itemsToGroup
+        .map((item, idx) => ({ item, originalIndex: idx }))
+        .filter(({ item }) => (item.visitNumber ?? null) === vn);
+      groups.push({
+        key: vn,
+        label: vn != null ? `VISIT ${vn}` : "GENERAL",
+        visitDate: vn != null ? visitDateMap[vn] : undefined,
+        items: groupItems,
+      });
+    }
+    return groups;
+  }
 
   return (
     <main className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
@@ -334,7 +389,8 @@ export default function InvoiceDetail({ id }: { id: string }) {
 
           {/* Items table header */}
           <div className="hidden md:grid grid-cols-12 gap-2 text-[10px] uppercase tracking-widest font-medium text-muted-foreground px-2">
-            <div className="col-span-5">Description</div>
+            <div className={showVisitDropdown && isEditing ? "col-span-4" : "col-span-5"}>Description</div>
+            {showVisitDropdown && isEditing && <div className="col-span-1">Visit</div>}
             <div className="col-span-2 text-right">Qty / Hrs</div>
             <div className="col-span-2 text-right">Unit Price</div>
             <div className="col-span-2 text-right">Amount</div>
@@ -345,45 +401,123 @@ export default function InvoiceDetail({ id }: { id: string }) {
             <p className="text-sm text-muted-foreground text-center py-4">No line items yet. {isEditing ? "Use the buttons above to add items." : ""}</p>
           )}
 
-          {displayItems?.map((item, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-2 items-center py-2 border-b last:border-0">
-              <div className="col-span-12 md:col-span-5">
-                {isEditing ? (
-                  <div className="space-y-1">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{ITEM_TYPE_LABELS[item.type] || item.type}</div>
-                    <Input value={item.description} onChange={e => updateItem(idx, "description", e.target.value)} className="h-8 text-sm" />
+          {/* Render items — grouped by visit if applicable */}
+          {hasVisitGrouping && displayItems && displayItems.length > 0 ? (
+            <>
+              {groupItemsByVisit(displayItems).map(group => {
+                const groupSubtotal = group.items.reduce((s, { item }) => s + parseFloat(item.amount || "0"), 0);
+                return (
+                  <div key={group.key ?? "general"}>
+                    {/* Section header */}
+                    <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-1 mt-4 mb-2">
+                      {group.label}{group.visitDate ? ` — ${group.visitDate}` : ""}
+                    </div>
+                    {group.items.map(({ item, originalIndex }) => (
+                      <div key={originalIndex} className="grid grid-cols-12 gap-2 items-center py-2 border-b last:border-0">
+                        <div className={`col-span-12 ${showVisitDropdown && isEditing ? "md:col-span-4" : "md:col-span-5"}`}>
+                          {isEditing ? (
+                            <div className="space-y-1">
+                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{ITEM_TYPE_LABELS[item.type] || item.type}</div>
+                              <Input value={item.description} onChange={e => updateItem(originalIndex, "description", e.target.value)} className="h-8 text-sm" />
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{ITEM_TYPE_LABELS[item.type] || item.type}</div>
+                              <div className="font-medium text-sm">{item.description}</div>
+                            </div>
+                          )}
+                        </div>
+                        {showVisitDropdown && isEditing && (
+                          <div className="col-span-4 md:col-span-1">
+                            <select
+                              value={item.visitNumber ?? ""}
+                              onChange={e => {
+                                const val = e.target.value === "" ? null : parseInt(e.target.value);
+                                setItems(prev => prev.map((it, i) => i === originalIndex ? { ...it, visitNumber: val } : it));
+                              }}
+                              className="w-full h-8 px-1 text-xs border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-[hsl(200,72%,40%)]"
+                            >
+                              <option value="">General</option>
+                              {Array.from({ length: maxVisitNumber }, (_, i) => i + 1).map(n => (
+                                <option key={n} value={n}>V{n}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        <div className="col-span-4 md:col-span-2 md:text-right">
+                          {isEditing
+                            ? <Input value={item.quantity} onChange={e => updateItem(originalIndex, "quantity", e.target.value)} className="h-8 text-sm text-right" />
+                            : <span className="text-sm">{item.quantity}</span>
+                          }
+                        </div>
+                        <div className="col-span-4 md:col-span-2 md:text-right">
+                          {isEditing
+                            ? <Input value={item.unitPrice} onChange={e => updateItem(originalIndex, "unitPrice", e.target.value)} className="h-8 text-sm text-right" placeholder="0.00" />
+                            : <span className="text-sm">{fmt$(item.unitPrice)}</span>
+                          }
+                        </div>
+                        <div className="col-span-3 md:col-span-2 md:text-right font-medium text-sm">
+                          {fmt$(item.amount)}
+                        </div>
+                        {isEditing && (
+                          <div className="col-span-1 flex justify-end">
+                            <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500 hover:text-red-700" onClick={() => removeItem(originalIndex)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {/* Per-visit subtotal */}
+                    <div className="text-right text-sm text-muted-foreground">
+                      {group.label} Subtotal: {fmt$(String(groupSubtotal))}
+                    </div>
                   </div>
-                ) : (
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{ITEM_TYPE_LABELS[item.type] || item.type}</div>
-                    <div className="font-medium text-sm">{item.description}</div>
+                );
+              })}
+            </>
+          ) : (
+            /* Flat list (no visit grouping) — original behavior */
+            displayItems?.map((item, idx) => (
+              <div key={idx} className="grid grid-cols-12 gap-2 items-center py-2 border-b last:border-0">
+                <div className="col-span-12 md:col-span-5">
+                  {isEditing ? (
+                    <div className="space-y-1">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{ITEM_TYPE_LABELS[item.type] || item.type}</div>
+                      <Input value={item.description} onChange={e => updateItem(idx, "description", e.target.value)} className="h-8 text-sm" />
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{ITEM_TYPE_LABELS[item.type] || item.type}</div>
+                      <div className="font-medium text-sm">{item.description}</div>
+                    </div>
+                  )}
+                </div>
+                <div className="col-span-4 md:col-span-2 md:text-right">
+                  {isEditing
+                    ? <Input value={item.quantity} onChange={e => updateItem(idx, "quantity", e.target.value)} className="h-8 text-sm text-right" />
+                    : <span className="text-sm">{item.quantity}</span>
+                  }
+                </div>
+                <div className="col-span-4 md:col-span-2 md:text-right">
+                  {isEditing
+                    ? <Input value={item.unitPrice} onChange={e => updateItem(idx, "unitPrice", e.target.value)} className="h-8 text-sm text-right" placeholder="0.00" />
+                    : <span className="text-sm">{fmt$(item.unitPrice)}</span>
+                  }
+                </div>
+                <div className="col-span-3 md:col-span-2 md:text-right font-medium text-sm">
+                  {fmt$(item.amount)}
+                </div>
+                {isEditing && (
+                  <div className="col-span-1 flex justify-end">
+                    <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500 hover:text-red-700" onClick={() => removeItem(idx)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
                 )}
               </div>
-              <div className="col-span-4 md:col-span-2 md:text-right">
-                {isEditing
-                  ? <Input value={item.quantity} onChange={e => updateItem(idx, "quantity", e.target.value)} className="h-8 text-sm text-right" />
-                  : <span className="text-sm">{item.quantity}</span>
-                }
-              </div>
-              <div className="col-span-4 md:col-span-2 md:text-right">
-                {isEditing
-                  ? <Input value={item.unitPrice} onChange={e => updateItem(idx, "unitPrice", e.target.value)} className="h-8 text-sm text-right" placeholder="0.00" />
-                  : <span className="text-sm">{fmt$(item.unitPrice)}</span>
-                }
-              </div>
-              <div className="col-span-3 md:col-span-2 md:text-right font-medium text-sm">
-                {fmt$(item.amount)}
-              </div>
-              {isEditing && (
-                <div className="col-span-1 flex justify-end">
-                  <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500 hover:text-red-700" onClick={() => removeItem(idx)}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          ))}
+            ))
+          )}
 
           {/* Totals */}
           <div className="pt-2 space-y-1 max-w-xs ml-auto text-sm">

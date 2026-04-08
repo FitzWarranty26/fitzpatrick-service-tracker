@@ -197,6 +197,7 @@ export const invoiceItems = sqliteTable("invoice_items", {
   unitPrice: text("unit_price").notNull().default("0"),
   amount: text("amount").notNull().default("0"),
   sortOrder: integer("sort_order").notNull().default(0),
+  visitNumber: integer("visit_number"),
 });
 
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });

@@ -12,6 +12,7 @@ interface InvoiceItem {
   quantity: string;
   unitPrice: string;
   amount: string;
+  visitNumber?: number | null;
 }
 
 interface Invoice {
@@ -195,13 +196,37 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
   const ROW_H = 40;
   const DESC_MAX_W = colW.desc - 10; // 10pt total side padding, prevents overflow into QTY col
 
-  invoice.items?.forEach((item, idx) => {
+  // Check if we need visit grouping
+  const hasVisitGrouping = invoice.items?.some(i => i.visitNumber != null) || false;
+
+  function drawVisitHeader(label: string) {
+    if (y > PH - 140) { doc.addPage(); y = margin; }
+    doc.setFillColor(...LIGHT_BG);
+    doc.rect(margin, y, cw, 18, "F");
+    setFont(7.5, "bold", NAVY);
+    doc.text(label, margin + 4, y + 12);
+    y += 22;
+  }
+
+  function drawVisitSubtotal(label: string, groupTotal: number) {
+    setFont(8.5, "normal", MUTED_TEXT);
+    doc.text(`${label} Subtotal`, c.price + colW.price - 4, y, { align: "right" });
+    setFont(8.5, "bold", DARK_TEXT);
+    doc.text(fmt$(String(groupTotal.toFixed(2))), c.amt + colW.amt - 4, y, { align: "right" });
+    y += 14;
+    // light separator
+    doc.setDrawColor(220, 225, 230);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y - 4, PW - margin, y - 4);
+  }
+
+  function drawItemRow(item: InvoiceItem, idx: number) {
     if (y > PH - 140) { doc.addPage(); y = margin; }
 
     // Wrap long descriptions to up to 2 lines, compute actual row height
     setFont(9.5, "bold");
     const descLines = doc.splitTextToSize(item.description || "—", DESC_MAX_W).slice(0, 2) as string[];
-    const rowH = descLines.length > 1 ? ROW_H + 11 : ROW_H; // extra line = +11pt
+    const rowH = descLines.length > 1 ? ROW_H + 11 : ROW_H;
 
     if (idx % 2 === 1) {
       doc.setFillColor(250, 251, 252);
@@ -213,7 +238,6 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
     setFont(9.5, "bold");
     doc.text(descLines, c.desc + 4, y + 12);
 
-    // Numbers align to the first description line
     setFont(9.5, "normal", DARK_TEXT);
     doc.text(item.quantity || "1", c.qty + colW.qty - 4, y + 12, { align: "right" });
     doc.text(fmt$(item.unitPrice), c.price + colW.price - 4, y + 12, { align: "right" });
@@ -225,7 +249,37 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
     doc.line(margin, y - rowH + 4 + rowH, PW - margin, y - rowH + 4 + rowH);
 
     y += rowH + 4;
-  });
+  }
+
+  if (hasVisitGrouping) {
+    // Group items by visitNumber
+    const visitGroups = new Map<number | null, InvoiceItem[]>();
+    invoice.items?.forEach(item => {
+      const key = item.visitNumber ?? null;
+      if (!visitGroups.has(key)) visitGroups.set(key, []);
+      visitGroups.get(key)!.push(item);
+    });
+    // Sort: numbered visits first, then null (General)
+    const sortedKeys = [...visitGroups.keys()].sort((a, b) => {
+      if (a == null && b == null) return 0;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      return a - b;
+    });
+    for (const key of sortedKeys) {
+      const groupItems = visitGroups.get(key)!;
+      const label = key != null ? `VISIT ${key}` : "GENERAL";
+      drawVisitHeader(label);
+      groupItems.forEach((item, idx) => drawItemRow(item, idx));
+      const groupTotal = groupItems.reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
+      y += 4;
+      drawVisitSubtotal(key != null ? `Visit ${key}` : "General", groupTotal);
+      y += 4;
+    }
+  } else {
+    // Flat list — original behavior
+    invoice.items?.forEach((item, idx) => drawItemRow(item, idx));
+  }
 
   y += 10;
   hrule(y);

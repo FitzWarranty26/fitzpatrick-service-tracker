@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,6 +15,7 @@ interface LineItem {
   quantity: string;
   unitPrice: string;
   amount: string;
+  visitNumber: number | null;
 }
 
 interface ServiceCall {
@@ -100,7 +102,20 @@ export default function NewInvoice() {
     },
   });
 
-  // Pre-fill from service call when it loads
+  // Fetch visits for the linked service call
+  const { data: callVisits = [] } = useQuery<any[]>({
+    queryKey: ["/api/service-calls", callId, "visits"],
+    queryFn: async () => {
+      const res = await fetch(`/api/service-calls/${callId}/visits`, {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!callId,
+  });
+
+  // Pre-fill from service call + visits when they load
   useEffect(() => {
     if (!serviceCall) return;
     // Bill To: the customer/contractor on the call
@@ -108,46 +123,73 @@ export default function NewInvoice() {
     setBillToEmail(serviceCall.contactEmail || "");
     setBillToPhone(serviceCall.contactPhone || "");
 
-    // Pre-fill line items from the call
+    // Pre-fill line items from the call and visits
     const newItems: LineItem[] = [];
 
-    // Labor from hours logged
+    // Visit 1 — from the parent service call itself
     if (serviceCall.hoursOnJob && parseFloat(serviceCall.hoursOnJob) > 0) {
       newItems.push({
         type: "labor",
-        description: "Labor — Warranty Service",
+        description: "Labor — Visit 1",
         quantity: serviceCall.hoursOnJob,
-        unitPrice: "0",
-        amount: "0",
+        unitPrice: "",
+        amount: "",
+        visitNumber: 1,
       });
     }
 
-    // Travel from miles logged
     if (serviceCall.milesTraveled && parseFloat(serviceCall.milesTraveled) > 0) {
       newItems.push({
         type: "travel",
-        description: `Travel — ${serviceCall.milesTraveled} miles`,
-        quantity: "1",
-        unitPrice: "0",
-        amount: "0",
+        description: "Travel — Visit 1",
+        quantity: serviceCall.milesTraveled,
+        unitPrice: "",
+        amount: "",
+        visitNumber: 1,
       });
     }
 
-    // Parts from parts logged
+    // Parts from call (assigned to Visit 1)
     if (serviceCall.parts?.length) {
       serviceCall.parts.forEach(p => {
         newItems.push({
           type: "parts",
           description: `${p.partDescription}${p.partNumber ? ` (${p.partNumber})` : ""}`,
           quantity: p.quantity || "1",
-          unitPrice: p.unitCost || "0",
+          unitPrice: p.unitCost || "",
           amount: calcAmount(p.quantity || "1", p.unitCost || "0"),
+          visitNumber: 1,
         });
       });
     }
 
+    // Visit 2, 3, ... — from service_call_visits
+    const sortedVisits = [...callVisits].sort((a, b) => a.visitNumber - b.visitNumber);
+    for (const visit of sortedVisits) {
+      if (visit.hoursOnJob && parseFloat(visit.hoursOnJob) > 0) {
+        newItems.push({
+          type: "labor",
+          description: `Labor — Visit ${visit.visitNumber}`,
+          quantity: visit.hoursOnJob,
+          unitPrice: "",
+          amount: "",
+          visitNumber: visit.visitNumber,
+        });
+      }
+      if (visit.milesTraveled && parseFloat(visit.milesTraveled) > 0) {
+        newItems.push({
+          type: "travel",
+          description: `Travel — Visit ${visit.visitNumber}`,
+          quantity: visit.milesTraveled,
+          unitPrice: "",
+          amount: "",
+          visitNumber: visit.visitNumber,
+        });
+      }
+    }
+
     if (newItems.length) setItems(newItems);
-  }, [serviceCall]);
+  }, [serviceCall, callVisits]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/invoices", data),
@@ -161,7 +203,7 @@ export default function NewInvoice() {
   });
 
   function addItem(type: string) {
-    setItems(prev => [...prev, { type, description: ITEM_TYPE_LABELS[type], quantity: "1", unitPrice: "0", amount: "0" }]);
+    setItems(prev => [...prev, { type, description: ITEM_TYPE_LABELS[type], quantity: "1", unitPrice: "0", amount: "0", visitNumber: null }]);
   }
 
   function updateItem(idx: number, field: string, value: string) {
@@ -181,6 +223,13 @@ export default function NewInvoice() {
   function removeItem(idx: number) {
     setItems(prev => prev.filter((_, i) => i !== idx));
   }
+
+  // Determine max visit number for the visit selector
+  const hasVisits = callVisits.length > 0;
+  const maxVisitNumber = hasVisits
+    ? Math.max(1, ...callVisits.map((v: any) => v.visitNumber))
+    : 0;
+  const showVisitColumn = !!callId && hasVisits;
 
   const subtotal = items.reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
 
@@ -316,10 +365,28 @@ export default function NewInvoice() {
 
           {items.map((item, idx) => (
             <div key={idx} className="grid grid-cols-12 gap-2 items-end border-b pb-3 last:border-0">
-              <div className="col-span-12 md:col-span-5">
+              <div className={`col-span-12 ${showVisitColumn ? "md:col-span-4" : "md:col-span-5"}`}>
                 <label className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">{ITEM_TYPE_LABELS[item.type]}</label>
                 <Input value={item.description} onChange={e => updateItem(idx, "description", e.target.value)} className="mt-1 h-9 text-sm" placeholder="Description" />
               </div>
+              {showVisitColumn && (
+                <div className="col-span-4 md:col-span-1">
+                  <label className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Visit</label>
+                  <select
+                    value={item.visitNumber ?? ""}
+                    onChange={e => {
+                      const val = e.target.value === "" ? null : parseInt(e.target.value);
+                      setItems(prev => prev.map((it, i) => i === idx ? { ...it, visitNumber: val } : it));
+                    }}
+                    className="mt-1 w-full h-9 px-1.5 text-xs border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-[hsl(200,72%,40%)]"
+                  >
+                    <option value="">General</option>
+                    {Array.from({ length: maxVisitNumber }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>Visit {n}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="col-span-4 md:col-span-2">
                 <label className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                   {item.type === "labor" ? "Hours" : item.type === "travel" ? "Miles" : "Qty"}
