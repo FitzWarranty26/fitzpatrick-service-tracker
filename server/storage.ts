@@ -189,7 +189,7 @@ sqlite.exec(`
 // We check first to avoid errors on tables that already have the column.
 
 // Allow only known table names to prevent SQL injection
-const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system"]);
+const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system", "service_call_visits"]);
 
 function columnExists(table: string, column: string): boolean {
   if (!ALLOWED_TABLES.has(table)) throw new Error(`Unknown table: ${table}`);
@@ -388,6 +388,22 @@ sqlite.exec(`
     )`);
     sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_call_visits_call_id ON service_call_visits(service_call_id)`);
     console.log("Migration 15: created service_call_visits table");
+  }
+}
+
+// Migration 16: Add hours_on_job, miles_traveled to service_call_visits; add visit_number to photos
+{
+  if (!columnExists("service_call_visits", "hours_on_job")) {
+    sqlite.exec(`ALTER TABLE service_call_visits ADD COLUMN hours_on_job TEXT`);
+    console.log("Migration 16: added hours_on_job to service_call_visits");
+  }
+  if (!columnExists("service_call_visits", "miles_traveled")) {
+    sqlite.exec(`ALTER TABLE service_call_visits ADD COLUMN miles_traveled TEXT`);
+    console.log("Migration 16: added miles_traveled to service_call_visits");
+  }
+  if (!columnExists("photos", "visit_number")) {
+    sqlite.exec(`ALTER TABLE photos ADD COLUMN visit_number INTEGER NOT NULL DEFAULT 1`);
+    console.log("Migration 16: added visit_number to photos");
   }
 }
 
@@ -616,7 +632,12 @@ export class SQLiteStorage implements IStorage {
   }
 
   createPhoto(photo: InsertPhoto): Photo {
-    return db.insert(photos).values(photo).returning().get();
+    // Auto-assign visit_number based on latest visit for this service call
+    const latest = sqlite.prepare(
+      `SELECT COALESCE(MAX(visit_number), 1) as latest FROM service_call_visits WHERE service_call_id = ?`
+    ).get(photo.serviceCallId) as any;
+    const visitNumber = latest?.latest ?? 1;
+    return db.insert(photos).values({ ...photo, visitNumber }).returning().get();
   }
 
   deletePhoto(id: number): void {
@@ -1292,6 +1313,8 @@ export class SQLiteStorage implements IStorage {
       technicianId: r.technician_id,
       notes: r.notes,
       status: r.status,
+      hoursOnJob: r.hours_on_job ?? null,
+      milesTraveled: r.miles_traveled ?? null,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     };
@@ -1304,26 +1327,29 @@ export class SQLiteStorage implements IStorage {
     return rows.map(r => this.mapVisitRow(r));
   }
 
-  createVisit(data: InsertServiceCallVisit): ServiceCallVisit {
+  createVisit(data: InsertServiceCallVisit & { hoursOnJob?: string; milesTraveled?: string }): ServiceCallVisit {
     const nextNum = (sqlite.prepare(
       `SELECT COALESCE(MAX(visit_number), 1) + 1 AS next_num FROM service_call_visits WHERE service_call_id = ?`
     ).get(data.serviceCallId) as any).next_num;
     const now = new Date().toISOString();
     const row = sqlite.prepare(`
-      INSERT INTO service_call_visits (service_call_id, visit_number, visit_date, technician_id, notes, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
+      INSERT INTO service_call_visits (service_call_id, visit_number, visit_date, technician_id, notes, status, hours_on_job, miles_traveled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
     `).get(
       data.serviceCallId, nextNum, data.visitDate,
       data.technicianId || null, data.notes || null,
-      data.status || "Scheduled", now, now
+      data.status || "Scheduled",
+      data.hoursOnJob || null, data.milesTraveled || null,
+      now, now
     ) as any;
     return this.mapVisitRow(row);
   }
 
-  updateVisit(id: number, data: Partial<Pick<ServiceCallVisit, 'visitDate' | 'technicianId' | 'notes' | 'status'>>): ServiceCallVisit | undefined {
-    const allowed = ["visitDate", "technicianId", "notes", "status"];
+  updateVisit(id: number, data: Partial<Pick<ServiceCallVisit, 'visitDate' | 'technicianId' | 'notes' | 'status' | 'hoursOnJob' | 'milesTraveled'>>): ServiceCallVisit | undefined {
+    const allowed = ["visitDate", "technicianId", "notes", "status", "hoursOnJob", "milesTraveled"];
     const colMap: Record<string, string> = {
       visitDate: "visit_date", technicianId: "technician_id", notes: "notes", status: "status",
+      hoursOnJob: "hours_on_job", milesTraveled: "miles_traveled",
     };
     const updates: string[] = ["updated_at = ?"];
     const params: any[] = [new Date().toISOString()];

@@ -1663,18 +1663,26 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const callId = parseInt(req.params.id);
       if (isNaN(callId)) return res.status(400).json({ error: "Invalid ID" });
-      const { visitDate, status, technicianId, notes } = req.body;
+      const { visitDate, status, technicianId, notes, hoursOnJob, milesTraveled } = req.body;
       if (!visitDate || isNaN(new Date(visitDate).getTime())) {
         return res.status(400).json({ error: "Valid visit date is required" });
       }
-      const visit = storage.createVisit({
+      const visitData = {
         serviceCallId: callId,
         visitNumber: 0, // auto-assigned by storage
         visitDate,
         status: status || "Scheduled",
         technicianId: technicianId || null,
         notes: notes || null,
-      });
+        hoursOnJob: hoursOnJob || null,
+        milesTraveled: milesTraveled || null,
+      };
+      const visit = storage.createVisit(visitData);
+      // Propagate visit status to parent service call
+      const statusesToPropagate = ['Scheduled', 'In Progress', 'Needs Return Visit'];
+      if (statusesToPropagate.includes(visitData.status)) {
+        storage.updateServiceCall(callId, { status: visitData.status });
+      }
       logAudit(req, "create_visit", "service_call", callId, `Visit ${visit.visitNumber} added to call #${callId}`);
       res.status(201).json(visit);
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
@@ -1682,16 +1690,26 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   app.put("/api/service-calls/:id/visits/:vid", requireEditor, (req: any, res: any) => {
     try {
+      const callId = parseInt(req.params.id);
       const vid = parseInt(req.params.vid);
       if (isNaN(vid)) return res.status(400).json({ error: "Invalid visit ID" });
-      const { visitDate, notes, status, technicianId } = req.body;
+      const { visitDate, notes, status, technicianId, hoursOnJob, milesTraveled } = req.body;
       const data: any = {};
       if (visitDate !== undefined) data.visitDate = visitDate;
       if (notes !== undefined) data.notes = notes;
       if (status !== undefined) data.status = status;
       if (technicianId !== undefined) data.technicianId = technicianId;
+      if (hoursOnJob !== undefined) data.hoursOnJob = hoursOnJob;
+      if (milesTraveled !== undefined) data.milesTraveled = milesTraveled;
       const visit = storage.updateVisit(vid, data);
       if (!visit) return res.status(404).json({ error: "Visit not found" });
+      // Propagate visit status to parent service call
+      if (status !== undefined && !isNaN(callId)) {
+        const statusesToPropagate = ['Scheduled', 'In Progress', 'Needs Return Visit'];
+        if (statusesToPropagate.includes(status)) {
+          storage.updateServiceCall(callId, { status });
+        }
+      }
       res.json(visit);
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });

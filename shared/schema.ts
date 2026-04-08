@@ -70,6 +70,7 @@ export const photos = sqliteTable("photos", {
   caption: text("caption"),
   photoType: text("photo_type").notNull().default("Other"), // Before | After | Product Label | Damage | Other
   sortOrder: integer("sort_order").notNull().default(0),
+  visitNumber: integer("visit_number").notNull().default(1),
 });
 
 export const insertPhotoSchema = createInsertSchema(photos).omit({ id: true });
@@ -219,6 +220,8 @@ export const serviceCallVisits = sqliteTable("service_call_visits", {
   technicianId: integer("technician_id"),
   notes: text("notes"),
   status: text("status").notNull().default("Scheduled"),
+  hoursOnJob: text("hours_on_job"),
+  milesTraveled: text("miles_traveled"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });

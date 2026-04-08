@@ -53,6 +53,8 @@ interface ServiceCallVisit {
   technicianId: number | null;
   notes: string | null;
   status: string;
+  hoursOnJob: string | null;
+  milesTraveled: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -446,9 +448,10 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     status: "Scheduled",
     technicianId: "",
     notes: "",
+    hoursOnJob: "",
+    milesTraveled: "",
   });
   const [visitDateError, setVisitDateError] = useState("");
-  const [visit1Expanded, setVisit1Expanded] = useState(false);
 
   const openAddVisit = () => {
     setVisitForm({
@@ -456,6 +459,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       status: "Scheduled",
       technicianId: "",
       notes: "",
+      hoursOnJob: "",
+      milesTraveled: "",
     });
     setVisitDateError("");
     setEditingVisit(null);
@@ -468,6 +473,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       status: v.status,
       technicianId: v.technicianId ? String(v.technicianId) : "",
       notes: v.notes || "",
+      hoursOnJob: v.hoursOnJob || "",
+      milesTraveled: v.milesTraveled || "",
     });
     setVisitDateError("");
     setEditingVisit(v);
@@ -482,6 +489,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     onSuccess: () => {
       setShowAddVisit(false);
       refetchVisits();
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
       toast({ title: "Return visit added" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -496,6 +504,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       setShowAddVisit(false);
       setEditingVisit(null);
       refetchVisits();
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
       toast({ title: "Visit updated" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -523,6 +532,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       status: visitForm.status,
       technicianId: visitForm.technicianId ? parseInt(visitForm.technicianId) : null,
       notes: visitForm.notes || null,
+      hoursOnJob: visitForm.hoursOnJob || null,
+      milesTraveled: visitForm.milesTraveled || null,
     };
     if (editingVisit) {
       updateVisitMutation.mutate({ id: editingVisit.id, data: payload });
@@ -1383,38 +1394,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           )}
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Visit 1 — synthesized from call */}
-          <div className="rounded-lg border border-border bg-card p-4" data-testid="visit-1-card">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold bg-[hsl(220_22%_14%)] text-white px-2 py-0.5 rounded">VISIT 1</span>
-              <span className="text-sm text-foreground">{formatDate(call.callDate)}</span>
-              <StatusBadge status={call.status} />
-            </div>
-            <div className="mt-2">
-              <p className="text-xs text-muted-foreground">Notes:</p>
-              {call.techNotes || call.issueDescription ? (
-                <div>
-                  <p className={`text-sm text-foreground ${!visit1Expanded ? "line-clamp-2" : ""}`}>
-                    {call.techNotes || call.issueDescription || "—"}
-                  </p>
-                  {(call.techNotes || call.issueDescription || "").length > 120 && (
-                    <button
-                      type="button"
-                      className="text-xs text-primary hover:underline mt-0.5"
-                      onClick={() => setVisit1Expanded(!visit1Expanded)}
-                    >
-                      {visit1Expanded ? "show less" : "show more"}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">—</p>
-              )}
-            </div>
-          </div>
-
-          {/* Visit N cards */}
-          {visits.map((v) => {
+          {/* Visit N cards — sorted newest first */}
+          {[...visits].sort((a, b) => b.visitNumber - a.visitNumber).map((v) => {
             const tech = techUsers.find(u => u.id === v.technicianId);
             return (
               <div key={v.id} className="rounded-lg border border-border bg-card p-4" data-testid={`visit-${v.visitNumber}-card`}>
@@ -1458,11 +1439,36 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 </div>
                 <div className="mt-2 space-y-1">
                   <p className="text-xs text-muted-foreground">Technician: <span className="text-foreground">{tech ? tech.displayName : "—"}</span></p>
+                  {(v.hoursOnJob || v.milesTraveled) && (
+                    <p className="text-xs text-muted-foreground">
+                      {v.hoursOnJob && <>Hours: {v.hoursOnJob} hrs</>}
+                      {v.hoursOnJob && v.milesTraveled && <span className="mx-2">|</span>}
+                      {v.milesTraveled && <>Miles: {v.milesTraveled} mi</>}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">Notes: <span className="text-sm text-foreground">{v.notes || "—"}</span></p>
                 </div>
               </div>
             );
           })}
+
+          {/* Visit 1 — synthesized from call (always last) */}
+          <div className="rounded-lg border border-border bg-card p-4" data-testid="visit-1-card">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold bg-[hsl(220_22%_14%)] text-white px-2 py-0.5 rounded">VISIT 1</span>
+              <span className="text-sm text-foreground">{formatDate(call.callDate)}</span>
+              <StatusBadge status={call.status} />
+            </div>
+            {(call.hoursOnJob || call.milesTraveled) && (
+              <div className="mt-2">
+                <p className="text-xs text-muted-foreground">
+                  {call.hoursOnJob && <>Hours: {call.hoursOnJob} hrs</>}
+                  {call.hoursOnJob && call.milesTraveled && <span className="mx-2">|</span>}
+                  {call.milesTraveled && <>Miles: {call.milesTraveled} mi</>}
+                </p>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -1506,6 +1512,30 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   {techUsers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Hours on Job</label>
+                <Input
+                  type="text"
+                  value={visitForm.hoursOnJob}
+                  onChange={e => setVisitForm(f => ({ ...f, hoursOnJob: e.target.value }))}
+                  placeholder="e.g. 2.5"
+                  className="h-8 text-sm"
+                  data-testid="input-visit-hours"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Miles Traveled</label>
+                <Input
+                  type="text"
+                  value={visitForm.milesTraveled}
+                  onChange={e => setVisitForm(f => ({ ...f, milesTraveled: e.target.value }))}
+                  placeholder="e.g. 45"
+                  className="h-8 text-sm"
+                  data-testid="input-visit-miles"
+                />
+              </div>
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
@@ -1600,6 +1630,11 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   data-testid={`photo-${photo.id}`}
                 >
                   <img src={photo.photoUrl} alt={photo.caption || "Photo"} className="w-full aspect-square object-cover group-hover:opacity-90 transition-opacity" />
+                  {visits.length > 0 && (
+                    <span className="absolute bottom-8 left-1 text-[9px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded">
+                      VISIT {(photo as any).visitNumber || 1}
+                    </span>
+                  )}
                   <div className="p-1.5 bg-background/90">
                     <p className="text-[10px] font-medium text-muted-foreground">{photo.photoType}</p>
                     {photo.caption && <p className="text-xs text-foreground truncate">{photo.caption}</p>}
