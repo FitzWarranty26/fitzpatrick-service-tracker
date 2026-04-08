@@ -202,18 +202,18 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
   function drawVisitHeader(label: string) {
     if (y > PH - 140) { doc.addPage(); y = margin; }
     doc.setFillColor(...LIGHT_BG);
-    doc.rect(margin, y, cw, 18, "F");
+    doc.rect(margin, y, cw, 20, "F");
     setFont(7.5, "bold", NAVY);
-    doc.text(label, margin + 4, y + 12);
-    y += 22;
+    doc.text(label, margin + 6, y + 14);  // baseline centered in 20pt band
+    y += 24;
   }
 
   function drawVisitSubtotal(label: string, groupTotal: number) {
     setFont(8.5, "normal", MUTED_TEXT);
-    doc.text(`${label} Subtotal`, c.price + colW.price - 4, y, { align: "right" });
+    doc.text(`${label} Subtotal`, c.price + colW.price - 4, y + 10, { align: "right" });
     setFont(8.5, "bold", DARK_TEXT);
-    doc.text(fmt$(String(groupTotal.toFixed(2))), c.amt + colW.amt - 4, y, { align: "right" });
-    y += 14;
+    doc.text(fmt$(String(groupTotal.toFixed(2))), c.amt + colW.amt - 4, y + 10, { align: "right" });
+    y += 18;
     // light separator
     doc.setDrawColor(220, 225, 230);
     doc.setLineWidth(0.5);
