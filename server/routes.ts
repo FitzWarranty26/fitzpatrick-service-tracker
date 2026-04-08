@@ -311,6 +311,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── User Management (Manager Only) ───────────────────────────────────────
 
+  // Lightweight names list — any authenticated user can read (used for dropdowns)
+  app.get("/api/users/names", (req: any, res: any) => {
+    try {
+      const rows = storage.getAllUsers().filter((u: any) => u.active);
+      res.json(rows.map((u: any) => ({ id: u.id, displayName: u.displayName, role: u.role })));
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
   app.get("/api/users", requireManager, (_req, res) => {
     try {
       const users = storage.getAllUsers();

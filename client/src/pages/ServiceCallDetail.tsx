@@ -441,6 +441,17 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   });
   const techUsers = allUsers.filter(u => u.active && ["tech", "manager", "sales"].includes(u.role));
 
+  // All active team members — for "Created By" display + edit (accessible to all roles)
+  const { data: teamMembers = [] } = useQuery<{ id: number; displayName: string; role: string }[]>({
+    queryKey: ["/api/users/names"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/users/names");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const createdByName = teamMembers.find(u => u.id === call?.createdBy)?.displayName ?? null;
+
   const [showAddVisit, setShowAddVisit] = useState(false);
   const [editingVisit, setEditingVisit] = useState<ServiceCallVisit | null>(null);
   const [visitForm, setVisitForm] = useState({
@@ -806,6 +817,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <DetailRow label="Date" value={formatDate(call.callDate)} />
                 <DetailRow label="Manufacturer" value={call.manufacturer === "Other" ? (call.manufacturerOther ?? "Other") : call.manufacturer} />
                 <DetailRow label="Status" value={call.status} />
+                {createdByName && <DetailRow label="Created By" value={createdByName} />}
                 <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
                 {/* Follow-up Reminder */}
                 <div>
@@ -862,6 +874,18 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   </Select>
                 </div>
                 <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Created By</label>
+                  <Select
+                    value={String(editData.createdBy ?? call.createdBy ?? "")}
+                    onValueChange={v => setEditData(d => ({ ...d, createdBy: v ? Number(v) : null }))}
+                  >
+                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select team member…" /></SelectTrigger>
+                    <SelectContent>
+                      {teamMembers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Follow-up Date</label>
                   <Input

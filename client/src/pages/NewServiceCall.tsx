@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
+import { getUser } from "@/lib/auth";
 import { todayISO } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -145,6 +146,17 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
   const [savingOffline, setSavingOffline] = useState(false);
 
   const followUpId = followUpIdProp ? parseInt(followUpIdProp) : null;
+  const currentUser = getUser();
+  const [createdBy, setCreatedBy] = useState<number | string>(currentUser?.id ?? "");
+
+  // Fetch team members for "Created By" dropdown
+  const { data: teamMembers = [] } = useQuery<{ id: number; displayName: string; role: string }[]>({
+    queryKey: ["/api/users/names"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/users/names");
+      return res.json();
+    },
+  });
 
   // Fetch parent call data for follow-up
   const { data: parentCall } = useQuery<ServiceCall & { photos: any[]; parts: any[] }>({
@@ -240,7 +252,10 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
   const createMutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      const res = await apiRequest("POST", "/api/service-calls", values);
+      const res = await apiRequest("POST", "/api/service-calls", {
+        ...values,
+        createdBy: createdBy !== "" ? Number(createdBy) : null,
+      });
       return res.json();
     },
     onSuccess: async (newCall) => {
@@ -444,6 +459,20 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                   </FormItem>
                 )} />
               )}
+
+              <div>
+                <label className="text-sm font-medium">Call Created By</label>
+                <Select value={String(createdBy)} onValueChange={v => setCreatedBy(v === "" ? "" : Number(v))}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select team member…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teamMembers.map(u => (
+                      <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardContent>
           </Card>
 
