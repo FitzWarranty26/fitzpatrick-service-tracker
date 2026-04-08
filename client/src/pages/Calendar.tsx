@@ -356,23 +356,23 @@ export default function CalendarPage() {
           <div className="space-y-1 text-sm">
             {(selectedCall.scheduledDate || selectedCall.callDate) && (
               <div className="flex gap-2">
-                <span className="text-muted-foreground w-16 flex-shrink-0">Date</span>
+                <span className="text-muted-foreground w-24 flex-shrink-0">Date</span>
                 <span>{isoToLocal(selectedCall.scheduledDate || selectedCall.callDate).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}{selectedCall.scheduledTime ? ` at ${formatTime(selectedCall.scheduledTime)}` : ""}</span>
               </div>
             )}
             <div className="flex gap-2">
-              <span className="text-muted-foreground w-16 flex-shrink-0">Manufacturer</span>
+              <span className="text-muted-foreground w-24 flex-shrink-0">Manufacturer</span>
               <span>{selectedCall.manufacturer}</span>
             </div>
             {(selectedCall.jobSiteCity || selectedCall.jobSiteState) && (
               <div className="flex gap-2">
-                <span className="text-muted-foreground w-16 flex-shrink-0">Location</span>
+                <span className="text-muted-foreground w-24 flex-shrink-0">Location</span>
                 <span>{[selectedCall.jobSiteCity, selectedCall.jobSiteState].filter(Boolean).join(", ")}</span>
               </div>
             )}
             {selectedCall.createdByUsername && (
               <div className="flex gap-2">
-                <span className="text-muted-foreground w-16 flex-shrink-0">Created by</span>
+                <span className="text-muted-foreground w-24 flex-shrink-0">Created by</span>
                 <span>{selectedCall.createdByUsername}</span>
               </div>
             )}
