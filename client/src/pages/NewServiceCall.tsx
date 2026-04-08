@@ -148,6 +148,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
   const followUpId = followUpIdProp ? parseInt(followUpIdProp) : null;
   const currentUser = getUser();
   const [createdBy, setCreatedBy] = useState<number | string>(currentUser?.id ?? "");
+  const [createdByError, setCreatedByError] = useState("");
 
   // Fetch team members for "Created By" dropdown
   const { data: teamMembers = [] } = useQuery<{ id: number; displayName: string; role: string }[]>({
@@ -290,6 +291,11 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
   });
 
   const onSubmit = async (values: FormValues) => {
+    if (!createdBy) {
+      setCreatedByError("Please select who created this call");
+      return;
+    }
+    setCreatedByError("");
     if (isOnline) {
       createMutation.mutate(values);
     } else {
@@ -461,9 +467,9 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
               )}
 
               <div>
-                <label className="text-sm font-medium">Call Created By</label>
-                <Select value={String(createdBy)} onValueChange={v => setCreatedBy(v === "" ? "" : Number(v))}>
-                  <SelectTrigger className="mt-1">
+                <label className="text-sm font-medium">Call Created By <span className="text-destructive">*</span></label>
+                <Select value={String(createdBy)} onValueChange={v => { setCreatedBy(v === "" ? "" : Number(v)); setCreatedByError(""); }}>
+                  <SelectTrigger className={`mt-1${createdByError ? " border-destructive" : ""}`}>
                     <SelectValue placeholder="Select team member…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -472,6 +478,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                     ))}
                   </SelectContent>
                 </Select>
+                {createdByError && <p className="text-xs text-destructive mt-1">{createdByError}</p>}
               </div>
             </CardContent>
           </Card>
