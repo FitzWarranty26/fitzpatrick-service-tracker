@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useAuth } from "@/lib/auth";
+import { getUser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,7 +30,7 @@ interface UserData {
 
 export default function Team() {
   const { toast } = useToast();
-  const { user: currentUser } = useAuth();
+  const currentUser = getUser();
   const [showDialog, setShowDialog] = useState(false);
   const [editUser, setEditUser] = useState<UserData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserData | null>(null);
