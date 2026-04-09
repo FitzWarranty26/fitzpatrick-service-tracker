@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PRODUCT_TYPES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { getUser } from "@/lib/auth";
 import {
@@ -252,6 +252,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Partial<ServiceCallFull>>({});
+  const [showCompletePrompt, setShowCompletePrompt] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
   const [newPhotoFiles, setNewPhotoFiles] = useState<Array<{ photoUrl: string; caption: string; photoType: string }>>([]);
 
@@ -337,7 +338,18 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     setNewPhotoFiles([]);
   };
 
-  const saveEdit = () => {
+  const saveEdit = (force = false) => {
+    // If marking Completed, check for missing hours/miles
+    if (!force && editData.status === "Completed") {
+      const effectiveHours = (editData.hoursOnJob ?? call?.hoursOnJob) as string | null;
+      const effectiveMiles = (editData.milesTraveled ?? call?.milesTraveled) as string | null;
+      const missingHours = !effectiveHours || parseFloat(effectiveHours) <= 0;
+      const missingMiles = !effectiveMiles || parseFloat(effectiveMiles) <= 0;
+      if (missingHours || missingMiles) {
+        setShowCompletePrompt(true);
+        return;
+      }
+    }
     const { photos: _p, parts: _pt, ...updateFields } = editData as any;
     updateMutation.mutate(updateFields);
   };
@@ -380,15 +392,15 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
   // Fix 2: Add Part state and mutations
   const [showAddPart, setShowAddPart] = useState(false);
-  const [newPart, setNewPart] = useState({ partNumber: "", partDescription: "", quantity: 1, source: "" });
+  const [newPart, setNewPart] = useState({ partNumber: "", partDescription: "", quantity: 1, unitCost: "", source: "" });
 
   const addPartMutation = useMutation({
-    mutationFn: async (part: { partNumber: string; partDescription: string; quantity: number; source: string }) => {
+    mutationFn: async (part: { partNumber: string; partDescription: string; quantity: number; unitCost: string; source: string }) => {
       const res = await apiRequest("POST", `/api/service-calls/${callId}/parts`, { ...part, serviceCallId: callId });
       return res.json();
     },
     onSuccess: () => {
-      setNewPart({ partNumber: "", partDescription: "", quantity: 1, source: "" });
+      setNewPart({ partNumber: "", partDescription: "", quantity: 1, unitCost: "", source: "" });
       setShowAddPart(false);
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
       toast({ title: "Part added" });
@@ -1680,7 +1692,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </CardHeader>
         <CardContent>
           {showAddPart && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3 p-3 bg-muted/50 rounded-lg">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-3 p-3 bg-muted/50 rounded-lg">
               <Input
                 placeholder="Part #"
                 value={newPart.partNumber}
@@ -1692,7 +1704,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 placeholder="Description"
                 value={newPart.partDescription}
                 onChange={e => setNewPart(p => ({ ...p, partDescription: e.target.value }))}
-                className="text-sm"
+                className="text-sm col-span-2"
                 data-testid="input-part-description"
               />
               <Input
@@ -1705,11 +1717,11 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 data-testid="input-part-quantity"
               />
               <Input
-                placeholder="Source"
-                value={newPart.source}
-                onChange={e => setNewPart(p => ({ ...p, source: e.target.value }))}
+                placeholder="Unit Cost"
+                value={newPart.unitCost}
+                onChange={e => setNewPart(p => ({ ...p, unitCost: e.target.value }))}
                 className="text-sm"
-                data-testid="input-part-source"
+                data-testid="input-part-unit-cost"
               />
               <Button
                 size="sm"
@@ -1740,6 +1752,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     <tr key={part.id} className="border-b border-border last:border-0 group" data-testid={`part-row-${part.id}`}>
                       <td className="px-5 py-2.5 font-mono text-xs">{part.partNumber}</td>
                       <td className="px-5 py-2.5">{part.partDescription}</td>
+                      <td className="px-5 py-2.5 text-sm text-muted-foreground">{part.unitCost ? `$${part.unitCost}` : "—"}</td>
                       <td className="px-5 py-2.5 text-center">{part.quantity}</td>
                       <td className="px-5 py-2.5 text-muted-foreground text-xs">{part.source || "—"}</td>
                       <td className="px-5 py-2.5">
@@ -1808,6 +1821,29 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       )}
 
       {/* Lightbox */}
+      {/* Completion Warning Dialog */}
+      <Dialog open={showCompletePrompt} onOpenChange={setShowCompletePrompt}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Missing Hours or Miles</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const effectiveHours = (editData.hoursOnJob ?? call?.hoursOnJob) as string | null;
+                const effectiveMiles = (editData.milesTraveled ?? call?.milesTraveled) as string | null;
+                const missingHours = !effectiveHours || parseFloat(effectiveHours) <= 0;
+                const missingMiles = !effectiveMiles || parseFloat(effectiveMiles) <= 0;
+                const missing = [missingHours && "Hours on Job", missingMiles && "Miles Traveled"].filter(Boolean).join(" and ");
+                return `${missing} ${missingHours && missingMiles ? "have" : "has"} not been entered. These fields auto-populate invoices.`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowCompletePrompt(false)}>Fill In First</Button>
+            <Button onClick={() => { setShowCompletePrompt(false); saveEdit(true); }}>Mark Complete Anyway</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {lightboxPhoto && (
         <div
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"

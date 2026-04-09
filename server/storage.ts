@@ -391,6 +391,12 @@ sqlite.exec(`
   }
 }
 
+// Migration 18: Add unit_cost to parts_used
+if (!columnExists("parts_used", "unit_cost")) {
+  sqlite.prepare(`ALTER TABLE parts_used ADD COLUMN unit_cost TEXT`).run();
+  console.log("Migration 18: added unit_cost to parts_used");
+}
+
 // Migration 16: Add hours_on_job, miles_traveled to service_call_visits; add visit_number to photos
 {
   if (!columnExists("service_call_visits", "hours_on_job")) {

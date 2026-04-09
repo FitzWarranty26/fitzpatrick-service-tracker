@@ -85,6 +85,7 @@ export const partsUsed = sqliteTable("parts_used", {
   partNumber: text("part_number").notNull(),
   partDescription: text("part_description").notNull(),
   quantity: integer("quantity").notNull().default(1),
+  unitCost: text("unit_cost"),
   source: text("source"),
 });
 
