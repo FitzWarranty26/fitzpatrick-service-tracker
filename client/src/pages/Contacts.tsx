@@ -25,18 +25,21 @@ import type { Contact } from "@shared/schema";
 const CONTACT_TYPES = [
   { value: "customer", label: "Customer" },
   { value: "contractor", label: "Contractor" },
+  { value: "wholesaler", label: "Wholesaler" },
   { value: "site_contact", label: "Site Contact" },
 ] as const;
 
 const typeBadgeColors: Record<string, string> = {
   customer: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   contractor: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  wholesaler: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
   site_contact: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
 };
 
 const typeLabels: Record<string, string> = {
   customer: "Customer",
   contractor: "Contractor",
+  wholesaler: "Wholesaler",
   site_contact: "Site Contact",
 };
 
