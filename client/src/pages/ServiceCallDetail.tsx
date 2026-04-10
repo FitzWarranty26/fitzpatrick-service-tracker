@@ -829,6 +829,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <DetailRow label="Date" value={formatDate(call.callDate)} />
                 <DetailRow label="Manufacturer" value={call.manufacturer === "Other" ? (call.manufacturerOther ?? "Other") : call.manufacturer} />
                 <DetailRow label="Status" value={call.status} />
+                {call.wholesalerName && <DetailRow label="Wholesaler" value={`${call.wholesalerName}${call.wholesalerPhone ? ` · ${call.wholesalerPhone}` : ""}`} />}
                 {createdByName && <DetailRow label="Created By" value={createdByName} />}
                 <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
                 {/* Follow-up Reminder */}

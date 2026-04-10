@@ -11,6 +11,8 @@ export const serviceCalls = sqliteTable("service_calls", {
   manufacturer: text("manufacturer").notNull(),
   manufacturerOther: text("manufacturer_other"),
   customerName: text("customer_name"),
+  wholesalerName: text("wholesaler_name"),
+  wholesalerPhone: text("wholesaler_phone"),
   jobSiteName: text("job_site_name"),
   jobSiteAddress: text("job_site_address"),
   jobSiteCity: text("job_site_city"),

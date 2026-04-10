@@ -391,6 +391,13 @@ sqlite.exec(`
   }
 }
 
+// Migration 20: Add wholesaler fields to service_calls
+if (!columnExists("service_calls", "wholesaler_name")) {
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN wholesaler_name TEXT`).run();
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN wholesaler_phone TEXT`).run();
+  console.log("Migration 20: added wholesaler_name/wholesaler_phone to service_calls");
+}
+
 // Migration 18: Add unit_cost to parts_used
 if (!columnExists("parts_used", "unit_cost")) {
   sqlite.prepare(`ALTER TABLE parts_used ADD COLUMN unit_cost TEXT`).run();

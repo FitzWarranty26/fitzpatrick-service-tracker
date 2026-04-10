@@ -67,6 +67,8 @@ const formSchema = z.object({
   scheduledTime: z.string().optional().nullable(),
   followUpDate: z.string().optional().nullable(),
   parentCallId: z.number().optional().nullable(),
+  wholesalerName: z.string().optional().nullable(),
+  wholesalerPhone: z.string().optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -150,6 +152,15 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
   const [createdBy, setCreatedBy] = useState<number | string>(currentUser?.id ?? "");
   const [createdByError, setCreatedByError] = useState("");
 
+  // Fetch wholesalers for dropdown
+  const { data: wholesalers = [] } = useQuery<{ id: number; companyName: string; contactName: string; phone: string | null }[]>({
+    queryKey: ["/api/contacts", "wholesalers"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/contacts?type=wholesaler");
+      return res.json();
+    },
+  });
+
   // Fetch team members for "Created By" dropdown
   const { data: teamMembers = [] } = useQuery<{ id: number; displayName: string; role: string }[]>({
     queryKey: ["/api/users/names"],
@@ -207,6 +218,8 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       scheduledTime: "",
       followUpDate: "",
       parentCallId: null,
+      wholesalerName: "",
+      wholesalerPhone: "",
     },
   });
 
@@ -553,6 +566,35 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                     <FormMessage />
                   </FormItem>
                 )} />
+              </div>
+
+              {/* Wholesaler dropdown */}
+              <div>
+                <label className="text-sm font-medium">Wholesaler</label>
+                <Select
+                  value={form.watch("wholesalerName") || "__none__"}
+                  onValueChange={v => {
+                    if (v === "__none__") {
+                      form.setValue("wholesalerName", "");
+                      form.setValue("wholesalerPhone", "");
+                    } else {
+                      const w = wholesalers.find(w => w.companyName === v || w.contactName === v);
+                      form.setValue("wholesalerName", v);
+                      form.setValue("wholesalerPhone", w?.phone || "");
+                    }
+                  }}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select wholesaler (optional)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {wholesalers.map(w => (
+                      <SelectItem key={w.id} value={w.companyName || w.contactName}>{w.companyName || w.contactName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {form.watch("wholesalerPhone") && (
+                  <p className="text-sm text-muted-foreground mt-1">{form.watch("wholesalerPhone")}</p>
+                )}
               </div>
 
               <FormField control={form.control} name="jobSiteAddress" render={({ field }) => (
