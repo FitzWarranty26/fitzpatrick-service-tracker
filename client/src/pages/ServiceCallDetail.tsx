@@ -1496,15 +1496,16 @@ export default function ServiceCallDetail({ id }: { id: string }) {
               <span className="text-sm text-foreground">{formatDate(call.callDate)}</span>
               <StatusBadge status={call.status} />
             </div>
-            {(call.hoursOnJob || call.milesTraveled) && (
-              <div className="mt-2">
+            <div className="mt-2 space-y-1">
+              {(call.hoursOnJob || call.milesTraveled) && (
                 <p className="text-xs text-muted-foreground">
                   {call.hoursOnJob && <>Hours: {call.hoursOnJob} hrs</>}
                   {call.hoursOnJob && call.milesTraveled && <span className="mx-2">|</span>}
                   {call.milesTraveled && <>Miles: {call.milesTraveled} mi</>}
                 </p>
-              </div>
-            )}
+              )}
+              <p className="text-xs text-muted-foreground">Notes: <span className="text-sm text-foreground">{call.techNotes || "—"}</span></p>
+            </div>
           </div>
         </CardContent>
       </Card>
