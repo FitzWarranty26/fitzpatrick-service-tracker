@@ -279,7 +279,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                         <td className="px-5 py-3 text-muted-foreground whitespace-nowrap text-xs">
                           <span className="inline-flex items-center gap-1.5">
                             <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
-                            {formatDate(call.callDate)}
+                            {formatDate(call.scheduledDate || call.callDate)}
                           </span>
                         </td>
                         <td className="px-5 py-3 min-w-[180px]">
@@ -331,7 +331,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
                           <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
                           <StatusBadge status={call.status} />
-                          <span className="text-xs text-muted-foreground">{formatDate(call.callDate)}</span>
+                          <span className="text-xs text-muted-foreground">{formatDate(call.scheduledDate || call.callDate)}</span>
                         </div>
                         <p className="font-semibold text-sm text-foreground">{call.customerName}</p>
                         <p className="text-xs text-muted-foreground truncate">{call.jobSiteName}</p>

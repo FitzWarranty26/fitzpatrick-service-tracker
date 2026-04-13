@@ -372,7 +372,7 @@ export default function Dashboard() {
                         onClick={() => window.location.hash = `/calls/${call.id}`}
                         data-testid={`row-call-${call.id}`}
                       >
-                        <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap text-xs">{formatDate(call.callDate)}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap text-xs">{formatDate(call.scheduledDate || call.callDate)}</td>
                         <td className="px-4 py-2.5">
                           <p className="font-medium text-sm text-foreground">{call.customerName}</p>
                           <p className="text-xs text-muted-foreground">{call.jobSiteName}</p>
@@ -417,7 +417,7 @@ export default function Dashboard() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
                         <StatusBadge status={call.status} />
-                        <span className="text-[10px] text-muted-foreground/70">{formatDate(call.callDate)}</span>
+                        <span className="text-[10px] text-muted-foreground/70">{formatDate(call.scheduledDate || call.callDate)}</span>
                       </div>
                       <p className="font-medium text-sm text-foreground truncate">{call.customerName}</p>
                       <p className="text-xs text-muted-foreground truncate">{call.manufacturer} · {call.productModel}</p>
