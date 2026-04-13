@@ -1744,28 +1744,30 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const from = req.query.from as string;
       const to = req.query.to as string;
 
-      // Get all service calls in the date range, using scheduled_date if set, else call_date
+      // Get all service calls in the date range — always use call_date for calendar placement
+      // (return visits handle their own dates as separate events below)
       const calls = sqliteHandle
         .prepare(`
           SELECT
             sc.id, sc.call_date, sc.scheduled_date, sc.scheduled_time,
             sc.customer_name, sc.job_site_name, sc.job_site_city, sc.job_site_state,
             sc.manufacturer, sc.status, sc.created_by,
-            u.username as created_by_username
+            u.username as created_by_username,
+            (SELECT COUNT(*) FROM service_call_visits scv2 WHERE scv2.service_call_id = sc.id) as visit_count
           FROM service_calls sc
           LEFT JOIN users u ON sc.created_by = u.id
           WHERE
-            (sc.scheduled_date IS NOT NULL AND sc.scheduled_date >= ? AND sc.scheduled_date <= ?)
-            OR
-            (sc.scheduled_date IS NULL AND sc.call_date >= ? AND sc.call_date <= ?)
-          ORDER BY COALESCE(sc.scheduled_date, sc.call_date) ASC, sc.scheduled_time ASC
+            sc.call_date >= ? AND sc.call_date <= ?
+          ORDER BY sc.call_date ASC, sc.scheduled_time ASC
         `)
-        .all(from || "1900-01-01", to || "2999-12-31", from || "1900-01-01", to || "2999-12-31") as any[];
+        .all(from || "1900-01-01", to || "2999-12-31") as any[];
 
       const result = calls.map(c => ({
         id: c.id,
         callDate: c.call_date,
-        scheduledDate: c.scheduled_date,
+        // For calendar placement: use call_date if call has return visits (so Visit 1 stays on its original date)
+        // Otherwise use scheduled_date if set (for single-visit calls scheduled ahead of time)
+        scheduledDate: (c.visit_count > 0) ? c.call_date : c.scheduled_date,
         scheduledTime: c.scheduled_time,
         customerName: c.customer_name,
         jobSiteName: c.job_site_name,
