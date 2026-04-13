@@ -100,9 +100,9 @@ export default function CalendarPage() {
     },
   });
 
-  // Fetch service calls — get 3 months around current view for smooth navigation
+  // Fetch service calls — get 4 months (prev + current + next + buffer) for two-month view
   const fetchFrom = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
-  const fetchTo = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 0);
+  const fetchTo = new Date(currentDate.getFullYear(), currentDate.getMonth() + 3, 0);
   const fromStr = `${fetchFrom.getFullYear()}-${String(fetchFrom.getMonth()+1).padStart(2,"0")}-01`;
   const toStr = `${fetchTo.getFullYear()}-${String(fetchTo.getMonth()+1).padStart(2,"0")}-${String(fetchTo.getDate()).padStart(2,"0")}`;
 
@@ -146,14 +146,19 @@ export default function CalendarPage() {
 
   // ─── Month View ──────────────────────────────────────────────────────────
 
-  function MonthView() {
-    const daysInMonth = getDaysInMonth(year, month);
-    const firstDay = getFirstDayOfMonth(year, month);
+  function MonthGrid({ gridYear, gridMonth, label }: { gridYear: number; gridMonth: number; label?: string }) {
+    const daysInMonth = getDaysInMonth(gridYear, gridMonth);
+    const firstDay = getFirstDayOfMonth(gridYear, gridMonth);
     const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({length: daysInMonth}, (_,i) => i+1)];
     while (cells.length % 7 !== 0) cells.push(null);
 
     return (
       <div className="bg-card rounded-lg border overflow-hidden">
+        {label && (
+          <div className="px-4 py-2 border-b bg-muted/20">
+            <h3 className="text-sm font-semibold text-foreground">{label}</h3>
+          </div>
+        )}
         {/* Day headers */}
         <div className="grid grid-cols-7 border-b bg-muted/30">
           {DAY_NAMES.map(d => (
@@ -163,7 +168,7 @@ export default function CalendarPage() {
         {/* Calendar grid */}
         <div className="grid grid-cols-7">
           {cells.map((day, idx) => {
-            const dateStr = day ? `${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}` : null;
+            const dateStr = day ? `${gridYear}-${String(gridMonth+1).padStart(2,"0")}-${String(day).padStart(2,"0")}` : null;
             const dayCalls = dateStr ? (callsByDate[dateStr] || []) : [];
             const isToday = dateStr === todayStr;
             return (
@@ -179,7 +184,7 @@ export default function CalendarPage() {
                     <div className="space-y-0.5">
                       {dayCalls.slice(0, 3).map(call => (
                         <button
-                          key={call.id}
+                          key={`${call.id}-${call.visitNumber || 1}`}
                           onClick={() => setSelectedCall(call)}
                           className={`w-full text-left text-[10px] leading-tight px-1 py-0.5 rounded border-l-2 truncate block ${STATUS_COLORS[call.status] || STATUS_COLORS["Scheduled"]}`}
                         >
@@ -201,6 +206,17 @@ export default function CalendarPage() {
             );
           })}
         </div>
+      </div>
+    );
+  }
+
+  function MonthView() {
+    const nextMonth = month === 11 ? 0 : month + 1;
+    const nextYear = month === 11 ? year + 1 : year;
+    return (
+      <div className="space-y-6">
+        <MonthGrid gridYear={year} gridMonth={month} />
+        <MonthGrid gridYear={nextYear} gridMonth={nextMonth} label={`${MONTH_NAMES[nextMonth]} ${nextYear}`} />
       </div>
     );
   }
