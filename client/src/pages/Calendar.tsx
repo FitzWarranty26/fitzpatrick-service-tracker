@@ -87,7 +87,6 @@ export default function CalendarPage() {
   const [filterUser, setFilterUser] = useState("__all__");
   const [selectedCall, setSelectedCall] = useState<CalendarCall | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
-  const expandedCalls = expandedDate ? (callsByDate[expandedDate] || []) : [];
 
   // Fetch users for filter
   const { data: users = [] } = useQuery<CalendarUser[]>({
@@ -132,6 +131,8 @@ export default function CalendarPage() {
     });
     return map;
   }, [calls]);
+
+  const expandedCalls = expandedDate ? (callsByDate[expandedDate] || []) : [];
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
