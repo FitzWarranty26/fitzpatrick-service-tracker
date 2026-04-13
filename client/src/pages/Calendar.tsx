@@ -86,6 +86,8 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [filterUser, setFilterUser] = useState("__all__");
   const [selectedCall, setSelectedCall] = useState<CalendarCall | null>(null);
+  const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const expandedCalls = expandedDate ? (callsByDate[expandedDate] || []) : [];
 
   // Fetch users for filter
   const { data: users = [] } = useQuery<CalendarUser[]>({
@@ -185,7 +187,12 @@ export default function CalendarPage() {
                         </button>
                       ))}
                       {dayCalls.length > 3 && (
-                        <div className="text-[10px] text-muted-foreground pl-1">+{dayCalls.length - 3} more</div>
+                        <button
+                          onClick={() => setExpandedDate(dateStr)}
+                          className="text-[10px] text-[hsl(200,72%,40%)] font-medium pl-1 hover:underline cursor-pointer"
+                        >
+                          +{dayCalls.length - 3} more
+                        </button>
                       )}
                     </div>
                   </>
@@ -467,6 +474,39 @@ export default function CalendarPage() {
       {!isLoading && viewMode === "month" && <MonthView />}
       {!isLoading && viewMode === "week" && <WeekView />}
       {!isLoading && viewMode === "list" && <ListView />}
+
+      {/* Expanded day list */}
+      {expandedDate && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setExpandedDate(null)}>
+          <div className="bg-card rounded-xl shadow-xl border max-w-md w-full max-h-[80vh] overflow-auto p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg text-foreground">
+                {isoToLocal(expandedDate).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+              </h3>
+              <button onClick={() => setExpandedDate(null)} className="text-muted-foreground hover:text-foreground text-xl leading-none">&times;</button>
+            </div>
+            <div className="space-y-2">
+              {expandedCalls.map(call => (
+                <button
+                  key={`${call.id}-${call.visitNumber || 1}`}
+                  onClick={() => { setExpandedDate(null); setSelectedCall(call); }}
+                  className={`w-full text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors ${STATUS_COLORS[call.status] || ""}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    {call.isReturnVisit && <span className="text-xs font-bold bg-[hsl(200,72%,40%)] text-white px-1.5 py-0.5 rounded">VISIT {call.visitNumber}</span>}
+                    <span className="font-semibold text-sm text-foreground">{call.customerName || call.jobSiteName || "—"}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {call.manufacturer}{call.scheduledTime ? ` · ${formatTime(call.scheduledTime)}` : ""}
+                    {call.jobSiteCity || call.jobSiteState ? ` · ${[call.jobSiteCity, call.jobSiteState].filter(Boolean).join(", ")}` : ""}
+                  </div>
+                </button>
+              ))}
+              {expandedCalls.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No calls on this date</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Call detail popover */}
       <CallPopover />
