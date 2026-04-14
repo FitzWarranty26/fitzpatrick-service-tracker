@@ -111,6 +111,8 @@ export default function CalendarPage() {
       const r = await apiRequest("GET", `/api/calendar?from=${fromStr}&to=${toStr}`);
       return r.json();
     },
+    staleTime: 0,                // always refetch on mount (status changes need to reflect immediately)
+    refetchOnWindowFocus: true,  // refetch when user tabs back to the calendar
   });
 
   // Filter by user

@@ -90,10 +90,14 @@ export default function Dashboard() {
 
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const { data: recent, isLoading: recentLoading } = useQuery<ServiceCallWithCounts[]>({
     queryKey: ["/api/dashboard/recent"],
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   // Fetch all calls to compute out-of-warranty count
