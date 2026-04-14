@@ -87,6 +87,7 @@ export default function CalendarPage() {
   const [filterUser, setFilterUser] = useState("__all__");
   const [selectedCall, setSelectedCall] = useState<CalendarCall | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const [hideCompleted, setHideCompleted] = useState(true);
 
   // Fetch users for filter
   const { data: users = [] } = useQuery<CalendarUser[]>({
@@ -115,11 +116,13 @@ export default function CalendarPage() {
     refetchOnWindowFocus: true,  // refetch when user tabs back to the calendar
   });
 
-  // Filter by user
+  // Filter by user and completed status
   const calls = useMemo(() => {
-    if (filterUser === "__all__") return allCalls;
-    return allCalls.filter(c => c.createdByUsername === filterUser);
-  }, [allCalls, filterUser]);
+    let filtered = allCalls;
+    if (hideCompleted) filtered = filtered.filter(c => c.status !== "Completed");
+    if (filterUser !== "__all__") filtered = filtered.filter(c => c.createdByUsername === filterUser);
+    return filtered;
+  }, [allCalls, filterUser, hideCompleted]);
 
   // Group calls by date string (using scheduledDate, fall back to callDate)
   const callsByDate = useMemo(() => {
@@ -436,6 +439,18 @@ export default function CalendarPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Hide completed toggle */}
+          <button
+            onClick={() => setHideCompleted(h => !h)}
+            className={`h-8 px-3 text-xs font-medium rounded-lg border transition-colors ${
+              hideCompleted
+                ? "bg-[hsl(200,72%,40%)] text-white border-[hsl(200,72%,40%)]"
+                : "bg-card text-muted-foreground border-border hover:bg-muted"
+            }`}
+          >
+            {hideCompleted ? "Open Only" : "All Calls"}
+          </button>
 
           {/* View toggle */}
           <div className="flex rounded-lg border overflow-hidden">
