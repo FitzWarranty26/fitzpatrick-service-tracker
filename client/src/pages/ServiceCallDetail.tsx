@@ -995,6 +995,21 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     />
                   </div>
                 ))}
+                <div>
+                  <label className="text-xs text-muted-foreground">State</label>
+                  <Select
+                    value={(editData.jobSiteState ?? call.jobSiteState) as string || "__none__"}
+                    onValueChange={v => setEditData(d => ({ ...d, jobSiteState: v === "__none__" ? "" : v }))}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-0.5"><SelectValue placeholder="Select state" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Select state</SelectItem>
+                      {["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+                        "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+                        "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 {/* Contractor fields with suggest */}
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide pt-1">Installing Contractor</p>
                 <div className="relative">

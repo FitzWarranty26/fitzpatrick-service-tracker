@@ -30,6 +30,12 @@ import {
 } from "lucide-react";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 
+const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+  "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+  "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC",
+];
+
 const formSchema = z.object({
   callDate: z.string().min(1, "Required"),
   manufacturer: z.string().min(1, "Required"),
@@ -189,7 +195,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       jobSiteName: "",
       jobSiteAddress: "",
       jobSiteCity: "",
-      jobSiteState: "UT",
+      jobSiteState: "",
       contactName: "",
       contactPhone: "",
       contactEmail: "",
@@ -624,8 +630,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="__none__">Select state</SelectItem>
-                        <SelectItem value="UT">Utah</SelectItem>
-                        <SelectItem value="ID">Idaho</SelectItem>
+                        {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
