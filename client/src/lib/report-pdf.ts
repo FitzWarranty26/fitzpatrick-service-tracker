@@ -291,6 +291,32 @@ export async function generateReportPDF(reportType: string, data: any): Promise<
       body += `</tbody></table>`;
       break;
     }
+
+    case "invoice-aging": {
+      title = "Invoice Aging Report";
+      filters = [];
+      body = summaryHtml([
+        { label: "Current (0-30)", value: fmt$(data.summary.current) },
+        { label: "31-60 days", value: fmt$(data.summary.days31to60) },
+        { label: "61-90 days", value: fmt$(data.summary.days61to90) },
+        { label: "90+ days", value: fmt$(data.summary.over90) },
+        { label: "Total Outstanding", value: fmt$(data.summary.totalOutstanding) },
+      ]);
+      body += `<table><thead><tr>
+        <th>Invoice #</th><th>Customer</th><th>Issue Date</th><th>Due Date</th>
+        <th class="right">Amount</th><th class="right">Days</th><th>Aging</th>
+      </tr></thead><tbody>`;
+      for (const inv of data.invoices) {
+        body += `<tr>
+          <td class="mono">${escapeHtml(inv.invoiceNumber)}</td><td>${escapeHtml(inv.billToName)}</td>
+          <td>${formatDate(inv.issueDate)}</td><td>${formatDate(inv.dueDate)}</td>
+          <td class="right">${fmt$(inv.total)}</td><td class="right">${inv.daysOutstanding}</td>
+          <td>${escapeHtml(inv.bucket)}</td>
+        </tr>`;
+      }
+      body += `</tbody></table>`;
+      break;
+    }
   }
 
   const html = buildPage(LOGO_DARK_DATA_URL, title, filters, body);

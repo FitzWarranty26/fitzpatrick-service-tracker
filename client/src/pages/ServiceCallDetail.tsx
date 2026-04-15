@@ -29,6 +29,7 @@ import {
   Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, CalendarDays
 } from "lucide-react";
 import { generatePDF } from "@/lib/pdf";
+import { PhoneLink } from "@/components/PhoneLink";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -780,6 +781,61 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </div>
       </div>
 
+      {/* Quick Status Buttons — view mode only, editors only */}
+      {!isEditing && canEdit && (() => {
+        const status = call.status;
+        type Transition = { label: string; next: string; variant?: "default" | "outline" };
+        const transitions: Transition[] = [];
+        if (status === "Scheduled") transitions.push({ label: "Start", next: "In Progress" });
+        if (status === "In Progress") {
+          transitions.push({ label: "Complete", next: "Completed", variant: "default" });
+          transitions.push({ label: "Needs Return", next: "Needs Return Visit" });
+        }
+        if (status === "Completed") transitions.push({ label: "Reopen", next: "In Progress" });
+        if (status === "Pending Parts") transitions.push({ label: "Start", next: "In Progress" });
+        if (status === "Escalated") transitions.push({ label: "Start", next: "In Progress" });
+        if (transitions.length === 0) return null;
+        return (
+          <div className="flex items-center gap-2 flex-wrap" data-testid="quick-status-buttons">
+            <span className="text-xs text-muted-foreground mr-1">Quick actions:</span>
+            {transitions.map(t => (
+              <Button
+                key={t.next}
+                variant={t.variant || "outline"}
+                size="sm"
+                className="h-7 text-xs"
+                data-testid={`quick-status-${t.next.toLowerCase().replace(/\s+/g, "-")}`}
+                onClick={async () => {
+                  if (t.next === "Completed") {
+                    // Trigger the existing completion check flow
+                    const missingHours = !call.hoursOnJob || parseFloat(call.hoursOnJob) <= 0;
+                    const missingMiles = !call.milesTraveled || parseFloat(call.milesTraveled) <= 0;
+                    if (missingHours || missingMiles) {
+                      // Set up editData so the completion prompt works, then trigger it
+                      setEditData({ ...call, status: "Completed" });
+                      setShowCompletePrompt(true);
+                      return;
+                    }
+                  }
+                  try {
+                    await apiRequest("PATCH", `/api/service-calls/${callId}`, { status: t.next });
+                    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent"] });
+                    toast({ title: "Status updated", description: `Status changed to ${t.next}` });
+                  } catch (e: any) {
+                    toast({ title: "Error", description: e.message, variant: "destructive" });
+                  }
+                }}
+              >
+                {t.label}
+              </Button>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Status / Claim (editable) */}
       {isEditing && (
         <Card className="border-primary/30 bg-primary/5">
@@ -829,7 +885,12 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <DetailRow label="Date" value={formatDate(call.callDate)} />
                 <DetailRow label="Manufacturer" value={call.manufacturer === "Other" ? (call.manufacturerOther ?? "Other") : call.manufacturer} />
                 <DetailRow label="Status" value={call.status} />
-                {call.wholesalerName && <DetailRow label="Wholesaler" value={`${call.wholesalerName}${call.wholesalerPhone ? ` · ${call.wholesalerPhone}` : ""}`} />}
+                {call.wholesalerName && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Wholesaler</p>
+                    <p className="text-sm text-foreground">{call.wholesalerName}{call.wholesalerPhone ? <> · <PhoneLink phone={call.wholesalerPhone} /></> : ""}</p>
+                  </div>
+                )}
                 {createdByName && <DetailRow label="Created By" value={createdByName} />}
                 <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
                 {/* Follow-up Reminder */}
@@ -929,7 +990,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 </div>
                 <div className="flex items-start gap-2">
                   <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <p className="text-sm">{call.jobSiteAddress}, {call.jobSiteCity}, {call.jobSiteState}</p>
+                  <p className="text-sm">{call.jobSiteAddress}, {call.jobSiteCity}, {call.jobSiteState}{call.jobSiteZip ? ` ${call.jobSiteZip}` : ""}</p>
                 </div>
                 {(call.contactName || call.contactPhone || call.contactEmail) && (
                   <div className="pt-1">
@@ -943,7 +1004,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     {call.contactPhone && (
                       <div className="flex items-center gap-2 mb-1">
                         <Phone className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                        <a href={`tel:${call.contactPhone}`} className="text-sm text-primary">{call.contactPhone}</a>
+                        <span className="text-sm"><PhoneLink phone={call.contactPhone} /></span>
                       </div>
                     )}
                     {call.contactEmail && (
@@ -966,7 +1027,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     {call.siteContactPhone && (
                       <div className="flex items-center gap-2 mb-1">
                         <Phone className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                        <a href={`tel:${call.siteContactPhone}`} className="text-sm text-primary">{call.siteContactPhone}</a>
+                        <span className="text-sm"><PhoneLink phone={call.siteContactPhone} /></span>
                       </div>
                     )}
                     {call.siteContactEmail && (
@@ -1009,6 +1070,15 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                         "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">ZIP</label>
+                  <Input
+                    value={(editData.jobSiteZip ?? call.jobSiteZip) as string ?? ""}
+                    onChange={e => setEditData(d => ({ ...d, jobSiteZip: e.target.value }))}
+                    className="h-8 text-sm mt-0.5 w-24"
+                    placeholder="ZIP"
+                  />
                 </div>
                 {/* Contractor fields with suggest */}
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide pt-1">Installing Contractor</p>

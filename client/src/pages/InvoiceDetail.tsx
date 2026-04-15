@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Plus, Trash2, Send, CheckCircle, FileDown, Mail, Pencil } from "lucide-react";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { getAuthHeaders } from "@/lib/auth";
+import { PhoneLink } from "@/components/PhoneLink";
 
 interface InvoiceItem {
   id?: number;
@@ -334,7 +335,7 @@ export default function InvoiceDetail({ id }: { id: string }) {
                   <p className="text-sm text-muted-foreground">{[invoice.billToCity, invoice.billToState].filter(Boolean).join(", ")}</p>
                 )}
                 {invoice.billToEmail && <p className="text-sm text-muted-foreground">{invoice.billToEmail}</p>}
-                {invoice.billToPhone && <p className="text-sm text-muted-foreground">{invoice.billToPhone}</p>}
+                {invoice.billToPhone && <p className="text-sm"><PhoneLink phone={invoice.billToPhone} /></p>}
               </>
             )}
           </div>

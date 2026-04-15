@@ -45,6 +45,7 @@ const formSchema = z.object({
   jobSiteAddress: z.string().optional().nullable(),
   jobSiteCity: z.string().optional().nullable(),
   jobSiteState: z.string().optional().nullable(),
+  jobSiteZip: z.string().optional().nullable(),
   contactName: z.string().optional().nullable(),
   contactPhone: z.string().optional().nullable(),
   contactEmail: z.string().optional().nullable(),
@@ -196,6 +197,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       jobSiteAddress: "",
       jobSiteCity: "",
       jobSiteState: "",
+      jobSiteZip: "",
       contactName: "",
       contactPhone: "",
       contactEmail: "",
@@ -239,6 +241,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
         jobSiteAddress: parentCall.jobSiteAddress,
         jobSiteCity: parentCall.jobSiteCity,
         jobSiteState: parentCall.jobSiteState,
+        jobSiteZip: parentCall.jobSiteZip ?? "",
         contactName: parentCall.contactName ?? "",
         contactPhone: parentCall.contactPhone ?? "",
         contactEmail: parentCall.contactEmail ?? "",
@@ -611,7 +614,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                 </FormItem>
               )} />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <FormField control={form.control} name="jobSiteCity" render={({ field }) => (
                   <FormItem>
                     <FormLabel>City</FormLabel>
@@ -633,6 +636,13 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                         {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="jobSiteZip" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ZIP</FormLabel>
+                    <FormControl><Input placeholder="ZIP" {...field} value={field.value ?? ""} className="w-24" data-testid="input-zip" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />

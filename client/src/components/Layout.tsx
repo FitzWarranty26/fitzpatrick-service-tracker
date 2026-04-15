@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
 import { getUser, isManager, logout } from "@/lib/auth";
 import {
-  LayoutDashboard, ClipboardList, CalendarClock, Calendar, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search, MoreHorizontal, Shield, ScrollText, LogOut, Receipt
+  LayoutDashboard, ClipboardList, CalendarClock, Calendar, PlusCircle, Sun, Moon, Menu, X, BarChart3, FileBarChart, MapPin, Users, Search, MoreHorizontal, Shield, ScrollText, LogOut, Receipt, Package
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ const baseNavItems = [
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/reports", icon: FileBarChart, label: "Reports" },
   { href: "/contacts", icon: Users, label: "Contacts" },
+  { href: "/equipment", icon: Package, label: "Equipment" },
   { href: "/invoices", icon: Receipt, label: "Invoices" },
 ];
 
@@ -202,6 +203,7 @@ const moreNavItems = [
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/reports", icon: FileBarChart, label: "Reports" },
   { href: "/contacts", icon: Users, label: "Contacts" },
+  { href: "/equipment", icon: Package, label: "Equipment" },
   { href: "/invoices", icon: Receipt, label: "Invoices" },
 ];
 

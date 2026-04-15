@@ -137,7 +137,27 @@ interface ProductFailureReport {
   }>;
 }
 
-type ReportData = ManufacturerSummaryReport | MonthlyExpenseReport | CustomerHistoryReport | ClaimStatusReport | ProductFailureReport;
+interface InvoiceAgingReport {
+  summary: {
+    current: number;
+    days31to60: number;
+    days61to90: number;
+    over90: number;
+    totalOutstanding: number;
+  };
+  invoices: Array<{
+    id: number;
+    invoiceNumber: string;
+    billToName: string;
+    issueDate: string;
+    dueDate: string;
+    total: string;
+    daysOutstanding: number;
+    bucket: "current" | "31-60" | "61-90" | "90+";
+  }>;
+}
+
+type ReportData = ManufacturerSummaryReport | MonthlyExpenseReport | CustomerHistoryReport | ClaimStatusReport | ProductFailureReport | InvoiceAgingReport;
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -147,6 +167,7 @@ const REPORT_TYPES = [
   { value: "customer-history", label: "Customer History" },
   { value: "claim-status", label: "Claim Status Report" },
   { value: "product-failure", label: "Product Failure Report" },
+  { value: "invoice-aging", label: "Invoice Aging Report" },
 ] as const;
 
 type ReportType = typeof REPORT_TYPES[number]["value"];
@@ -221,6 +242,7 @@ export default function Reports() {
   const canFetch = (() => {
     if (reportType === "manufacturer-summary" && !manufacturer) return false;
     if (reportType === "customer-history" && !customer) return false;
+    if (reportType === "invoice-aging") return true;
     return true;
   })();
 
@@ -280,6 +302,13 @@ export default function Reports() {
         ].join("\n");
         break;
       }
+      case "invoice-aging": {
+        const d = reportData as InvoiceAgingReport;
+        csv = ["Invoice #,Customer,Issue Date,Due Date,Amount,Days Outstanding,Bucket",
+          ...d.invoices.map(i => [i.invoiceNumber, i.billToName, i.issueDate, i.dueDate, i.total, i.daysOutstanding, i.bucket].map(esc).join(","))
+        ].join("\n");
+        break;
+      }
     }
 
     const blob = new Blob([csv], { type: "text/csv" });
@@ -333,6 +362,11 @@ export default function Reports() {
       case "product-failure": {
         const d = reportData as ProductFailureReport;
         summary += `Models with repeat failures: ${d.models.length}`;
+        break;
+      }
+      case "invoice-aging": {
+        const d = reportData as InvoiceAgingReport;
+        summary += `Total Outstanding: $${d.summary.totalOutstanding.toFixed(2)}\nCurrent (0-30): $${d.summary.current.toFixed(2)}\n31-60 days: $${d.summary.days31to60.toFixed(2)}\n61-90 days: $${d.summary.days61to90.toFixed(2)}\n90+: $${d.summary.over90.toFixed(2)}`;
         break;
       }
     }
@@ -533,6 +567,7 @@ export default function Reports() {
             {reportType === "customer-history" && <CustomerHistoryPreview data={reportData as CustomerHistoryReport} />}
             {reportType === "claim-status" && <ClaimStatusPreview data={reportData as ClaimStatusReport} />}
             {reportType === "product-failure" && <ProductFailurePreview data={reportData as ProductFailureReport} />}
+            {reportType === "invoice-aging" && <InvoiceAgingPreview data={reportData as InvoiceAgingReport} />}
           </CardContent>
         </Card>
       ) : (
@@ -847,6 +882,91 @@ function ProductFailurePreview({ data }: { data: ProductFailureReport }) {
                     ))}
                     {m.issues.length > 3 && <li className="text-muted-foreground">+{m.issues.length - 3} more</li>}
                   </ul>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function InvoiceAgingPreview({ data }: { data: InvoiceAgingReport }) {
+  const [sortAsc, setSortAsc] = useState(false);
+  const sorted = [...data.invoices].sort((a, b) => sortAsc ? a.daysOutstanding - b.daysOutstanding : b.daysOutstanding - a.daysOutstanding);
+
+  const bucketColors: Record<string, string> = {
+    current: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+    "31-60": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+    "61-90": "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+    "90+": "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  };
+  const bucketLabels: Record<string, string> = {
+    current: "0-30 days",
+    "31-60": "31-60 days",
+    "61-90": "61-90 days",
+    "90+": "90+ days",
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold mb-3">Invoice Aging Report</h3>
+
+      {/* Summary bar */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 border border-emerald-200 dark:border-emerald-800">
+          <p className="text-xs text-emerald-600 dark:text-emerald-400">Current (0-30)</p>
+          <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{fmt$(data.summary.current)}</p>
+        </div>
+        <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 border border-amber-200 dark:border-amber-800">
+          <p className="text-xs text-amber-600 dark:text-amber-400">31-60 days</p>
+          <p className="text-lg font-bold text-amber-700 dark:text-amber-300">{fmt$(data.summary.days31to60)}</p>
+        </div>
+        <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 border border-orange-200 dark:border-orange-800">
+          <p className="text-xs text-orange-600 dark:text-orange-400">61-90 days</p>
+          <p className="text-lg font-bold text-orange-700 dark:text-orange-300">{fmt$(data.summary.days61to90)}</p>
+        </div>
+        <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 border border-red-200 dark:border-red-800">
+          <p className="text-xs text-red-600 dark:text-red-400">90+ days</p>
+          <p className="text-lg font-bold text-red-700 dark:text-red-300">{fmt$(data.summary.over90)}</p>
+        </div>
+        <div className="bg-muted/40 rounded-lg p-3">
+          <p className="text-xs text-muted-foreground">Total Outstanding</p>
+          <p className="text-lg font-bold">{fmt$(data.summary.totalOutstanding)}</p>
+        </div>
+      </div>
+
+      {data.invoices.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">No outstanding invoices.</p>
+      ) : (
+        <table className="w-full text-sm" data-testid="report-table">
+          <thead>
+            <tr className="border-b border-border bg-muted/30">
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Invoice #</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customer</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Issue Date</th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Due Date</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Amount</th>
+              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => setSortAsc(!sortAsc)}>
+                Days {sortAsc ? "\u2191" : "\u2193"}
+              </th>
+              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Aging</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map(inv => (
+              <tr key={inv.id} className="border-b border-border/50 hover:bg-muted/40 cursor-pointer" onClick={() => { window.location.hash = `/invoices/${inv.id}`; }}>
+                <td className="px-5 py-3 text-xs font-mono font-medium">{inv.invoiceNumber}</td>
+                <td className="px-5 py-3 text-xs">{inv.billToName}</td>
+                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(inv.issueDate)}</td>
+                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(inv.dueDate)}</td>
+                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(inv.total)}</td>
+                <td className="px-5 py-3 text-xs text-right">{inv.daysOutstanding}</td>
+                <td className="px-5 py-3">
+                  <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full ${bucketColors[inv.bucket] || ""}`}>
+                    {bucketLabels[inv.bucket] || inv.bucket}
+                  </span>
                 </td>
               </tr>
             ))}

@@ -17,6 +17,7 @@ export const serviceCalls = sqliteTable("service_calls", {
   jobSiteAddress: text("job_site_address"),
   jobSiteCity: text("job_site_city"),
   jobSiteState: text("job_site_state"), // "UT" | "ID"
+  jobSiteZip: text("job_site_zip"),
   // Installing Contractor
   contactName: text("contact_name"),
   contactPhone: text("contact_phone"),

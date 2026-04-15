@@ -22,6 +22,7 @@ const CalendarPage = lazy(() => import("@/pages/Calendar"));
 const Invoices = lazy(() => import("@/pages/Invoices"));
 const InvoiceDetail = lazy(() => import("@/pages/InvoiceDetail"));
 const NewInvoice = lazy(() => import("@/pages/NewInvoice"));
+const EquipmentHistory = lazy(() => import("@/pages/EquipmentHistory"));
 const Team = lazy(() => import("@/pages/Team"));
 const AuditLog = lazy(() => import("@/pages/AuditLog"));
 
@@ -115,6 +116,13 @@ function AppRouter() {
           {() => (
             <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading calendar...</div>}>
               <CalendarPage />
+            </Suspense>
+          )}
+        </Route>
+        <Route path="/equipment">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+              <EquipmentHistory />
             </Suspense>
           )}
         </Route>

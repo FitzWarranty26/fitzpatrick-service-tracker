@@ -1558,6 +1558,51 @@ export function registerRoutes(httpServer: Server, app: Express) {
           });
         }
 
+        case "invoice-aging": {
+          const allInvoices = sqliteHandle.prepare(`
+            SELECT i.*,
+              (SELECT COUNT(*) FROM invoice_items WHERE invoice_id = i.id) as item_count
+            FROM invoices i
+            WHERE i.status NOT IN ('Paid', 'Draft')
+            ORDER BY i.due_date ASC
+          `).all() as any[];
+
+          const today = new Date();
+          const todayStr = today.toISOString().split("T")[0];
+          let current = 0, days31to60 = 0, days61to90 = 0, over90 = 0;
+          const invoices = allInvoices.map((inv: any) => {
+            const dueDate = inv.due_date || inv.issue_date;
+            const due = new Date(dueDate + "T00:00:00");
+            const daysOut = Math.max(0, Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
+            const total = parseFloat(inv.total) || 0;
+            let bucket: string;
+            if (daysOut <= 30) { bucket = "current"; current += total; }
+            else if (daysOut <= 60) { bucket = "31-60"; days31to60 += total; }
+            else if (daysOut <= 90) { bucket = "61-90"; days61to90 += total; }
+            else { bucket = "90+"; over90 += total; }
+            return {
+              id: inv.id,
+              invoiceNumber: inv.invoice_number,
+              billToName: inv.bill_to_name,
+              issueDate: inv.issue_date,
+              dueDate: dueDate,
+              total: inv.total,
+              daysOutstanding: daysOut,
+              bucket,
+            };
+          });
+          return res.json({
+            summary: {
+              current,
+              days31to60,
+              days61to90,
+              over90,
+              totalOutstanding: current + days31to60 + days61to90 + over90,
+            },
+            invoices,
+          });
+        }
+
         default:
           return res.status(400).json({ error: "Unknown report type" });
       }
@@ -1837,6 +1882,102 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // Intended to be called by a Render Cron Job (e.g. every 12 hours).
   // Also callable manually for an on-demand backup.
 
+  // ─── Equipment History Search ─────────────────────────────────────────────
+
+  app.get("/api/equipment/search", (req: any, res: any) => {
+    try {
+      const q = (req.query.q as string || "").trim();
+      if (q.length < 2) return res.json([]);
+
+      const pattern = `%${q}%`;
+      const rows = sqliteHandle.prepare(`
+        SELECT
+          id, call_date, customer_name, job_site_name, job_site_address,
+          job_site_city, job_site_state, job_site_zip,
+          manufacturer, product_model, product_serial, product_type,
+          installation_date, status, issue_description, diagnosis, resolution,
+          tech_notes, hours_on_job, miles_traveled
+        FROM service_calls
+        WHERE product_serial LIKE ? OR job_site_address LIKE ? OR customer_name LIKE ?
+        ORDER BY call_date DESC
+      `).all(pattern, pattern, pattern) as any[];
+
+      // Group by serial number + address combo
+      const groups = new Map<string, {
+        serialNumber: string;
+        manufacturer: string;
+        productModel: string;
+        productType: string;
+        address: string;
+        city: string;
+        state: string;
+        zip: string;
+        customerName: string;
+        installationDate: string | null;
+        firstCallDate: string;
+        lastCallDate: string;
+        calls: any[];
+      }>();
+
+      for (const row of rows) {
+        const serial = row.product_serial || "";
+        const addr = row.job_site_address || "";
+        const key = `${serial}||${addr}`;
+
+        if (!groups.has(key)) {
+          groups.set(key, {
+            serialNumber: serial,
+            manufacturer: row.manufacturer,
+            productModel: row.product_model || "",
+            productType: row.product_type || "",
+            address: addr,
+            city: row.job_site_city || "",
+            state: row.job_site_state || "",
+            zip: row.job_site_zip || "",
+            customerName: row.customer_name || "",
+            installationDate: row.installation_date,
+            firstCallDate: row.call_date,
+            lastCallDate: row.call_date,
+            calls: [],
+          });
+        }
+
+        const group = groups.get(key)!;
+        if (row.call_date < group.firstCallDate) group.firstCallDate = row.call_date;
+        if (row.call_date > group.lastCallDate) group.lastCallDate = row.call_date;
+        if (row.installation_date && !group.installationDate) group.installationDate = row.installation_date;
+
+        // Count visits for this call
+        const visitCount = (sqliteHandle.prepare(
+          `SELECT COUNT(*) as c FROM service_call_visits WHERE service_call_id = ?`
+        ).get(row.id) as any).c;
+
+        group.calls.push({
+          id: row.id,
+          callDate: row.call_date,
+          status: row.status,
+          issueDescription: row.issue_description || "",
+          diagnosis: row.diagnosis || "",
+          resolution: row.resolution || "",
+          techNotes: row.tech_notes || "",
+          hoursOnJob: row.hours_on_job || "",
+          milesTraveled: row.miles_traveled || "",
+          visitCount: 1 + visitCount,
+        });
+      }
+
+      const results = Array.from(groups.values()).map(g => ({
+        ...g,
+        totalCalls: g.calls.length,
+      }));
+
+      res.json(results);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── Backup ──────────────────────────────────────────────────────────────────
   const BACKUP_SECRET = process.env.BACKUP_SECRET || "";
 
   // Middleware: backup endpoints accept either the session Bearer token

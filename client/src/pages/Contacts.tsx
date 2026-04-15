@@ -21,6 +21,7 @@ import {
   PlusCircle, Search, Phone, Mail, Building, User, Trash2, Edit3, MapPin, RefreshCw, Download,
 } from "lucide-react";
 import type { Contact } from "@shared/schema";
+import { PhoneLink } from "@/components/PhoneLink";
 
 const CONTACT_TYPES = [
   { value: "customer", label: "Customer" },
@@ -281,7 +282,7 @@ export default function Contacts() {
                       {contact.phone && (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Phone className="w-3 h-3" />
-                          <a href={`tel:${contact.phone}`} className="text-primary">{contact.phone}</a>
+                          <PhoneLink phone={contact.phone} />
                         </span>
                       )}
                       {contact.email && (
