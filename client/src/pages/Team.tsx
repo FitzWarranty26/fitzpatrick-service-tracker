@@ -74,7 +74,7 @@ export default function Team() {
 
   const openEdit = (user: UserData) => {
     setEditUser(user);
-    setForm({ username: user.username, displayName: user.displayName, email: user.email || "", password: "", role: user.role });
+    setForm({ username: user.username, displayName: user.displayName, email: user.email || "", password: "", confirmPassword: "", role: user.role });
     setShowDialog(true);
   };
 

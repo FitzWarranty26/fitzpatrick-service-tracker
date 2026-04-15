@@ -44,6 +44,7 @@ interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
   parts: Part[];
   activities: Array<{ id: number; serviceCallId: number; note: string; createdAt: string }>;
+  [key: string]: any; // allow dynamic field access for newer schema additions
 }
 
 interface ServiceCallVisit {
@@ -772,7 +773,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
               <Button variant="outline" size="sm" onClick={cancelEdit} data-testid="button-cancel-edit">
                 <X className="w-4 h-4 mr-1.5" />Cancel
               </Button>
-              <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending} data-testid="button-save-edit">
+              <Button size="sm" onClick={() => saveEdit()} disabled={updateMutation.isPending} data-testid="button-save-edit">
                 <Save className="w-4 h-4 mr-1.5" />
                 {updateMutation.isPending ? "Saving…" : "Save"}
               </Button>
@@ -1868,7 +1869,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
             <Button variant="outline" size="sm" onClick={cancelEdit} data-testid="button-cancel-edit-bottom">
               <X className="w-4 h-4 mr-1.5" /> Cancel
             </Button>
-            <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending} data-testid="button-save-edit-bottom">
+            <Button size="sm" onClick={() => saveEdit()} disabled={updateMutation.isPending} data-testid="button-save-edit-bottom">
               <Save className="w-4 h-4 mr-1.5" />
               {updateMutation.isPending ? "Saving…" : "Save Changes"}
             </Button>

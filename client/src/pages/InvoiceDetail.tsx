@@ -217,7 +217,7 @@ export default function InvoiceDetail({ id }: { id: string }) {
     const visitNumbers = new Set<number | null>();
     itemsToGroup.forEach(i => visitNumbers.add(i.visitNumber ?? null));
     // Sort: numbered visits first, then null (General)
-    const sorted = [...visitNumbers].sort((a, b) => {
+    const sorted = Array.from(visitNumbers).sort((a, b) => {
       if (a == null && b == null) return 0;
       if (a == null) return 1;
       if (b == null) return -1;

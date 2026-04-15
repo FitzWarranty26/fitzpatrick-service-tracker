@@ -260,7 +260,7 @@ export async function generateInvoicePdf(invoice: Invoice, returnBlob = false): 
       visitGroups.get(key)!.push(item);
     });
     // Sort: numbered visits first, then null (General)
-    const sortedKeys = [...visitGroups.keys()].sort((a, b) => {
+    const sortedKeys = Array.from(visitGroups.keys()).sort((a, b) => {
       if (a == null && b == null) return 0;
       if (a == null) return 1;
       if (b == null) return -1;
