@@ -1504,7 +1504,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   {call.milesTraveled && <>Miles: {call.milesTraveled} mi</>}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground">Notes: <span className="text-sm text-foreground">{call.techNotes || "—"}</span></p>
+
             </div>
           </div>
         </CardContent>
