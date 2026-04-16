@@ -479,6 +479,27 @@ export interface DashboardStats {
   completedThisMonth: number;
   pendingClaims: number;
   followUpsDue: number;
+  revenueThisMonth: number;
+  outstandingBalance: number;
+  firstTimeFixRate: number;
+  avgDaysToPayment: number;
+}
+
+export interface DashboardTodayData {
+  todayScheduled: ServiceCallWithCounts[];
+  todayCount: number;
+  inProgressCount: number;
+  overdueInvoices: number;
+}
+
+export interface DashboardActivityEntry {
+  id: number;
+  username: string;
+  action: string;
+  entityType: string | null;
+  entityId: number | null;
+  details: string | null;
+  createdAt: string;
 }
 
 export interface IStorage {
@@ -737,13 +758,175 @@ export class SQLiteStorage implements IStorage {
       WHERE (is_test = 0 OR is_test IS NULL)
     `).get(monthStart, monthEnd, today) as any;
 
+    // Revenue this month: sum of non-Draft invoices with issue_date in this month
+    const revRow = sqlite.prepare(`
+      SELECT COALESCE(SUM(CAST(total AS REAL)), 0) AS revenue
+      FROM invoices
+      WHERE status != 'Draft' AND issue_date >= ? AND issue_date <= ?
+    `).get(monthStart, monthEnd) as any;
+
+    // Outstanding balance: Sent/Overdue invoices (unpaid)
+    const outRow = sqlite.prepare(`
+      SELECT COALESCE(SUM(CAST(total AS REAL)), 0) AS outstanding
+      FROM invoices
+      WHERE status IN ('Sent', 'Overdue')
+    `).get() as any;
+
+    // First-time fix rate — completed calls with no follow-up chain children / total completed
+    const ftfRow = sqlite.prepare(`
+      SELECT
+        COUNT(*) AS completed_total,
+        SUM(CASE WHEN NOT EXISTS (
+          SELECT 1 FROM service_calls child WHERE child.parent_call_id = sc.id
+        ) THEN 1 ELSE 0 END) AS first_time
+      FROM service_calls sc
+      WHERE sc.status = 'Completed'
+        AND (sc.is_test = 0 OR sc.is_test IS NULL)
+    `).get() as any;
+
+    const completedTotal = ftfRow.completed_total ?? 0;
+    const firstTimeFixRate = completedTotal > 0
+      ? Math.round(((ftfRow.first_time ?? 0) / completedTotal) * 100)
+      : 0;
+
+    // Avg days to payment: average of (paid_date - issue_date) for Paid invoices
+    const payRow = sqlite.prepare(`
+      SELECT paid_date, issue_date
+      FROM invoices
+      WHERE status = 'Paid' AND paid_date IS NOT NULL AND issue_date IS NOT NULL
+    `).all() as any[];
+
+    let avgDaysToPayment = 0;
+    if (payRow.length > 0) {
+      const totalDays = payRow.reduce((sum, r) => {
+        const paid = new Date(r.paid_date);
+        const issued = new Date(r.issue_date);
+        const days = Math.max(0, Math.round((paid.getTime() - issued.getTime()) / (1000 * 60 * 60 * 24)));
+        return sum + days;
+      }, 0);
+      avgDaysToPayment = Math.round(totalDays / payRow.length);
+    }
+
     return {
       totalCalls: row.total_calls ?? 0,
       openCalls: row.open_calls ?? 0,
       completedThisMonth: row.completed_this_month ?? 0,
       pendingClaims: row.pending_claims ?? 0,
       followUpsDue: row.follow_ups_due ?? 0,
+      revenueThisMonth: Math.round(revRow.revenue ?? 0),
+      outstandingBalance: Math.round(outRow.outstanding ?? 0),
+      firstTimeFixRate,
+      avgDaysToPayment,
     };
+  }
+
+  getDashboardToday(): DashboardTodayData {
+    const today = new Date().toISOString().split("T")[0];
+
+    // Calls where scheduled_date = today OR (scheduled_date IS NULL AND call_date = today), status Scheduled/In Progress
+    const rows = sqlite.prepare(`
+      SELECT sc.*,
+        (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
+        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
+      FROM service_calls sc
+      WHERE (sc.is_test = 0 OR sc.is_test IS NULL)
+        AND sc.status IN ('Scheduled', 'In Progress')
+        AND (
+          sc.scheduled_date = ?
+          OR (sc.scheduled_date IS NULL AND sc.call_date = ?)
+        )
+      ORDER BY
+        CASE WHEN sc.scheduled_time IS NULL THEN 1 ELSE 0 END,
+        sc.scheduled_time ASC,
+        sc.id ASC
+    `).all(today, today) as any[];
+
+    const todayScheduled: ServiceCallWithCounts[] = rows.map(row => ({
+      id: row.id,
+      callType: row.call_type,
+      callDate: row.call_date,
+      manufacturer: row.manufacturer,
+      manufacturerOther: row.manufacturer_other,
+      customerName: row.customer_name,
+      jobSiteName: row.job_site_name,
+      jobSiteAddress: row.job_site_address,
+      jobSiteCity: row.job_site_city,
+      jobSiteState: row.job_site_state,
+      jobSiteZip: row.job_site_zip,
+      wholesalerName: row.wholesaler_name,
+      wholesalerPhone: row.wholesaler_phone,
+      contactName: row.contact_name,
+      contactCompany: row.contact_company,
+      contactPhone: row.contact_phone,
+      contactEmail: row.contact_email,
+      siteContactName: row.site_contact_name,
+      siteContactPhone: row.site_contact_phone,
+      siteContactEmail: row.site_contact_email,
+      productModel: row.product_model,
+      productSerial: row.product_serial,
+      productType: row.product_type,
+      installationDate: row.installation_date,
+      issueDescription: row.issue_description,
+      diagnosis: row.diagnosis,
+      resolution: row.resolution,
+      status: row.status,
+      claimStatus: row.claim_status,
+      claimNotes: row.claim_notes,
+      claimNumber: row.claim_number,
+      partsCost: row.parts_cost,
+      laborCost: row.labor_cost,
+      otherCost: row.other_cost,
+      claimAmount: row.claim_amount,
+      techNotes: row.tech_notes,
+      hoursOnJob: row.hours_on_job,
+      milesTraveled: row.miles_traveled,
+      scheduledDate: row.scheduled_date,
+      scheduledTime: row.scheduled_time,
+      followUpDate: row.follow_up_date,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      parentCallId: row.parent_call_id,
+      isTest: row.is_test,
+      createdAt: row.created_at,
+      photoCount: row.photo_count,
+      partCount: row.part_count,
+    }));
+
+    const inProgressCount = todayScheduled.filter(c => c.status === "In Progress").length;
+
+    const overdueRow = sqlite.prepare(`
+      SELECT COUNT(*) AS cnt
+      FROM invoices
+      WHERE status NOT IN ('Paid', 'Draft')
+        AND due_date IS NOT NULL
+        AND due_date < ?
+    `).get(today) as any;
+
+    return {
+      todayScheduled,
+      todayCount: todayScheduled.length,
+      inProgressCount,
+      overdueInvoices: overdueRow.cnt ?? 0,
+    };
+  }
+
+  getDashboardActivity(limit: number = 10): DashboardActivityEntry[] {
+    const rows = sqlite.prepare(`
+      SELECT id, username, action, entity_type, entity_id, details, created_at
+      FROM audit_log_system
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(limit) as any[];
+
+    return rows.map(r => ({
+      id: r.id,
+      username: r.username,
+      action: r.action,
+      entityType: r.entity_type,
+      entityId: r.entity_id,
+      details: r.details,
+      createdAt: r.created_at,
+    }));
   }
 
   getRecentServiceCalls(limit: number): ServiceCallWithCounts[] {

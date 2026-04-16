@@ -466,6 +466,24 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  app.get("/api/dashboard/today", (_req, res) => {
+    try {
+      const data = storage.getDashboardToday();
+      res.json(data);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.get("/api/dashboard/activity", (_req, res) => {
+    try {
+      const activity = storage.getDashboardActivity(10);
+      res.json(activity);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   // ─── Global Search ──────────────────────────────────────────────────────────
 
   app.get("/api/search", (req, res) => {
