@@ -5,12 +5,14 @@ import { getUser } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { FileBarChart, Download, FileText, Mail } from "lucide-react";
+import {
+  BarChart3, Calendar, Users, FileCheck, AlertTriangle, DollarSign,
+  Download, FileText, Mail, Play,
+} from "lucide-react";
 import { MANUFACTURERS, CLAIM_STATUSES } from "@shared/schema";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -173,9 +175,69 @@ const REPORT_TYPES = [
 
 type ReportType = typeof REPORT_TYPES[number]["value"];
 
+interface ReportCatalogItem {
+  value: ReportType;
+  label: string;
+  description: string;
+  access: string;
+  managerOnly: boolean;
+  icon: typeof BarChart3;
+}
+
+const REPORT_CATALOG: ReportCatalogItem[] = [
+  {
+    value: "manufacturer-summary",
+    label: "Manufacturer Service Summary",
+    description: "Service call volume, completion rates, and average labor hours grouped by manufacturer.",
+    access: "All roles",
+    managerOnly: false,
+    icon: BarChart3,
+  },
+  {
+    value: "monthly-expense",
+    label: "Monthly Expense Report",
+    description: "Monthly breakdown of service activity including call count, total hours, mileage, and parts costs.",
+    access: "All roles",
+    managerOnly: false,
+    icon: Calendar,
+  },
+  {
+    value: "customer-history",
+    label: "Customer History",
+    description: "Complete service history for a specific customer or job site showing all calls, dates, statuses, and outcomes.",
+    access: "All roles",
+    managerOnly: false,
+    icon: Users,
+  },
+  {
+    value: "claim-status",
+    label: "Claim Status Report",
+    description: "Warranty claim status across all service calls — filed vs pending vs approved vs denied.",
+    access: "All roles",
+    managerOnly: false,
+    icon: FileCheck,
+  },
+  {
+    value: "product-failure",
+    label: "Product Failure Report",
+    description: "Service calls grouped by product type and failure patterns. Identifies repeat issues and common failure modes.",
+    access: "All roles",
+    managerOnly: false,
+    icon: AlertTriangle,
+  },
+  {
+    value: "invoice-aging",
+    label: "Invoice Aging Report",
+    description: "Outstanding invoices grouped by aging bucket — Current, 31-60, 61-90, and 90+ days with dollar totals.",
+    access: "Manager only",
+    managerOnly: true,
+    icon: DollarSign,
+  },
+];
+
 const currentYear = new Date().getFullYear();
 const defaultDateFrom = `${currentYear}-01-01`;
-const defaultDateTo = `${currentYear}-12-31`;
+const defaultDateTo = new Date().toISOString().slice(0, 10);
 
 function fmt$(val: number | string | null | undefined): string {
   const n = typeof val === "string" ? parseFloat(val) || 0 : (val ?? 0);
@@ -192,10 +254,26 @@ function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max) + "…" : str;
 }
 
+function recordCount(data: ReportData | undefined, type: ReportType): number {
+  if (!data) return 0;
+  switch (type) {
+    case "manufacturer-summary": return (data as ManufacturerSummaryReport).calls.length;
+    case "monthly-expense": return (data as MonthlyExpenseReport).months.length;
+    case "customer-history": return (data as CustomerHistoryReport).calls.length;
+    case "claim-status": return (data as ClaimStatusReport).calls.length;
+    case "product-failure": return (data as ProductFailureReport).models.length;
+    case "invoice-aging": return (data as InvoiceAgingReport).invoices.length;
+  }
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export default function Reports() {
-  const [reportType, setReportType] = useState<ReportType>("manufacturer-summary");
+  const user = getUser();
+  const isManager = user?.role === "manager";
+
+  const [reportType, setReportType] = useState<ReportType | null>(null);
+  const [generated, setGenerated] = useState(false);
   const [dateFrom, setDateFrom] = useState(defaultDateFrom);
   const [dateTo, setDateTo] = useState(defaultDateTo);
   const [manufacturer, setManufacturer] = useState("");
@@ -203,7 +281,8 @@ export default function Reports() {
   const [claimStatusFilter, setClaimStatusFilter] = useState("__default__");
   const [minCount, setMinCount] = useState("2");
 
-  // Fetch unique customer names for the customer dropdown
+  const visibleCatalog = REPORT_CATALOG.filter(c => !c.managerOnly || isManager);
+
   const { data: customerNames } = useQuery<string[]>({
     queryKey: ["/api/service-calls", "customer-names"],
     queryFn: async () => {
@@ -214,7 +293,6 @@ export default function Reports() {
     },
   });
 
-  // Build query params
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
     if (dateFrom) params.set("dateFrom", dateFrom);
@@ -239,11 +317,10 @@ export default function Reports() {
     return params.toString();
   }, [reportType, dateFrom, dateTo, manufacturer, customer, claimStatusFilter, minCount]);
 
-  // Is the required filter set?
   const canFetch = (() => {
+    if (!reportType) return false;
     if (reportType === "manufacturer-summary" && !manufacturer) return false;
     if (reportType === "customer-history" && !customer) return false;
-    if (reportType === "invoice-aging") return true;
     return true;
   })();
 
@@ -253,13 +330,29 @@ export default function Reports() {
       const res = await apiRequest("GET", `/api/reports/${reportType}?${queryParams}`);
       return res.json();
     },
-    enabled: canFetch,
+    enabled: !!reportType && canFetch && generated,
   });
+
+  const handleSelectReport = (type: ReportType) => {
+    setReportType(type);
+    setGenerated(false);
+    // Reset filters that don't apply across reports
+    if (type !== "manufacturer-summary" && type !== "claim-status" && type !== "product-failure") {
+      setManufacturer("");
+    }
+    if (type !== "customer-history") {
+      setCustomer("");
+    }
+  };
+
+  const handleGenerate = () => {
+    setGenerated(true);
+  };
 
   // ─── CSV Download ─────────────────────────────────────────────────────────
 
   const handleCSVDownload = () => {
-    if (!reportData) return;
+    if (!reportData || !reportType) return;
     let csv = "";
     const esc = (v: any) => {
       if (v == null) return "";
@@ -324,7 +417,7 @@ export default function Reports() {
   // ─── PDF Download ─────────────────────────────────────────────────────────
 
   const handlePDFDownload = async () => {
-    if (!reportData) return;
+    if (!reportData || !reportType) return;
     const { generateReportPDF } = await import("@/lib/report-pdf");
     generateReportPDF(reportType, reportData);
   };
@@ -332,7 +425,7 @@ export default function Reports() {
   // ─── Email Report ──────────────────────────────────────────────────────────
 
   const handleEmailReport = () => {
-    if (!reportData) return;
+    if (!reportData || !reportType) return;
     const reportLabel = REPORT_TYPES.find(r => r.value === reportType)?.label ?? reportType;
     const dateRange = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : "";
     const subject = encodeURIComponent(`${reportLabel}${dateRange ? ` — ${dateRange}` : ""}`);
@@ -376,210 +469,270 @@ export default function Reports() {
     window.open(`mailto:?subject=${subject}&body=${body}`);
   };
 
+  // ─── Derived ──────────────────────────────────────────────────────────────
+
+  const selectedCatalogItem = reportType ? REPORT_CATALOG.find(c => c.value === reportType) : null;
+  const hasReport = !!reportData && generated && canFetch;
+
+  const missingFilterMessage = (() => {
+    if (!reportType) return null;
+    if (reportType === "manufacturer-summary" && !manufacturer) return "Select a manufacturer to generate this report.";
+    if (reportType === "customer-history" && !customer) return "Select a customer to generate this report.";
+    return null;
+  })();
+
+  const formatDateRangeLabel = () => {
+    const from = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
+    const to = dateTo ? new Date(dateTo + "T00:00:00") : null;
+    const fmt = (d: Date | null) => d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+    return `${fmt(from)} — ${fmt(to)}`;
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto pb-24 md:pb-6">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-5">
+      <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-xl font-bold">Reports</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Generate and download service reports</p>
+          <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
+          <p className="text-sm text-muted-foreground mt-1">Generate and download service reports</p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleEmailReport}
-            disabled={!reportData || isLoading}
-            data-testid="button-email-report"
-          >
-            <Mail className="w-4 h-4 mr-1.5" />
-            Email
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCSVDownload}
-            disabled={!reportData || isLoading}
-            data-testid="button-download-csv"
-          >
-            <Download className="w-4 h-4 mr-1.5" />
-            CSV
-          </Button>
-          <Button
-            size="sm"
-            onClick={handlePDFDownload}
-            disabled={!reportData || isLoading}
-            data-testid="button-download-pdf"
-          >
-            <FileText className="w-4 h-4 mr-1.5" />
-            PDF
-          </Button>
+        {hasReport && (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleEmailReport}
+              disabled={!reportData || isLoading}
+              data-testid="button-email-report"
+            >
+              <Mail className="w-4 h-4 mr-1.5" />
+              Email
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCSVDownload}
+              disabled={!reportData || isLoading}
+              data-testid="button-download-csv"
+            >
+              <Download className="w-4 h-4 mr-1.5" />
+              CSV
+            </Button>
+            <Button
+              size="sm"
+              onClick={handlePDFDownload}
+              disabled={!reportData || isLoading}
+              data-testid="button-download-pdf"
+            >
+              <FileText className="w-4 h-4 mr-1.5" />
+              PDF
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Section 1: Report Catalog */}
+      <div className="mb-5">
+        <h2 className="text-[10px] uppercase tracking-[0.15em] font-semibold text-muted-foreground mb-3">Report Catalog</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {visibleCatalog.map(item => {
+            const Icon = item.icon;
+            const selected = reportType === item.value;
+            return (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => handleSelectReport(item.value)}
+                data-testid={`report-card-${item.value}`}
+                className={`text-left bg-card rounded-xl border p-5 cursor-pointer transition-all duration-200 ${
+                  selected
+                    ? "border-[hsl(200,72%,40%)] shadow-md ring-2 ring-[hsl(200,72%,40%)]/20"
+                    : "border-border/50 hover:shadow-md hover:border-[hsl(200,72%,40%)]/30"
+                }`}
+              >
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[hsl(200,72%,40%)]/10 mb-3">
+                  <Icon className="w-5 h-5 text-[hsl(200,72%,40%)]" />
+                </div>
+                <h3 className="text-base font-semibold text-foreground">{item.label}</h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{item.description}</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mt-3">
+                  Available to: {item.access}
+                </p>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Controls */}
-      <Card className="mb-5">
-        <CardContent className="p-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-            {/* Report type */}
-            <div>
-              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Report Type</label>
-              <Select value={reportType} onValueChange={v => setReportType(v as ReportType)}>
-                <SelectTrigger data-testid="select-report-type">
-                  <SelectValue placeholder="Report Type" />
+      {/* Section 2: Date Range + Filters + Generate */}
+      {reportType && (
+        <div className="bg-card rounded-xl border border-border/50 p-4 mb-5 flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">From</label>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={e => { setDateFrom(e.target.value); setGenerated(false); }}
+              className="w-[160px]"
+              data-testid="input-date-from"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">To</label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={e => { setDateTo(e.target.value); setGenerated(false); }}
+              className="w-[160px]"
+              data-testid="input-date-to"
+            />
+          </div>
+
+          {(reportType === "manufacturer-summary" || reportType === "claim-status" || reportType === "product-failure") && (
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground whitespace-nowrap">
+                Manufacturer{reportType === "manufacturer-summary" ? " *" : ""}
+              </label>
+              <Select
+                value={manufacturer || "__all__"}
+                onValueChange={v => { setManufacturer(v === "__all__" ? "" : v); setGenerated(false); }}
+              >
+                <SelectTrigger className="w-[200px]" data-testid="select-manufacturer">
+                  <SelectValue placeholder="Select manufacturer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {REPORT_TYPES.filter(r => {
-                    if (r.value === "invoice-aging" && getUser()?.role !== "manager") return false;
-                    return true;
-                  }).map(r => (
-                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                  {reportType !== "manufacturer-summary" && (
+                    <SelectItem value="__all__">All Manufacturers</SelectItem>
+                  )}
+                  {MANUFACTURERS.map(m => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+          )}
 
-            {/* Date from */}
-            <div>
-              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">From</label>
+          {reportType === "customer-history" && (
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground whitespace-nowrap">Customer *</label>
+              <Select
+                value={customer || "__none__"}
+                onValueChange={v => { setCustomer(v === "__none__" ? "" : v); setGenerated(false); }}
+              >
+                <SelectTrigger className="w-[240px]" data-testid="select-customer">
+                  <SelectValue placeholder="Select customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Select a customer</SelectItem>
+                  {(customerNames || []).map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {reportType === "claim-status" && (
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground whitespace-nowrap">Claim Status</label>
+              <Select
+                value={claimStatusFilter}
+                onValueChange={v => { setClaimStatusFilter(v); setGenerated(false); }}
+              >
+                <SelectTrigger className="w-[200px]" data-testid="select-claim-status">
+                  <SelectValue placeholder="Claim Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Submitted + Pending</SelectItem>
+                  <SelectItem value="__all__">All Statuses</SelectItem>
+                  {CLAIM_STATUSES.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {reportType === "product-failure" && (
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground whitespace-nowrap">Min Occurrences</label>
               <Input
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                data-testid="input-date-from"
+                type="number"
+                min={1}
+                value={minCount}
+                onChange={e => { setMinCount(e.target.value); setGenerated(false); }}
+                className="w-[100px]"
+                data-testid="input-min-count"
               />
             </div>
+          )}
 
-            {/* Date to */}
-            <div>
-              <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">To</label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                data-testid="input-date-to"
-              />
-            </div>
-
-            {/* Conditional filter */}
-            {(reportType === "manufacturer-summary" || reportType === "claim-status" || reportType === "product-failure") && (
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">
-                  Manufacturer{reportType === "manufacturer-summary" ? " *" : ""}
-                </label>
-                <Select
-                  value={manufacturer || "__all__"}
-                  onValueChange={v => setManufacturer(v === "__all__" ? "" : v)}
-                >
-                  <SelectTrigger data-testid="select-manufacturer">
-                    <SelectValue placeholder="Select manufacturer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {reportType !== "manufacturer-summary" && (
-                      <SelectItem value="__all__">All Manufacturers</SelectItem>
-                    )}
-                    {MANUFACTURERS.map(m => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {reportType === "customer-history" && (
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Customer *</label>
-                <Select
-                  value={customer || "__none__"}
-                  onValueChange={v => setCustomer(v === "__none__" ? "" : v)}
-                >
-                  <SelectTrigger data-testid="select-customer">
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Select a customer</SelectItem>
-                    {(customerNames || []).map(name => (
-                      <SelectItem key={name} value={name}>{name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {reportType === "claim-status" && (
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Claim Status</label>
-                <Select
-                  value={claimStatusFilter}
-                  onValueChange={v => setClaimStatusFilter(v)}
-                >
-                  <SelectTrigger data-testid="select-claim-status">
-                    <SelectValue placeholder="Claim Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__default__">Submitted + Pending</SelectItem>
-                    <SelectItem value="__all__">All Statuses</SelectItem>
-                    {CLAIM_STATUSES.map(s => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {reportType === "product-failure" && (
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5 block">Min Occurrences</label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={minCount}
-                  onChange={e => setMinCount(e.target.value)}
-                  data-testid="input-min-count"
-                />
-              </div>
-            )}
+          <div className="ml-auto">
+            <Button
+              onClick={handleGenerate}
+              disabled={!canFetch}
+              className="bg-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,35%)] text-white px-6 py-2 rounded-lg font-medium"
+              data-testid="button-generate-report"
+            >
+              <Play className="w-4 h-4 mr-1.5" />
+              Generate Report
+            </Button>
           </div>
 
-          {!canFetch && (
-            <p className="text-xs text-amber-600">
-              {reportType === "manufacturer-summary" ? "Select a manufacturer to generate the report." : "Select a customer to generate the report."}
-            </p>
+          {missingFilterMessage && (
+            <p className="text-xs text-amber-600 w-full">{missingFilterMessage}</p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
 
-      {/* Report Preview */}
-      {(isLoading || isFetching) && canFetch ? (
-        <div className="space-y-3">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-      ) : !canFetch ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <FileBarChart className="w-12 h-12 text-muted-foreground/30 mb-4" />
-          <p className="text-base font-semibold text-foreground mb-1">Select required filters</p>
-          <p className="text-sm text-muted-foreground">Choose the required filters above to generate a report.</p>
-        </div>
-      ) : reportData ? (
-        <Card>
-          <CardContent className="p-4 overflow-x-auto">
-            {reportType === "manufacturer-summary" && <ManufacturerSummaryPreview data={reportData as ManufacturerSummaryReport} />}
-            {reportType === "monthly-expense" && <MonthlyExpensePreview data={reportData as MonthlyExpenseReport} />}
-            {reportType === "customer-history" && <CustomerHistoryPreview data={reportData as CustomerHistoryReport} />}
-            {reportType === "claim-status" && <ClaimStatusPreview data={reportData as ClaimStatusReport} />}
-            {reportType === "product-failure" && <ProductFailurePreview data={reportData as ProductFailureReport} />}
-            {reportType === "invoice-aging" && <InvoiceAgingPreview data={reportData as InvoiceAgingReport} />}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <FileBarChart className="w-12 h-12 text-muted-foreground/30 mb-4" />
-          <p className="text-base font-semibold text-foreground mb-1">No data returned</p>
-          <p className="text-sm text-muted-foreground">Try adjusting your date range or filters.</p>
-        </div>
+      {/* Section 3: Report Output */}
+      {reportType && generated && canFetch && (
+        <>
+          {/* Report Header */}
+          {(reportData || isLoading || isFetching) && selectedCatalogItem && (
+            <div className="bg-card rounded-xl border border-border/50 p-4 mb-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[hsl(200,72%,40%)]/10">
+                    <selectedCatalogItem.icon className="w-5 h-5 text-[hsl(200,72%,40%)]" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold text-foreground">{selectedCatalogItem.label}</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {formatDateRangeLabel()}
+                      {reportData && (
+                        <> · {recordCount(reportData, reportType)} record{recordCount(reportData, reportType) === 1 ? "" : "s"}</>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Report body */}
+          {(isLoading || isFetching) ? (
+            <div className="bg-card rounded-xl border border-border/50 p-4 space-y-3">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          ) : reportData ? (
+            <div className="bg-card rounded-xl border border-border/50 p-4 overflow-x-auto">
+              {reportType === "manufacturer-summary" && <ManufacturerSummaryPreview data={reportData as ManufacturerSummaryReport} />}
+              {reportType === "monthly-expense" && <MonthlyExpensePreview data={reportData as MonthlyExpenseReport} />}
+              {reportType === "customer-history" && <CustomerHistoryPreview data={reportData as CustomerHistoryReport} />}
+              {reportType === "claim-status" && <ClaimStatusPreview data={reportData as ClaimStatusReport} />}
+              {reportType === "product-failure" && <ProductFailurePreview data={reportData as ProductFailureReport} />}
+              {reportType === "invoice-aging" && <InvoiceAgingPreview data={reportData as InvoiceAgingReport} />}
+            </div>
+          ) : (
+            <div className="bg-card rounded-xl border border-border/50 p-12 text-center">
+              <p className="text-sm text-muted-foreground">No data found for this date range</p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -587,13 +740,20 @@ export default function Reports() {
 
 // ─── Preview Components ──────────────────────────────────────────────────────
 
+const thClass = "text-left px-4 py-3 text-[10px] uppercase tracking-[0.15em] font-semibold text-muted-foreground";
+const thRightClass = "text-right px-4 py-3 text-[10px] uppercase tracking-[0.15em] font-semibold text-muted-foreground";
+const tdClass = "px-4 py-3 text-sm border-b border-border/50";
+const tdRightClass = "px-4 py-3 text-sm border-b border-border/50 text-right tabular-nums font-medium";
+const trClass = "even:bg-muted/20 hover:bg-muted/40 transition-colors";
+const theadClass = "bg-muted/30";
+
 function SummaryGrid({ items }: { items: Array<{ label: string; value: string | number }> }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
       {items.map(item => (
-        <div key={item.label} className="bg-muted/40 rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">{item.label}</p>
-          <p className="text-lg font-bold">{item.value}</p>
+        <div key={item.label} className="bg-muted/30 rounded-lg p-3 border-l-[3px] border-[hsl(200,72%,40%)]">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{item.label}</p>
+          <p className="text-lg font-bold tabular-nums mt-1">{item.value}</p>
         </div>
       ))}
     </div>
@@ -603,10 +763,7 @@ function SummaryGrid({ items }: { items: Array<{ label: string; value: string | 
 function ManufacturerSummaryPreview({ data }: { data: ManufacturerSummaryReport }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold mb-1">{data.manufacturer}</h3>
-      <p className="text-xs text-muted-foreground mb-3">
-        {data.dateFrom && data.dateTo ? `${formatDate(data.dateFrom)} — ${formatDate(data.dateTo)}` : "All dates"}
-      </p>
+      <h3 className="text-sm font-semibold mb-3">{data.manufacturer}</h3>
 
       <SummaryGrid items={[
         { label: "Total Calls", value: data.summary.totalCalls },
@@ -621,42 +778,42 @@ function ManufacturerSummaryPreview({ data }: { data: ManufacturerSummaryReport 
         <p className="text-sm text-muted-foreground text-center py-8">No calls found for this manufacturer.</p>
       ) : (
         <table className="w-full text-sm" data-testid="report-table">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customer</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Site</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Serial</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Status</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim #</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Parts</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Labor</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim $</th>
+          <thead className={theadClass}>
+            <tr>
+              <th className={thClass}>Date</th>
+              <th className={thClass}>Customer</th>
+              <th className={thClass}>Site</th>
+              <th className={thClass}>Model</th>
+              <th className={thClass}>Serial</th>
+              <th className={thClass}>Status</th>
+              <th className={thClass}>Claim</th>
+              <th className={thClass}>Claim #</th>
+              <th className={thRightClass}>Parts</th>
+              <th className={thRightClass}>Labor</th>
+              <th className={thRightClass}>Claim $</th>
             </tr>
           </thead>
           <tbody>
             {data.calls.map(c => (
-              <tr key={c.id} className="border-b border-border/50">
-                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(c.callDate)}</td>
-                <td className="px-5 py-3 text-xs">{c.customerName}</td>
-                <td className="px-5 py-3 text-xs">{c.jobSiteName}</td>
-                <td className="px-5 py-3 text-xs font-mono">{c.productModel}</td>
-                <td className="px-5 py-3 text-xs font-mono">{c.productSerial || "—"}</td>
-                <td className="px-5 py-3 text-xs">{c.status}</td>
-                <td className="px-5 py-3 text-xs">{c.claimStatus}</td>
-                <td className="px-5 py-3 text-xs">{c.claimNumber || "—"}</td>
-                <td className="px-5 py-3 text-xs text-right">{fmt$(c.partsCost)}</td>
-                <td className="px-5 py-3 text-xs text-right">{fmt$(c.laborCost)}</td>
-                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(c.claimAmount)}</td>
+              <tr key={c.id} className={trClass}>
+                <td className={`${tdClass} whitespace-nowrap`}>{formatDate(c.callDate)}</td>
+                <td className={tdClass}>{c.customerName}</td>
+                <td className={tdClass}>{c.jobSiteName}</td>
+                <td className={`${tdClass} font-mono text-xs`}>{c.productModel}</td>
+                <td className={`${tdClass} font-mono text-xs`}>{c.productSerial || "—"}</td>
+                <td className={tdClass}>{c.status}</td>
+                <td className={tdClass}>{c.claimStatus}</td>
+                <td className={tdClass}>{c.claimNumber || "—"}</td>
+                <td className={tdRightClass}>{fmt$(c.partsCost)}</td>
+                <td className={tdRightClass}>{fmt$(c.laborCost)}</td>
+                <td className={tdRightClass}>{fmt$(c.claimAmount)}</td>
               </tr>
             ))}
-            <tr className="bg-muted/30 font-semibold">
-              <td colSpan={8} className="px-5 py-3 text-xs text-right">Totals:</td>
-              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalPartsCost)}</td>
-              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalLaborCost)}</td>
-              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalClaimAmount)}</td>
+            <tr className="bg-muted/40 font-semibold">
+              <td colSpan={8} className="px-4 py-3 text-sm text-right">Totals:</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{fmt$(data.summary.totalPartsCost)}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{fmt$(data.summary.totalLaborCost)}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{fmt$(data.summary.totalClaimAmount)}</td>
             </tr>
           </tbody>
         </table>
@@ -668,11 +825,6 @@ function ManufacturerSummaryPreview({ data }: { data: ManufacturerSummaryReport 
 function MonthlyExpensePreview({ data }: { data: MonthlyExpenseReport }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold mb-1">Monthly Expense Report</h3>
-      <p className="text-xs text-muted-foreground mb-3">
-        {data.dateFrom && data.dateTo ? `${formatDate(data.dateFrom)} — ${formatDate(data.dateTo)}` : "All dates"}
-      </p>
-
       <SummaryGrid items={[
         { label: "Total Hours", value: data.summary.totalHours },
         { label: "Total Miles", value: data.summary.totalMiles },
@@ -686,46 +838,46 @@ function MonthlyExpensePreview({ data }: { data: MonthlyExpenseReport }) {
         <p className="text-sm text-muted-foreground text-center py-8">No data for this period.</p>
       ) : (
         <table className="w-full text-sm" data-testid="report-table">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Month</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Calls</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Hours</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Miles</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Mileage $</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Parts</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Labor</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Other</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Total</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim $</th>
+          <thead className={theadClass}>
+            <tr>
+              <th className={thClass}>Month</th>
+              <th className={thRightClass}>Calls</th>
+              <th className={thRightClass}>Hours</th>
+              <th className={thRightClass}>Miles</th>
+              <th className={thRightClass}>Mileage $</th>
+              <th className={thRightClass}>Parts</th>
+              <th className={thRightClass}>Labor</th>
+              <th className={thRightClass}>Other</th>
+              <th className={thRightClass}>Total</th>
+              <th className={thRightClass}>Claim $</th>
             </tr>
           </thead>
           <tbody>
             {data.months.map(m => (
-              <tr key={m.month} className="border-b border-border/50">
-                <td className="px-5 py-3 text-xs">{monthLabel(m.month)}</td>
-                <td className="px-5 py-3 text-xs text-right">{m.calls}</td>
-                <td className="px-5 py-3 text-xs text-right">{m.hours}</td>
-                <td className="px-5 py-3 text-xs text-right">{m.miles}</td>
-                <td className="px-5 py-3 text-xs text-right">{fmt$(m.mileageCost)}</td>
-                <td className="px-5 py-3 text-xs text-right">{fmt$(m.partsCost)}</td>
-                <td className="px-5 py-3 text-xs text-right">{fmt$(m.laborCost)}</td>
-                <td className="px-5 py-3 text-xs text-right">{fmt$(m.otherCost)}</td>
-                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(m.totalCosts)}</td>
-                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(m.claimAmount)}</td>
+              <tr key={m.month} className={trClass}>
+                <td className={tdClass}>{monthLabel(m.month)}</td>
+                <td className={tdRightClass}>{m.calls}</td>
+                <td className={tdRightClass}>{m.hours}</td>
+                <td className={tdRightClass}>{m.miles}</td>
+                <td className={tdRightClass}>{fmt$(m.mileageCost)}</td>
+                <td className={tdRightClass}>{fmt$(m.partsCost)}</td>
+                <td className={tdRightClass}>{fmt$(m.laborCost)}</td>
+                <td className={tdRightClass}>{fmt$(m.otherCost)}</td>
+                <td className={tdRightClass}>{fmt$(m.totalCosts)}</td>
+                <td className={tdRightClass}>{fmt$(m.claimAmount)}</td>
               </tr>
             ))}
-            <tr className="bg-muted/30 font-semibold">
-              <td className="px-5 py-3 text-xs">Grand Total</td>
-              <td className="px-5 py-3 text-xs text-right">{data.months.reduce((s, m) => s + m.calls, 0)}</td>
-              <td className="px-5 py-3 text-xs text-right">{data.summary.totalHours}</td>
-              <td className="px-5 py-3 text-xs text-right">{data.summary.totalMiles}</td>
-              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalMileageCost)}</td>
-              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalPartsCost)}</td>
-              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalLaborCost)}</td>
-              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalOtherCost)}</td>
-              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalCosts)}</td>
-              <td className="px-5 py-3 text-xs text-right">{fmt$(data.summary.totalClaimAmount)}</td>
+            <tr className="bg-muted/40 font-semibold">
+              <td className="px-4 py-3 text-sm">Grand Total</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{data.months.reduce((s, m) => s + m.calls, 0)}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{data.summary.totalHours}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{data.summary.totalMiles}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{fmt$(data.summary.totalMileageCost)}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{fmt$(data.summary.totalPartsCost)}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{fmt$(data.summary.totalLaborCost)}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{fmt$(data.summary.totalOtherCost)}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{fmt$(data.summary.totalCosts)}</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums">{fmt$(data.summary.totalClaimAmount)}</td>
             </tr>
           </tbody>
         </table>
@@ -757,31 +909,31 @@ function CustomerHistoryPreview({ data }: { data: CustomerHistoryReport }) {
         <p className="text-sm text-muted-foreground text-center py-8">No calls found for this customer.</p>
       ) : (
         <table className="w-full text-sm" data-testid="report-table">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Site</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Manufacturer</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Serial</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Issue</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Status</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim $</th>
+          <thead className={theadClass}>
+            <tr>
+              <th className={thClass}>Date</th>
+              <th className={thClass}>Site</th>
+              <th className={thClass}>Manufacturer</th>
+              <th className={thClass}>Model</th>
+              <th className={thClass}>Serial</th>
+              <th className={thClass}>Issue</th>
+              <th className={thClass}>Status</th>
+              <th className={thClass}>Claim</th>
+              <th className={thRightClass}>Claim $</th>
             </tr>
           </thead>
           <tbody>
             {data.calls.map(c => (
-              <tr key={c.id} className="border-b border-border/50">
-                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(c.callDate)}</td>
-                <td className="px-5 py-3 text-xs">{c.jobSiteName}</td>
-                <td className="px-5 py-3 text-xs">{c.manufacturer}</td>
-                <td className="px-5 py-3 text-xs font-mono">{c.productModel}</td>
-                <td className="px-5 py-3 text-xs font-mono">{c.productSerial || "—"}</td>
-                <td className="px-5 py-3 text-xs max-w-[200px] truncate">{truncate(c.issueDescription, 60)}</td>
-                <td className="px-5 py-3 text-xs">{c.status}</td>
-                <td className="px-5 py-3 text-xs">{c.claimStatus}</td>
-                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(c.claimAmount)}</td>
+              <tr key={c.id} className={trClass}>
+                <td className={`${tdClass} whitespace-nowrap`}>{formatDate(c.callDate)}</td>
+                <td className={tdClass}>{c.jobSiteName}</td>
+                <td className={tdClass}>{c.manufacturer}</td>
+                <td className={`${tdClass} font-mono text-xs`}>{c.productModel}</td>
+                <td className={`${tdClass} font-mono text-xs`}>{c.productSerial || "—"}</td>
+                <td className={`${tdClass} max-w-[200px] truncate`}>{truncate(c.issueDescription, 60)}</td>
+                <td className={tdClass}>{c.status}</td>
+                <td className={tdClass}>{c.claimStatus}</td>
+                <td className={tdRightClass}>{fmt$(c.claimAmount)}</td>
               </tr>
             ))}
           </tbody>
@@ -794,17 +946,12 @@ function CustomerHistoryPreview({ data }: { data: CustomerHistoryReport }) {
 function ClaimStatusPreview({ data }: { data: ClaimStatusReport }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold mb-1">Claim Status Report</h3>
-      <p className="text-xs text-muted-foreground mb-3">
-        {data.manufacturer ? data.manufacturer + " · " : ""}{data.dateFrom && data.dateTo ? `${formatDate(data.dateFrom)} — ${formatDate(data.dateTo)}` : "All dates"}
-      </p>
-
       {/* Status summary badges */}
       <div className="flex flex-wrap gap-3 mb-4">
         {Object.entries(data.statusCounts).map(([status, info]) => (
-          <div key={status} className="bg-muted/40 rounded-lg px-3 py-2">
-            <p className="text-xs text-muted-foreground">{status}</p>
-            <p className="text-sm font-bold">{info.count} calls · {fmt$(info.amount)}</p>
+          <div key={status} className="bg-muted/30 rounded-lg px-3 py-2 border-l-[3px] border-[hsl(200,72%,40%)]">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{status}</p>
+            <p className="text-sm font-bold tabular-nums mt-0.5">{info.count} calls · {fmt$(info.amount)}</p>
           </div>
         ))}
       </div>
@@ -813,31 +960,31 @@ function ClaimStatusPreview({ data }: { data: ClaimStatusReport }) {
         <p className="text-sm text-muted-foreground text-center py-8">No claims found.</p>
       ) : (
         <table className="w-full text-sm" data-testid="report-table">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Call #</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customer</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Manufacturer</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Claim #</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Status</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Amount</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Days</th>
+          <thead className={theadClass}>
+            <tr>
+              <th className={thClass}>Call #</th>
+              <th className={thClass}>Date</th>
+              <th className={thClass}>Customer</th>
+              <th className={thClass}>Manufacturer</th>
+              <th className={thClass}>Model</th>
+              <th className={thClass}>Claim #</th>
+              <th className={thClass}>Status</th>
+              <th className={thRightClass}>Amount</th>
+              <th className={thRightClass}>Days</th>
             </tr>
           </thead>
           <tbody>
             {data.calls.map(c => (
-              <tr key={c.id} className="border-b border-border/50">
-                <td className="px-5 py-3 text-xs">#{c.id}</td>
-                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(c.callDate)}</td>
-                <td className="px-5 py-3 text-xs">{c.customerName}</td>
-                <td className="px-5 py-3 text-xs">{c.manufacturer}</td>
-                <td className="px-5 py-3 text-xs font-mono">{c.productModel}</td>
-                <td className="px-5 py-3 text-xs">{c.claimNumber || "—"}</td>
-                <td className="px-5 py-3 text-xs">{c.claimStatus}</td>
-                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(c.claimAmount)}</td>
-                <td className="px-5 py-3 text-xs text-right">{c.daysPending}</td>
+              <tr key={c.id} className={trClass}>
+                <td className={tdClass}>#{c.id}</td>
+                <td className={`${tdClass} whitespace-nowrap`}>{formatDate(c.callDate)}</td>
+                <td className={tdClass}>{c.customerName}</td>
+                <td className={tdClass}>{c.manufacturer}</td>
+                <td className={`${tdClass} font-mono text-xs`}>{c.productModel}</td>
+                <td className={tdClass}>{c.claimNumber || "—"}</td>
+                <td className={tdClass}>{c.claimStatus}</td>
+                <td className={tdRightClass}>{fmt$(c.claimAmount)}</td>
+                <td className={tdRightClass}>{c.daysPending}</td>
               </tr>
             ))}
           </tbody>
@@ -850,36 +997,35 @@ function ClaimStatusPreview({ data }: { data: ClaimStatusReport }) {
 function ProductFailurePreview({ data }: { data: ProductFailureReport }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold mb-1">Product Failure Report</h3>
       <p className="text-xs text-muted-foreground mb-3">
-        {data.manufacturer ? data.manufacturer + " · " : ""}{data.dateFrom && data.dateTo ? `${formatDate(data.dateFrom)} — ${formatDate(data.dateTo)}` : "All dates"} · Min {data.minCount} occurrences
+        Min {data.minCount} occurrences
       </p>
 
       {data.models.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">No models with {data.minCount}+ service calls found.</p>
       ) : (
         <table className="w-full text-sm" data-testid="report-table">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Manufacturer</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Model</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Calls</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Serials</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customers</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Last Service</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Common Issues</th>
+          <thead className={theadClass}>
+            <tr>
+              <th className={thClass}>Manufacturer</th>
+              <th className={thClass}>Model</th>
+              <th className={thRightClass}>Calls</th>
+              <th className={thRightClass}>Serials</th>
+              <th className={thRightClass}>Customers</th>
+              <th className={thClass}>Last Service</th>
+              <th className={thClass}>Common Issues</th>
             </tr>
           </thead>
           <tbody>
             {data.models.map((m, i) => (
-              <tr key={i} className="border-b border-border/50">
-                <td className="px-5 py-3 text-xs">{m.manufacturer}</td>
-                <td className="px-5 py-3 text-xs font-mono">{m.model}</td>
-                <td className="px-5 py-3 text-xs text-right font-bold">{m.count}</td>
-                <td className="px-5 py-3 text-xs text-right">{m.uniqueSerials}</td>
-                <td className="px-5 py-3 text-xs text-right">{m.uniqueCustomers}</td>
-                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(m.lastServiceDate)}</td>
-                <td className="px-5 py-3 text-xs max-w-[300px]">
+              <tr key={i} className={trClass}>
+                <td className={tdClass}>{m.manufacturer}</td>
+                <td className={`${tdClass} font-mono text-xs`}>{m.model}</td>
+                <td className={`${tdRightClass} font-bold`}>{m.count}</td>
+                <td className={tdRightClass}>{m.uniqueSerials}</td>
+                <td className={tdRightClass}>{m.uniqueCustomers}</td>
+                <td className={`${tdClass} whitespace-nowrap`}>{formatDate(m.lastServiceDate)}</td>
+                <td className={`${tdClass} max-w-[300px]`}>
                   <ul className="list-disc list-inside space-y-0.5">
                     {m.issues.slice(0, 3).map((issue, j) => (
                       <li key={j}>{truncate(issue, 80)}</li>
@@ -915,29 +1061,27 @@ function InvoiceAgingPreview({ data }: { data: InvoiceAgingReport }) {
 
   return (
     <div>
-      <h3 className="text-sm font-semibold mb-3">Invoice Aging Report</h3>
-
-      {/* Summary bar */}
+      {/* Aging buckets styled as KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 border border-emerald-200 dark:border-emerald-800">
-          <p className="text-xs text-emerald-600 dark:text-emerald-400">Current (0-30)</p>
-          <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{fmt$(data.summary.current)}</p>
+        <div className="bg-card rounded-lg p-3 border border-border/50 border-l-[3px] border-l-emerald-500">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Current (0-30)</p>
+          <p className="text-lg font-bold tabular-nums mt-1 text-emerald-700 dark:text-emerald-400">{fmt$(data.summary.current)}</p>
         </div>
-        <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 border border-amber-200 dark:border-amber-800">
-          <p className="text-xs text-amber-600 dark:text-amber-400">31-60 days</p>
-          <p className="text-lg font-bold text-amber-700 dark:text-amber-300">{fmt$(data.summary.days31to60)}</p>
+        <div className="bg-card rounded-lg p-3 border border-border/50 border-l-[3px] border-l-amber-500">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">31-60 days</p>
+          <p className="text-lg font-bold tabular-nums mt-1 text-amber-700 dark:text-amber-400">{fmt$(data.summary.days31to60)}</p>
         </div>
-        <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 border border-orange-200 dark:border-orange-800">
-          <p className="text-xs text-orange-600 dark:text-orange-400">61-90 days</p>
-          <p className="text-lg font-bold text-orange-700 dark:text-orange-300">{fmt$(data.summary.days61to90)}</p>
+        <div className="bg-card rounded-lg p-3 border border-border/50 border-l-[3px] border-l-orange-500">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">61-90 days</p>
+          <p className="text-lg font-bold tabular-nums mt-1 text-orange-700 dark:text-orange-400">{fmt$(data.summary.days61to90)}</p>
         </div>
-        <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 border border-red-200 dark:border-red-800">
-          <p className="text-xs text-red-600 dark:text-red-400">90+ days</p>
-          <p className="text-lg font-bold text-red-700 dark:text-red-300">{fmt$(data.summary.over90)}</p>
+        <div className="bg-card rounded-lg p-3 border border-border/50 border-l-[3px] border-l-red-500">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">90+ days</p>
+          <p className="text-lg font-bold tabular-nums mt-1 text-red-700 dark:text-red-400">{fmt$(data.summary.over90)}</p>
         </div>
-        <div className="bg-muted/40 rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Total Outstanding</p>
-          <p className="text-lg font-bold">{fmt$(data.summary.totalOutstanding)}</p>
+        <div className="bg-card rounded-lg p-3 border border-border/50 border-l-[3px] border-l-[hsl(200,72%,40%)]">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total Outstanding</p>
+          <p className="text-lg font-bold tabular-nums mt-1">{fmt$(data.summary.totalOutstanding)}</p>
         </div>
       </div>
 
@@ -945,29 +1089,29 @@ function InvoiceAgingPreview({ data }: { data: InvoiceAgingReport }) {
         <p className="text-sm text-muted-foreground text-center py-8">No outstanding invoices.</p>
       ) : (
         <table className="w-full text-sm" data-testid="report-table">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Invoice #</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Customer</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Issue Date</th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Due Date</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Amount</th>
-              <th className="text-right px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => setSortAsc(!sortAsc)}>
+          <thead className={theadClass}>
+            <tr>
+              <th className={thClass}>Invoice #</th>
+              <th className={thClass}>Customer</th>
+              <th className={thClass}>Issue Date</th>
+              <th className={thClass}>Due Date</th>
+              <th className={thRightClass}>Amount</th>
+              <th className={`${thRightClass} cursor-pointer hover:text-foreground`} onClick={() => setSortAsc(!sortAsc)}>
                 Days {sortAsc ? "\u2191" : "\u2193"}
               </th>
-              <th className="text-left px-5 py-3 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Aging</th>
+              <th className={thClass}>Aging</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map(inv => (
-              <tr key={inv.id} className="border-b border-border/50 hover:bg-muted/40 cursor-pointer" onClick={() => { window.location.hash = `/invoices/${inv.id}`; }}>
-                <td className="px-5 py-3 text-xs font-mono font-medium">{inv.invoiceNumber}</td>
-                <td className="px-5 py-3 text-xs">{inv.billToName}</td>
-                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(inv.issueDate)}</td>
-                <td className="px-5 py-3 text-xs whitespace-nowrap">{formatDate(inv.dueDate)}</td>
-                <td className="px-5 py-3 text-xs text-right font-medium">{fmt$(inv.total)}</td>
-                <td className="px-5 py-3 text-xs text-right">{inv.daysOutstanding}</td>
-                <td className="px-5 py-3">
+              <tr key={inv.id} className={`${trClass} cursor-pointer`} onClick={() => { window.location.hash = `/invoices/${inv.id}`; }}>
+                <td className={`${tdClass} font-mono font-medium`}>{inv.invoiceNumber}</td>
+                <td className={tdClass}>{inv.billToName}</td>
+                <td className={`${tdClass} whitespace-nowrap`}>{formatDate(inv.issueDate)}</td>
+                <td className={`${tdClass} whitespace-nowrap`}>{formatDate(inv.dueDate)}</td>
+                <td className={tdRightClass}>{fmt$(inv.total)}</td>
+                <td className={tdRightClass}>{inv.daysOutstanding}</td>
+                <td className={tdClass}>
                   <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full ${bucketColors[inv.bucket] || ""}`}>
                     {bucketLabels[inv.bucket] || inv.bucket}
                   </span>
