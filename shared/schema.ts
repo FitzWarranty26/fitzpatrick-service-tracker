@@ -20,6 +20,7 @@ export const serviceCalls = sqliteTable("service_calls", {
   jobSiteZip: text("job_site_zip"),
   // Installing Contractor
   contactName: text("contact_name"),
+  contactCompany: text("contact_company"),
   contactPhone: text("contact_phone"),
   contactEmail: text("contact_email"),
   // On-Site Contact (homeowner, facility manager, etc.)

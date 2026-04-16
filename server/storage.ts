@@ -432,6 +432,13 @@ if (!columnExists("invoice_items", "visit_number")) {
   console.log("Migration 17: added visit_number to invoice_items");
 }
 
+
+// Migration 24: Add contact_company to service_calls
+if (!columnExists("service_calls", "contact_company")) {
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN contact_company TEXT`).run();
+  console.log("Migration 24: added contact_company to service_calls");
+}
+
 // Migration 22: Add is_test flag to service_calls
 if (!columnExists("service_calls", "is_test")) {
   sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN is_test INTEGER DEFAULT 0`).run();
@@ -599,6 +606,7 @@ export class SQLiteStorage implements IStorage {
       wholesalerName: row.wholesaler_name,
       wholesalerPhone: row.wholesaler_phone,
       contactName: row.contact_name,
+      contactCompany: row.contact_company,
       contactPhone: row.contact_phone,
       contactEmail: row.contact_email,
       siteContactName: row.site_contact_name,
@@ -759,6 +767,7 @@ export class SQLiteStorage implements IStorage {
       wholesalerName: row.wholesaler_name,
       wholesalerPhone: row.wholesaler_phone,
       contactName: row.contact_name,
+      contactCompany: row.contact_company,
       contactPhone: row.contact_phone,
       contactEmail: row.contact_email,
       siteContactName: row.site_contact_name,
@@ -850,6 +859,7 @@ export class SQLiteStorage implements IStorage {
       wholesalerName: row.wholesaler_name,
       wholesalerPhone: row.wholesaler_phone,
       contactName: row.contact_name,
+      contactCompany: row.contact_company,
       contactPhone: row.contact_phone,
       contactEmail: row.contact_email,
       siteContactName: row.site_contact_name,
@@ -908,6 +918,7 @@ export class SQLiteStorage implements IStorage {
       contactType: row.contact_type,
       companyName: row.company_name,
       contactName: row.contact_name,
+      contactCompany: row.contact_company,
       phone: row.phone,
       email: row.email,
       address: row.address,
@@ -990,6 +1001,7 @@ export class SQLiteStorage implements IStorage {
       contactType: row.contact_type,
       companyName: row.company_name,
       contactName: row.contact_name,
+      contactCompany: row.contact_company,
       phone: row.phone,
       email: row.email,
       address: row.address,
@@ -1027,6 +1039,7 @@ export class SQLiteStorage implements IStorage {
       wholesalerName: row.wholesaler_name,
       wholesalerPhone: row.wholesaler_phone,
       contactName: row.contact_name,
+      contactCompany: row.contact_company,
       contactPhone: row.contact_phone,
       contactEmail: row.contact_email,
       siteContactName: row.site_contact_name,

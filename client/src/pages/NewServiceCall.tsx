@@ -48,6 +48,7 @@ const formSchema = z.object({
   jobSiteState: z.string().optional().nullable(),
   jobSiteZip: z.string().optional().nullable(),
   contactName: z.string().optional().nullable(),
+  contactCompany: z.string().optional().nullable(),
   contactPhone: z.string().optional().nullable(),
   contactEmail: z.string().optional().nullable(),
   siteContactName: z.string().optional().nullable(),
@@ -214,6 +215,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       jobSiteState: "",
       jobSiteZip: "",
       contactName: "",
+      contactCompany: "",
       contactPhone: "",
       contactEmail: "",
       siteContactName: "",
@@ -259,6 +261,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
         jobSiteState: parentCall.jobSiteState,
         jobSiteZip: parentCall.jobSiteZip ?? "",
         contactName: parentCall.contactName ?? "",
+        contactCompany: parentCall.contactCompany ?? "",
         contactPhone: parentCall.contactPhone ?? "",
         contactEmail: parentCall.contactEmail ?? "",
         siteContactName: parentCall.siteContactName ?? "",
@@ -285,6 +288,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       form.setValue("jobSiteState", copyFromCall.jobSiteState ?? "");
       form.setValue("jobSiteZip", copyFromCall.jobSiteZip ?? "");
       form.setValue("contactName", copyFromCall.contactName ?? "");
+      form.setValue("contactCompany", copyFromCall.contactCompany ?? "");
       form.setValue("contactPhone", copyFromCall.contactPhone ?? "");
       form.setValue("contactEmail", copyFromCall.contactEmail ?? "");
       form.setValue("siteContactName", copyFromCall.siteContactName ?? "");
@@ -726,14 +730,14 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                   <button
                     type="button"
                     className="text-xs text-primary flex items-center gap-1 hover:underline"
-                    onClick={() => saveToContacts("contractor", form.getValues("contactName") ?? "", undefined, form.getValues("contactPhone") ?? "", form.getValues("contactEmail") ?? "")}
+                    onClick={() => saveToContacts("contractor", form.getValues("contactName") ?? "", form.getValues("contactCompany") ?? undefined, form.getValues("contactPhone") ?? "", form.getValues("contactEmail") ?? "")}
                     data-testid="save-contractor-contact"
                   >
                     <UserPlus className="w-3 h-3" /> Save to contacts
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <FormField control={form.control} name="contactName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Name</FormLabel>
@@ -752,12 +756,20 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                         suggestions={contractorSuggest.suggestions}
                         onSelect={(c) => {
                           form.setValue("contactName", c.contactName);
+                          if (c.companyName) form.setValue("contactCompany", c.companyName);
                           if (c.phone) form.setValue("contactPhone", c.phone);
                           if (c.email) form.setValue("contactEmail", c.email);
                         }}
                         onClose={() => { setShowContractorSuggest(false); contractorSuggest.clear(); }}
                       />
                     </div>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="contactCompany" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company</FormLabel>
+                    <FormControl><Input placeholder="Company name" {...field} value={field.value ?? ""} data-testid="input-contact-company" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />

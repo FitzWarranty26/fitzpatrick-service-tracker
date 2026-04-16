@@ -1021,7 +1021,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     {call.contactName && (
                       <div className="flex items-center gap-2 mb-1">
                         <User className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                        <p className="text-sm">{call.contactName}</p>
+                        <p className="text-sm">{call.contactName}{call.contactCompany ? <span className="text-muted-foreground"> — {call.contactCompany}</span> : ""}</p>
                       </div>
                     )}
                     {call.contactPhone && (
@@ -1117,12 +1117,13 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   <SuggestDropdown
                     suggestions={contractorSuggest.suggestions}
                     onSelect={(c) => {
-                      setEditData(d => ({ ...d, contactName: c.contactName, contactPhone: c.phone ?? "", contactEmail: c.email ?? "" }));
+                      setEditData(d => ({ ...d, contactName: c.contactName, contactCompany: c.companyName ?? "", contactPhone: c.phone ?? "", contactEmail: c.email ?? "" }));
                     }}
                     onClose={() => { setShowContractorSuggest(false); contractorSuggest.clear(); }}
                   />
                 </div>
                 {[
+                  { key: "contactCompany", label: "Contractor Company" },
                   { key: "contactPhone", label: "Contractor Phone" },
                   { key: "contactEmail", label: "Contractor Email" },
                 ].map(({ key, label }) => (
