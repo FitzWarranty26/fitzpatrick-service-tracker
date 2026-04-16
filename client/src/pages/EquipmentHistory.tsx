@@ -6,11 +6,10 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { getWarrantyStatus } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, ChevronDown, ChevronUp, FileText, Package, MapPin, Wrench, Clock, Car,
-  Shield, ShieldAlert, ShieldQuestion,
+  Shield, ShieldAlert, ShieldQuestion, Hash, User, Calendar, ArrowRight,
 } from "lucide-react";
 
 interface EquipmentCall {
@@ -52,23 +51,23 @@ function WarrantyIndicator({ installationDate, manufacturer, productType }: {
 
   if (warranty.status === "unknown") {
     return (
-      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-        <ShieldQuestion className="w-3 h-3" /> Unknown
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+        <ShieldQuestion className="w-3.5 h-3.5" /> Unknown
       </span>
     );
   }
   if (warranty.status === "in-warranty") {
     const expDate = warranty.expiresDate ? new Date(warranty.expiresDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
     return (
-      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-        <Shield className="w-3 h-3" /> In Warranty {expDate && `(exp ${expDate})`}
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        <Shield className="w-3.5 h-3.5" /> In Warranty {expDate && `(exp ${expDate})`}
       </span>
     );
   }
   const expDate = warranty.expiresDate ? new Date(warranty.expiresDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
   return (
-    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-      <ShieldAlert className="w-3 h-3" /> Out of Warranty {expDate && `(${expDate})`}
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+      <ShieldAlert className="w-3.5 h-3.5" /> Out of Warranty {expDate && `(${expDate})`}
     </span>
   );
 }
@@ -82,8 +81,8 @@ function generateEquipmentPDF(result: EquipmentResult) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; font-size: 10pt; color: #1e293b; background: white; line-height: 1.5; }
     .page { max-width: 900px; margin: 0 auto; padding: 30px; }
-    .header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 16px; border-bottom: 3px solid #1d4ed8; margin-bottom: 20px; }
-    .report-title { font-size: 14pt; font-weight: 700; color: #1d4ed8; }
+    .header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 16px; border-bottom: 3px solid #1a7fad; margin-bottom: 20px; }
+    .report-title { font-size: 14pt; font-weight: 700; color: #1a7fad; }
     .report-meta { font-size: 9pt; color: #64748b; margin-top: 2px; }
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin-bottom: 20px; padding: 16px; background: #f8fafc; border-radius: 8px; }
     .info-label { font-size: 8pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -127,7 +126,7 @@ function generateEquipmentPDF(result: EquipmentResult) {
   }
 
   html += `</tbody></table>
-  <div class="footer">&copy; ${new Date().getFullYear()} Fitzpatrick Warranty Service, LLC. All rights reserved.</div>
+  <div class="footer">&copy; Copyright Fitzpatrick Warranty Service, LLC. 2026</div>
   </div></body></html>`;
 
   const win = window.open("", "_blank");
@@ -162,142 +161,266 @@ export default function EquipmentHistory() {
 
   const getKey = (r: EquipmentResult) => `${r.serialNumber}||${r.address}`;
 
+  // Compute aggregate stats from results
+  const stats = results && results.length > 0 ? {
+    totalEquipment: results.length,
+    totalServiceCalls: results.reduce((sum, r) => sum + r.totalCalls, 0),
+    inWarranty: results.filter(r => getWarrantyStatus(r.installationDate, r.manufacturer, r.productType).status === "in-warranty").length,
+    outOfWarranty: results.filter(r => getWarrantyStatus(r.installationDate, r.manufacturer, r.productType).status === "out-of-warranty").length,
+  } : null;
+
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto pb-24 md:pb-6">
-      {/* Header */}
-      <div className="mb-5">
-        <h1 className="text-xl font-bold">Equipment History</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Search by serial number, address, or customer name</p>
+    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6">
+      {/* ── Header ───────────────────────────────────────────────────────── */}
+      <div className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Equipment History</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Look up any unit by serial number, address, or customer — view full service timelines and warranty status
+        </p>
       </div>
 
-      {/* Search Bar */}
+      {/* ── Search Bar ───────────────────────────────────────────────────── */}
       <div className="relative mb-6">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
         <Input
           value={search}
           onChange={e => handleSearch(e.target.value)}
-          placeholder="Search serial number, address, or customer..."
-          className="pl-12 h-12 text-base"
+          placeholder="Search serial number, address, or customer…"
+          className="bg-card rounded-xl border border-border/50 pl-12 pr-4 py-3.5 h-auto text-base shadow-sm focus:shadow-md transition-shadow"
           data-testid="equipment-search"
         />
       </div>
 
-      {/* Results */}
+      {/* ── Result Stats Strip ───────────────────────────────────────────── */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="rounded-xl border border-border/50 bg-card p-4 border-l-[3px] border-l-[#1a7fad] transition-all hover:shadow-md">
+            <p className="text-2xl font-bold tabular-nums leading-none text-[#1a7fad]">{stats.totalEquipment}</p>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wider mt-2">Units Found</p>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card p-4 border-l-[3px] border-l-amber-500 transition-all hover:shadow-md">
+            <p className="text-2xl font-bold tabular-nums leading-none text-amber-600 dark:text-amber-400">{stats.totalServiceCalls}</p>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wider mt-2">Service Calls</p>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card p-4 border-l-[3px] border-l-green-500 transition-all hover:shadow-md">
+            <p className="text-2xl font-bold tabular-nums leading-none text-green-600 dark:text-green-400">{stats.inWarranty}</p>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wider mt-2">In Warranty</p>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card p-4 border-l-[3px] border-l-red-500 transition-all hover:shadow-md">
+            <p className="text-2xl font-bold tabular-nums leading-none text-red-600 dark:text-red-400">{stats.outOfWarranty}</p>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wider mt-2">Out of Warranty</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Results ──────────────────────────────────────────────────────── */}
       {isLoading && debouncedSearch.length >= 2 ? (
         <div className="space-y-3">
-          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-28 w-full rounded-xl" />)}
         </div>
       ) : !results || results.length === 0 ? (
         debouncedSearch.length >= 2 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="flex flex-col items-center justify-center py-20 text-center bg-card rounded-xl border border-border/50">
             <Package className="w-12 h-12 text-muted-foreground/30 mb-4" />
             <p className="text-base font-semibold text-foreground mb-1">No equipment found</p>
-            <p className="text-sm text-muted-foreground">Try a different search term.</p>
+            <p className="text-sm text-muted-foreground">Try a different serial number, address, or customer name.</p>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Search className="w-12 h-12 text-muted-foreground/30 mb-4" />
-            <p className="text-base font-semibold text-foreground mb-1">Search for equipment</p>
-            <p className="text-sm text-muted-foreground">Enter a serial number, address, or customer name to see service history.</p>
+          <div className="flex flex-col items-center justify-center py-20 text-center bg-card rounded-xl border border-border/50">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
+              <Search className="w-8 h-8 text-primary/60" />
+            </div>
+            <p className="text-lg font-semibold text-foreground mb-1">Search for equipment</p>
+            <p className="text-sm text-muted-foreground max-w-sm">
+              Enter a serial number, address, or customer name to look up service history and warranty status.
+            </p>
           </div>
         )
       ) : (
         <div className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground mb-1">
+            {results.length} Result{results.length !== 1 ? "s" : ""}
+          </p>
           {results.map(result => {
             const key = getKey(result);
             const isExpanded = expandedKey === key;
             return (
-              <Card key={key} className="overflow-hidden" data-testid={`equipment-result-${result.serialNumber || "no-serial"}`}>
-                <CardContent className="p-0">
-                  {/* Summary row */}
-                  <div
-                    className="flex items-start justify-between gap-3 p-4 cursor-pointer hover:bg-muted/40 transition-colors"
-                    onClick={() => setExpandedKey(isExpanded ? null : key)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        {result.serialNumber && (
-                          <span className="font-mono text-sm font-bold text-foreground">{result.serialNumber}</span>
-                        )}
-                        <span className="text-xs text-muted-foreground">{result.manufacturer}</span>
-                        {result.productModel && (
-                          <span className="font-mono text-xs text-muted-foreground">{result.productModel}</span>
-                        )}
-                        {result.productType && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{result.productType}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                        <MapPin className="w-3 h-3 flex-shrink-0" />
-                        <span>{result.address}, {result.city}, {result.state}{result.zip ? ` ${result.zip}` : ""}</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">{result.customerName}</span>
-                        <span>{result.totalCalls} call{result.totalCalls !== 1 ? "s" : ""}</span>
-                        <span>{formatDate(result.firstCallDate)}{result.firstCallDate !== result.lastCallDate ? ` — ${formatDate(result.lastCallDate)}` : ""}</span>
-                      </div>
+              <div
+                key={key}
+                className={`bg-card rounded-xl border overflow-hidden transition-all duration-200 hover:shadow-md ${isExpanded ? "border-primary/30 shadow-md" : "border-border/50"}`}
+                data-testid={`equipment-result-${result.serialNumber || "no-serial"}`}
+              >
+                {/* Summary row */}
+                <div
+                  className="flex items-start justify-between gap-4 p-4 md:p-5 cursor-pointer hover:bg-muted/30 transition-colors"
+                  onClick={() => setExpandedKey(isExpanded ? null : key)}
+                >
+                  <div className="flex-1 min-w-0">
+                    {/* Top line: Serial + Manufacturer + Model */}
+                    <div className="flex items-center gap-2.5 flex-wrap mb-2">
+                      {result.serialNumber && (
+                        <span className="inline-flex items-center gap-1.5 font-mono text-sm font-bold text-foreground">
+                          <Hash className="w-3.5 h-3.5 text-primary/60" />
+                          {result.serialNumber}
+                        </span>
+                      )}
+                      <span className="text-xs font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded">{result.manufacturer}</span>
+                      {result.productModel && (
+                        <span className="font-mono text-xs text-muted-foreground">{result.productModel}</span>
+                      )}
+                      {result.productType && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{result.productType}</span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <WarrantyIndicator installationDate={result.installationDate} manufacturer={result.manufacturer} productType={result.productType} />
-                      {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+
+                    {/* Info grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5 md:gap-4">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <MapPin className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground/60" />
+                        <span className="truncate">{result.address}, {result.city}, {result.state}{result.zip ? ` ${result.zip}` : ""}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <User className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground/60" />
+                        <span className="font-medium text-foreground">{result.customerName}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Wrench className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground/60" />
+                        <span>
+                          {result.totalCalls} call{result.totalCalls !== 1 ? "s" : ""}
+                          <span className="mx-1.5 text-border">·</span>
+                          {formatDate(result.firstCallDate)}
+                          {result.firstCallDate !== result.lastCallDate && (
+                            <> — {formatDate(result.lastCallDate)}</>
+                          )}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Expanded detail */}
-                  {isExpanded && (
-                    <div className="border-t border-border p-4 bg-muted/20">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-sm font-semibold">Service History</h4>
+                  <div className="flex items-center gap-3 flex-shrink-0 pt-0.5">
+                    <WarrantyIndicator installationDate={result.installationDate} manufacturer={result.manufacturer} productType={result.productType} />
+                    <div className="w-7 h-7 rounded-lg bg-muted/50 flex items-center justify-center">
+                      {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded detail */}
+                {isExpanded && (
+                  <div className="border-t border-border/50 bg-muted/10">
+                    {/* Installation + warranty summary bar */}
+                    {result.installationDate && (
+                      <div className="flex items-center gap-4 px-4 md:px-5 py-3 border-b border-border/30 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" />
+                          Installed {new Date(result.installationDate + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="p-4 md:p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                          Service Timeline
+                        </p>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 text-xs"
+                          className="h-8 text-xs rounded-lg"
                           onClick={(e) => { e.stopPropagation(); generateEquipmentPDF(result); }}
                           data-testid="button-download-equipment-pdf"
                         >
-                          <FileText className="w-3.5 h-3.5 mr-1" /> Download PDF
+                          <FileText className="w-3.5 h-3.5 mr-1.5" /> Export PDF
                         </Button>
                       </div>
-                      <div className="space-y-3">
+
+                      {/* Desktop: Table view */}
+                      <div className="hidden md:block bg-card rounded-xl border border-border/50 overflow-hidden">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="bg-muted/30 border-b border-border/50">
+                              <th className="text-left text-[10px] uppercase tracking-[0.15em] font-semibold text-muted-foreground px-4 py-2.5">Date</th>
+                              <th className="text-left text-[10px] uppercase tracking-[0.15em] font-semibold text-muted-foreground px-4 py-2.5">Status</th>
+                              <th className="text-left text-[10px] uppercase tracking-[0.15em] font-semibold text-muted-foreground px-4 py-2.5">Issue</th>
+                              <th className="text-left text-[10px] uppercase tracking-[0.15em] font-semibold text-muted-foreground px-4 py-2.5">Resolution</th>
+                              <th className="text-right text-[10px] uppercase tracking-[0.15em] font-semibold text-muted-foreground px-4 py-2.5">Hours / Miles</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {result.calls.map(call => (
+                              <tr
+                                key={call.id}
+                                className="text-sm hover:bg-muted/40 transition-colors cursor-pointer border-b border-border/30 last:border-0"
+                                onClick={() => { window.location.hash = `/calls/${call.id}`; }}
+                                data-testid={`equipment-call-${call.id}`}
+                              >
+                                <td className="px-4 py-3 text-xs font-medium text-foreground whitespace-nowrap">
+                                  {formatDate(call.callDate)}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <StatusBadge status={call.status} />
+                                </td>
+                                <td className="px-4 py-3 text-xs text-muted-foreground max-w-[250px] truncate">
+                                  {call.issueDescription || "—"}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-muted-foreground max-w-[250px] truncate">
+                                  {call.resolution || "—"}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-muted-foreground text-right whitespace-nowrap">
+                                  <span className="inline-flex items-center gap-2">
+                                    {call.hoursOnJob && <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{call.hoursOnJob}h</span>}
+                                    {call.milesTraveled && <span className="flex items-center gap-0.5"><Car className="w-3 h-3" />{call.milesTraveled}mi</span>}
+                                    {!call.hoursOnJob && !call.milesTraveled && "—"}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Mobile: Card view */}
+                      <div className="md:hidden space-y-2.5">
                         {result.calls.map(call => (
                           <div
                             key={call.id}
-                            className="rounded-lg border border-border bg-card p-3 hover:border-primary/30 cursor-pointer transition-colors"
+                            className="bg-card rounded-xl border border-border/50 p-3.5 cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all"
                             onClick={() => { window.location.hash = `/calls/${call.id}`; }}
                             data-testid={`equipment-call-${call.id}`}
                           >
-                            <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                              <span className="text-xs font-medium text-muted-foreground">{formatDate(call.callDate)}</span>
-                              <StatusBadge status={call.status} />
-                              {call.visitCount > 1 && (
-                                <span className="text-[10px] text-muted-foreground">{call.visitCount} visits</span>
-                              )}
-                              {(call.hoursOnJob || call.milesTraveled) && (
-                                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                  {call.hoursOnJob && <><Clock className="w-2.5 h-2.5" />{call.hoursOnJob}h</>}
-                                  {call.milesTraveled && <><Car className="w-2.5 h-2.5 ml-1" />{call.milesTraveled}mi</>}
-                                </span>
-                              )}
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-foreground">{formatDate(call.callDate)}</span>
+                                <StatusBadge status={call.status} />
+                              </div>
+                              <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/40" />
                             </div>
-                            {call.issueDescription && (
-                              <p className="text-xs text-foreground mb-0.5"><span className="text-muted-foreground">Issue:</span> {call.issueDescription.substring(0, 200)}</p>
+                            {call.visitCount > 1 && (
+                              <p className="text-[10px] text-muted-foreground mb-1.5">{call.visitCount} visits</p>
                             )}
-                            {call.diagnosis && (
-                              <p className="text-xs text-foreground mb-0.5"><span className="text-muted-foreground">Diagnosis:</span> {call.diagnosis.substring(0, 200)}</p>
+                            {call.issueDescription && (
+                              <p className="text-xs text-muted-foreground mb-1">
+                                <span className="text-foreground font-medium">Issue:</span> {call.issueDescription.substring(0, 150)}
+                              </p>
                             )}
                             {call.resolution && (
-                              <p className="text-xs text-foreground mb-0.5"><span className="text-muted-foreground">Resolution:</span> {call.resolution.substring(0, 200)}</p>
+                              <p className="text-xs text-muted-foreground mb-1">
+                                <span className="text-foreground font-medium">Resolution:</span> {call.resolution.substring(0, 150)}
+                              </p>
                             )}
-                            {call.techNotes && (
-                              <p className="text-xs text-foreground"><span className="text-muted-foreground">Notes:</span> {call.techNotes.substring(0, 200)}</p>
+                            {(call.hoursOnJob || call.milesTraveled) && (
+                              <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border/30 text-[10px] text-muted-foreground">
+                                {call.hoursOnJob && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{call.hoursOnJob} hrs</span>}
+                                {call.milesTraveled && <span className="flex items-center gap-1"><Car className="w-3 h-3" />{call.milesTraveled} mi</span>}
+                              </div>
                             )}
                           </div>
                         ))}
                       </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
