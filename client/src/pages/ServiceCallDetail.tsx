@@ -916,6 +916,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           <CardContent className="space-y-3">
             {!isEditing ? (
               <>
+                {call.callType && <DetailRow label="Type" value={call.callType === "commercial" ? "Commercial" : "Residential"} />}
                 <DetailRow label="Date" value={formatDate(call.callDate)} />
                 <DetailRow label="Manufacturer" value={call.manufacturer === "Other" ? (call.manufacturerOther ?? "Other") : call.manufacturer} />
                 <DetailRow label="Status" value={call.status} />

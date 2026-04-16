@@ -7,6 +7,7 @@ import { z } from "zod";
 
 export const serviceCalls = sqliteTable("service_calls", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  callType: text("call_type").default("residential"),  // "residential" | "commercial"
   callDate: text("call_date").notNull(),
   manufacturer: text("manufacturer").notNull(),
   manufacturerOther: text("manufacturer_other"),

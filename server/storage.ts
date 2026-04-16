@@ -433,6 +433,13 @@ if (!columnExists("invoice_items", "visit_number")) {
 }
 
 
+
+// Migration 25: Add call_type to service_calls
+if (!columnExists("service_calls", "call_type")) {
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN call_type TEXT DEFAULT 'residential'`).run();
+  console.log("Migration 25: added call_type to service_calls");
+}
+
 // Migration 24: Add contact_company to service_calls
 if (!columnExists("service_calls", "contact_company")) {
   sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN contact_company TEXT`).run();
@@ -594,6 +601,7 @@ export class SQLiteStorage implements IStorage {
     // Map snake_case SQL result to camelCase TypeScript types
     return rows.map(row => ({
       id: row.id,
+      callType: row.call_type,
       callDate: row.call_date,
       manufacturer: row.manufacturer,
       manufacturerOther: row.manufacturer_other,
@@ -755,6 +763,7 @@ export class SQLiteStorage implements IStorage {
 
     return rows.map(row => ({
       id: row.id,
+      callType: row.call_type,
       callDate: row.call_date,
       manufacturer: row.manufacturer,
       manufacturerOther: row.manufacturer_other,
@@ -847,6 +856,7 @@ export class SQLiteStorage implements IStorage {
 
     return rows.map(row => ({
       id: row.id,
+      callType: row.call_type,
       callDate: row.call_date,
       manufacturer: row.manufacturer,
       manufacturerOther: row.manufacturer_other,
@@ -1027,6 +1037,7 @@ export class SQLiteStorage implements IStorage {
 
     return rows.map(row => ({
       id: row.id,
+      callType: row.call_type,
       callDate: row.call_date,
       manufacturer: row.manufacturer,
       manufacturerOther: row.manufacturer_other,

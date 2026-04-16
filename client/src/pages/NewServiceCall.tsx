@@ -38,6 +38,7 @@ const US_STATES = [
 ];
 
 const formSchema = z.object({
+  callType: z.string().default("residential"),
   callDate: z.string().min(1, "Required"),
   manufacturer: z.string().min(1, "Required"),
   manufacturerOther: z.string().optional().nullable(),
@@ -206,6 +207,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      callType: "residential",
       callDate: todayISO(),
       manufacturer: "",
       customerName: "",
@@ -287,6 +289,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       form.setValue("jobSiteCity", copyFromCall.jobSiteCity ?? "");
       form.setValue("jobSiteState", copyFromCall.jobSiteState ?? "");
       form.setValue("jobSiteZip", copyFromCall.jobSiteZip ?? "");
+      if (copyFromCall.callType) form.setValue("callType", copyFromCall.callType);
       form.setValue("contactName", copyFromCall.contactName ?? "");
       form.setValue("contactCompany", copyFromCall.contactCompany ?? "");
       form.setValue("contactPhone", copyFromCall.contactPhone ?? "");
@@ -492,6 +495,24 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
+          {/* Call Type Toggle */}
+          <div className="flex gap-2">
+            {["residential", "commercial"].map(t => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => form.setValue("callType", t)}
+                className={`flex-1 py-3 rounded-lg border-2 text-sm font-semibold transition-all ${
+                  form.watch("callType") === t
+                    ? "border-[hsl(200,72%,40%)] bg-[hsl(200,72%,40%)]/10 text-[hsl(200,72%,40%)]"
+                    : "border-border bg-card text-muted-foreground hover:border-muted-foreground/30"
+                }`}
+              >
+                {t === "residential" ? "Residential" : "Commercial"}
+              </button>
+            ))}
+          </div>
+
           {/* ── Call Info ─────────────────────────────────────────────── */}
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">Call Information</CardTitle></CardHeader>
@@ -617,7 +638,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="customerName" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Customer Name</FormLabel>
+                    <FormLabel>{form.watch("callType") === "residential" ? "Homeowner Name" : "Customer / Company Name"}</FormLabel>
                     <div className="relative">
                       <FormControl>
                         <Input
@@ -643,13 +664,15 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                     <FormMessage />
                   </FormItem>
                 )} />
-                <FormField control={form.control} name="jobSiteName" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Job Site / Project Name</FormLabel>
-                    <FormControl><Input placeholder="e.g. Riverview Apartments Phase 2" {...field} value={field.value ?? ""} data-testid="input-job-site-name" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
+                {form.watch("callType") === "commercial" && (
+                  <FormField control={form.control} name="jobSiteName" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Job Site / Project Name</FormLabel>
+                      <FormControl><Input placeholder="e.g. Riverview Apartments Phase 2" {...field} value={field.value ?? ""} data-testid="input-job-site-name" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
               </div>
 
               {/* Wholesaler dropdown */}
@@ -789,8 +812,8 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                 )} />
               </div>
 
-              {/* On-Site Contact */}
-              <div className="flex items-center justify-between pt-2">
+              {/* On-Site Contact — Commercial only */}
+              {form.watch("callType") === "commercial" && <><div className="flex items-center justify-between pt-2">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">On-Site Contact</p>
                 {form.watch("siteContactName") && (
                   <button
@@ -846,6 +869,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                   </FormItem>
                 )} />
               </div>
+              </>}
             </CardContent>
           </Card>
 
