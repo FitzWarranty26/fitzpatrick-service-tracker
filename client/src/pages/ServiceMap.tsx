@@ -162,7 +162,7 @@ export default function ServiceMap() {
   }, [filteredData]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen" data-testid="service-map-page">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-[calc(100vh-2.75rem)]" data-testid="service-map-page">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 p-3 bg-background border-b border-border">
         <div className="flex items-center gap-1.5">
