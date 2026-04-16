@@ -755,7 +755,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.put("/api/service-calls/:id/photos/reorder", (req, res) => {
+  app.put("/api/service-calls/:id/photos/reorder", requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -775,7 +775,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/photos/:id", (req, res) => {
+  app.delete("/api/photos/:id", requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -815,7 +815,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.patch("/api/parts/:id", (req, res) => {
+  app.patch("/api/parts/:id", requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -828,7 +828,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/parts/:id", (req, res) => {
+  app.delete("/api/parts/:id", requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -860,7 +860,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/activities/:id", (req, res) => {
+  app.delete("/api/activities/:id", requireManager, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -905,7 +905,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }
       }
 
-      const allMonths = new Set([...billedByMonthMap.keys(), ...collectedByMonthMap.keys()]);
+      const allMonths = new Set([...Array.from(billedByMonthMap.keys()), ...Array.from(collectedByMonthMap.keys())]);
       const billedByMonth = Array.from(allMonths).sort().map(m => ({ month: m, amount: Math.round((billedByMonthMap.get(m) || 0) * 100) / 100 }));
       const collectedByMonth = Array.from(allMonths).sort().map(m => ({ month: m, amount: Math.round((collectedByMonthMap.get(m) || 0) * 100) / 100 }));
 
@@ -947,7 +947,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
 
       const callCount = calls.length || 1;
-      const productivityMonths = new Set([...hoursByMonthMap.keys(), ...milesByMonthMap.keys()]);
+      const productivityMonths = new Set([...Array.from(hoursByMonthMap.keys()), ...Array.from(milesByMonthMap.keys())]);
       const hoursByMonth = Array.from(productivityMonths).sort().map(m => ({ month: m, hours: Math.round((hoursByMonthMap.get(m) || 0) * 100) / 100 }));
       const milesByMonth = Array.from(productivityMonths).sort().map(m => ({ month: m, miles: Math.round((milesByMonthMap.get(m) || 0) * 100) / 100 }));
 
@@ -1458,7 +1458,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Backfill contacts from existing service calls ─────────────────────────
 
-  app.post("/api/contacts/backfill", (_req, res) => {
+  app.post("/api/contacts/backfill", requireManager, (_req, res) => {
     try {
       const calls = storage.getAllServiceCalls();
       let created = 0;
@@ -1497,7 +1497,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Map & Geocoding ───────────────────────────────────────────────────────
 
-  app.post("/api/geocode-all", async (_req, res) => {
+  app.post("/api/geocode-all", requireManager, async (_req, res) => {
     try {
       const calls = storage.getAllServiceCalls();
       let geocoded = 0;
@@ -2351,7 +2351,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Seed Data (development only) ────────────────────────────────────────────
 
-  app.post("/api/seed", (_req, res) => {
+  app.post("/api/seed", requireManager, (_req, res) => {
     // Disabled in production — no sample data injection
     if (process.env.NODE_ENV === "production") {
       return res.status(404).json({ error: "Not found" });
