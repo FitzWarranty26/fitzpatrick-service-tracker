@@ -480,7 +480,7 @@ export default function Dashboard() {
       </div>
 
       {/* Row 4: Recent Activity */}
-      <Card data-testid="recent-activity">
+      {isManager && <Card data-testid="recent-activity">
         <CardContent className="p-4 md:p-6">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">
             Recent Activity
@@ -508,7 +508,7 @@ export default function Dashboard() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
     </div>
   );
 }
