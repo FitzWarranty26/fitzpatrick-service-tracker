@@ -53,6 +53,7 @@ export const serviceCalls = sqliteTable("service_calls", {
   latitude: text("latitude"),
   longitude: text("longitude"),
   parentCallId: integer("parent_call_id"),
+  isTest: integer("is_test").default(0),
   createdAt: text("created_at").notNull(),
 });
 

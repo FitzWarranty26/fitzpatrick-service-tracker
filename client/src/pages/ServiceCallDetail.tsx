@@ -26,8 +26,10 @@ import { getUser } from "@/lib/auth";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Receipt,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
-  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, CalendarDays
+  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, CalendarDays, FilePlus
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { generatePDF } from "@/lib/pdf";
 import { PhoneLink } from "@/components/PhoneLink";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -734,6 +736,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <h1 className="text-xl font-bold truncate">Call #{call.id} — {call.customerName}</h1>
+            {call.isTest === 1 && (
+              <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5" data-testid="badge-test">TEST</Badge>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={displayCall.status ?? call.status} />
@@ -747,6 +752,10 @@ export default function ServiceCallDetail({ id }: { id: string }) {
               <Button variant="outline" size="sm" onClick={() => navigate(`/new/followup/${call.id}`)} data-testid="button-create-followup">
                 <CornerDownRight className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">Follow-up</span>
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate(`/new?copyFrom=${call.id}`)} data-testid="button-new-issue">
+                <FilePlus className="w-4 h-4 mr-1.5" />
+                <span className="hidden sm:inline">New Issue</span>
               </Button>
               <Button variant="outline" size="sm" onClick={handleEmail} disabled={isEmailing} data-testid="button-email">
                 {isEmailing ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Mail className="w-4 h-4 mr-1.5" />}
@@ -871,6 +880,19 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 </Select>
               </div>
             </div>
+            {currentUser?.role === "manager" && (
+              <div className="flex items-center gap-2 mt-3">
+                <Checkbox
+                  id="edit-is-test"
+                  checked={((editData as any).isTest ?? (call as any).isTest ?? 0) === 1}
+                  onCheckedChange={(checked) => setEditData(d => ({ ...d, isTest: checked ? 1 : 0 }))}
+                  data-testid="edit-is-test"
+                />
+                <label htmlFor="edit-is-test" className="text-xs text-muted-foreground cursor-pointer">
+                  Mark as test call (excluded from reports)
+                </label>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

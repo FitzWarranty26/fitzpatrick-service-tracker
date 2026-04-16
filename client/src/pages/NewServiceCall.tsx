@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation, Link, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,8 +25,9 @@ import {
   MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PRODUCT_TYPES
 } from "@shared/schema";
 import type { ServiceCall, Contact } from "@shared/schema";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Camera, Plus, Trash2, ChevronLeft, Save, WifiOff, ArrowLeft, UserPlus, X
+  Camera, Plus, Trash2, ChevronLeft, Save, WifiOff, ArrowLeft, UserPlus, X, FilePlus
 } from "lucide-react";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 
@@ -76,6 +77,7 @@ const formSchema = z.object({
   parentCallId: z.number().optional().nullable(),
   wholesalerName: z.string().optional().nullable(),
   wholesalerPhone: z.string().optional().nullable(),
+  isTest: z.number().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -146,6 +148,7 @@ function SuggestDropdown({ suggestions, onSelect, onClose }: {
 
 export default function NewServiceCall({ followUpId: followUpIdProp }: { followUpId?: string }) {
   const [, navigate] = useLocation();
+  const search = useSearch();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -154,6 +157,8 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
   const isOnline = useOnlineStatus();
   const [savingOffline, setSavingOffline] = useState(false);
 
+  const searchParams = new URLSearchParams(search || "");
+  const copyFromId = searchParams.get("copyFrom") ? parseInt(searchParams.get("copyFrom")!) : null;
   const followUpId = followUpIdProp ? parseInt(followUpIdProp) : null;
   const currentUser = getUser();
   const [createdBy, setCreatedBy] = useState<number | string>(currentUser?.id ?? "");
@@ -185,6 +190,16 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       return res.json();
     },
     enabled: !!followUpId,
+  });
+
+  // Fetch source call data for copyFrom (New Issue)
+  const { data: copyFromCall } = useQuery<ServiceCall & { photos: any[]; parts: any[] }>({
+    queryKey: ["/api/service-calls", copyFromId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/service-calls/${copyFromId}`);
+      return res.json();
+    },
+    enabled: !!copyFromId && !followUpId,
   });
 
   const form = useForm<FormValues>({
@@ -228,6 +243,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       parentCallId: null,
       wholesalerName: "",
       wholesalerPhone: "",
+      isTest: 0,
     },
   });
 
@@ -258,6 +274,34 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       });
     }
   }, [parentCall, followUpId]);
+
+  // Pre-fill from source call for "New Issue" (copyFrom)
+  useEffect(() => {
+    if (copyFromCall && copyFromId && !followUpId) {
+      form.setValue("customerName", copyFromCall.customerName ?? "");
+      form.setValue("jobSiteName", copyFromCall.jobSiteName ?? "");
+      form.setValue("jobSiteAddress", copyFromCall.jobSiteAddress ?? "");
+      form.setValue("jobSiteCity", copyFromCall.jobSiteCity ?? "");
+      form.setValue("jobSiteState", copyFromCall.jobSiteState ?? "");
+      form.setValue("jobSiteZip", copyFromCall.jobSiteZip ?? "");
+      form.setValue("contactName", copyFromCall.contactName ?? "");
+      form.setValue("contactPhone", copyFromCall.contactPhone ?? "");
+      form.setValue("contactEmail", copyFromCall.contactEmail ?? "");
+      form.setValue("siteContactName", copyFromCall.siteContactName ?? "");
+      form.setValue("siteContactPhone", copyFromCall.siteContactPhone ?? "");
+      form.setValue("siteContactEmail", copyFromCall.siteContactEmail ?? "");
+      form.setValue("manufacturer", copyFromCall.manufacturer ?? "");
+      form.setValue("wholesalerName", copyFromCall.wholesalerName ?? "");
+      form.setValue("wholesalerPhone", copyFromCall.wholesalerPhone ?? "");
+      form.setValue("productModel", copyFromCall.productModel ?? "");
+      form.setValue("productSerial", copyFromCall.productSerial ?? "");
+      form.setValue("productType", copyFromCall.productType ?? "");
+      form.setValue("installationDate", copyFromCall.installationDate ?? "");
+      // Do NOT copy: callDate (defaults to today), status (defaults to Scheduled),
+      // notes, techNotes, diagnosis, resolution, hoursOnJob, milesTraveled,
+      // scheduledDate, scheduledTime, parentCallId
+    }
+  }, [copyFromCall, copyFromId, followUpId]);
 
   const manufacturer = form.watch("manufacturer");
 
@@ -408,6 +452,19 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
         </div>
       </div>
 
+      {/* Copy-from banner (New Issue) */}
+      {copyFromId && copyFromCall && !followUpId && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3 mb-4 flex items-center gap-2" data-testid="copy-from-banner">
+          <FilePlus className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <p className="text-sm text-emerald-700 dark:text-emerald-400">
+            New issue — pre-filled from{" "}
+            <Link href={`/calls/${copyFromId}`} className="font-medium underline" data-testid="copy-from-link">
+              Call #{copyFromId} — {copyFromCall.customerName}
+            </Link>
+          </p>
+        </div>
+      )}
+
       {/* Follow-up banner */}
       {followUpId && parentCall && (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4 flex items-center gap-2" data-testid="followup-banner">
@@ -486,6 +543,20 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                     <FormMessage />
                   </FormItem>
                 )} />
+              )}
+
+              {currentUser?.role === "manager" && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="new-is-test"
+                    checked={(form.watch("isTest") ?? 0) === 1}
+                    onCheckedChange={(checked) => form.setValue("isTest", checked ? 1 : 0)}
+                    data-testid="checkbox-is-test"
+                  />
+                  <label htmlFor="new-is-test" className="text-xs text-muted-foreground cursor-pointer">
+                    Mark as test call (excluded from reports)
+                  </label>
+                </div>
               )}
 
               <div>

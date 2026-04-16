@@ -909,8 +909,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const billedByMonth = Array.from(allMonths).sort().map(m => ({ month: m, amount: Math.round((billedByMonthMap.get(m) || 0) * 100) / 100 }));
       const collectedByMonth = Array.from(allMonths).sort().map(m => ({ month: m, amount: Math.round((collectedByMonthMap.get(m) || 0) * 100) / 100 }));
 
-      // ── Service calls in date range ──────────────────────────────────────
-      const calls = storage.getAllServiceCalls({ dateFrom, dateTo });
+      // ── Service calls in date range (exclude test calls) ───────────────
+      const calls = storage.getAllServiceCalls({ dateFrom, dateTo }).filter(
+        (c: any) => !c.isTest || c.isTest === 0
+      );
 
       // ── Tech Productivity ────────────────────────────────────────────────
       let totalHours = 0;
@@ -934,6 +936,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         FROM service_call_visits scv
         JOIN service_calls sc ON scv.service_call_id = sc.id
         WHERE sc.call_date BETWEEN ? AND ?
+          AND (sc.is_test = 0 OR sc.is_test IS NULL)
       `).all(dateFrom, dateTo) as Array<{ hours_on_job: string | null; miles_traveled: string | null; call_date: string }>;
 
       for (const v of visitRows) {
@@ -957,6 +960,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         FROM service_calls sc
         LEFT JOIN service_call_visits scv ON scv.service_call_id = sc.id
         WHERE sc.call_date BETWEEN ? AND ?
+          AND (sc.is_test = 0 OR sc.is_test IS NULL)
         GROUP BY sc.id
       `).all(dateFrom, dateTo) as Array<{ id: number; visit_count: number }>;
 
@@ -972,6 +976,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         JOIN service_calls sc ON pu.service_call_id = sc.id
         WHERE sc.call_date BETWEEN ? AND ?
           AND pu.unit_cost IS NOT NULL AND pu.unit_cost != ''
+          AND (sc.is_test = 0 OR sc.is_test IS NULL)
       `).all(dateFrom, dateTo) as Array<{ part_description: string; quantity: number; unit_cost: string; manufacturer: string }>;
 
       let totalPartsCost = 0;
@@ -1038,6 +1043,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         FROM service_calls sc
         JOIN users u ON sc.created_by = u.id
         WHERE sc.call_date BETWEEN ? AND ? AND sc.created_by IS NOT NULL
+          AND (sc.is_test = 0 OR sc.is_test IS NULL)
         GROUP BY sc.created_by
         ORDER BY call_count DESC
       `).all(dateFrom, dateTo) as Array<{ user_name: string; call_count: number; total_hours: number; total_miles: number }>;
@@ -1158,7 +1164,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+        .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const totalByStatus: Record<string, number> = {};
       const totalByClaimStatus: Record<string, number> = {};
@@ -1238,7 +1245,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+        .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const mfgMap = new Map<string, { count: number; models: Map<string, number> }>();
       for (const c of calls) {
@@ -1270,7 +1278,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+        .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const modelMap = new Map<string, {
         manufacturer: string;
@@ -1321,7 +1330,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+        .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const monthMap = new Map<string, { count: number; completed: number; open: number }>();
       for (const c of calls) {
@@ -1355,7 +1365,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+        .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const modelMap = new Map<string, {
         model: string;
@@ -1402,7 +1413,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+        .filter((c: any) => !c.isTest || c.isTest === 0);
 
       // Build CSV — fetch parts in bulk to avoid N+1 queries
       const headers = [
@@ -1531,7 +1543,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
       if (status) filters.status = status;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+        .filter((c: any) => !c.isTest || c.isTest === 0);
       const mapData = calls
         .filter(c => c.latitude && c.longitude)
         .map(c => ({
@@ -1566,7 +1579,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           const filters: any = { manufacturer };
           if (dateFrom) filters.dateFrom = dateFrom;
           if (dateTo) filters.dateTo = dateTo;
-          const calls = storage.getAllServiceCalls(filters);
+          const calls = storage.getAllServiceCalls(filters)
+            .filter((c: any) => !c.isTest || c.isTest === 0);
 
           const models = new Set<string>();
           const customers = new Set<string>();
@@ -1613,7 +1627,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           const filters: any = {};
           if (dateFrom) filters.dateFrom = dateFrom;
           if (dateTo) filters.dateTo = dateTo;
-          const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+          const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+            .filter((c: any) => !c.isTest || c.isTest === 0);
 
           const monthMap = new Map<string, {
             calls: number; hours: number; miles: number;
@@ -1682,7 +1697,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           if (dateFrom) filters.dateFrom = dateFrom;
           if (dateTo) filters.dateTo = dateTo;
           // Get all calls, then filter by exact customer name
-          const allCalls = storage.getAllServiceCalls(Object.keys(filters).length > 1 ? { dateFrom, dateTo } as any : undefined);
+          const allCalls = storage.getAllServiceCalls(Object.keys(filters).length > 1 ? { dateFrom, dateTo } as any : undefined)
+            .filter((c: any) => !c.isTest || c.isTest === 0);
           const calls = allCalls.filter(c => (c.customerName || "").toLowerCase() === customer.toLowerCase());
 
           let totalPartsCost = 0, totalLaborCost = 0, totalClaimAmount = 0;
@@ -1736,7 +1752,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           if (dateTo) filters.dateTo = dateTo;
           if (manufacturer) filters.manufacturer = manufacturer;
           if (claimStatus && claimStatus !== "__all__") filters.claimStatus = claimStatus;
-          const allCalls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+          const allCalls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+            .filter((c: any) => !c.isTest || c.isTest === 0);
 
           // Default: show Submitted + Pending Review unless a specific status is requested or __all__
           const calls = (!claimStatus || claimStatus === "__default__")
@@ -1787,7 +1804,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           if (dateFrom) filters.dateFrom = dateFrom;
           if (dateTo) filters.dateTo = dateTo;
           if (manufacturer) filters.manufacturer = manufacturer;
-          const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+          const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+            .filter((c: any) => !c.isTest || c.isTest === 0);
 
           const min = parseInt(minCount || "2") || 2;
 
@@ -2081,6 +2099,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           LEFT JOIN users u ON sc.created_by = u.id
           WHERE
             sc.call_date >= ? AND sc.call_date <= ?
+            AND (sc.is_test = 0 OR sc.is_test IS NULL)
           ORDER BY sc.call_date ASC, sc.scheduled_time ASC
         `)
         .all(from || "1900-01-01", to || "2999-12-31") as any[];
@@ -2118,6 +2137,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           JOIN service_calls sc ON sc.id = scv.service_call_id
           LEFT JOIN users u ON scv.technician_id = u.id
           WHERE scv.visit_date >= ? AND scv.visit_date <= ?
+            AND (sc.is_test = 0 OR sc.is_test IS NULL)
           ORDER BY scv.visit_date ASC
         `)
         .all(from || "1900-01-01", to || "2999-12-31") as any[];

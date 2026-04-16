@@ -432,6 +432,12 @@ if (!columnExists("invoice_items", "visit_number")) {
   console.log("Migration 17: added visit_number to invoice_items");
 }
 
+// Migration 22: Add is_test flag to service_calls
+if (!columnExists("service_calls", "is_test")) {
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN is_test INTEGER DEFAULT 0`).run();
+  console.log("Migration 22: added is_test column to service_calls");
+}
+
 // Seed default admin user if users table is empty
 const userCount = (sqlite.prepare(`SELECT COUNT(*) as count FROM users`).get() as any).count;
 if (userCount === 0) {
@@ -622,6 +628,7 @@ export class SQLiteStorage implements IStorage {
       latitude: row.latitude,
       longitude: row.longitude,
       parentCallId: row.parent_call_id,
+      isTest: row.is_test,
       createdAt: row.created_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
@@ -711,6 +718,7 @@ export class SQLiteStorage implements IStorage {
         SUM(CASE WHEN claim_status IN ('Submitted', 'Pending Review') THEN 1 ELSE 0 END) AS pending_claims,
         SUM(CASE WHEN follow_up_date IS NOT NULL AND follow_up_date <= ? AND status != 'Completed' THEN 1 ELSE 0 END) AS follow_ups_due
       FROM service_calls
+      WHERE (is_test = 0 OR is_test IS NULL)
     `).get(monthStart, monthEnd, today) as any;
 
     return {
@@ -728,6 +736,7 @@ export class SQLiteStorage implements IStorage {
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
         (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
       FROM service_calls sc
+      WHERE (sc.is_test = 0 OR sc.is_test IS NULL)
       ORDER BY
         CASE WHEN sc.scheduled_date IS NULL THEN 1 ELSE 0 END,
         sc.scheduled_date DESC,
@@ -779,6 +788,7 @@ export class SQLiteStorage implements IStorage {
       latitude: row.latitude,
       longitude: row.longitude,
       parentCallId: row.parent_call_id,
+      isTest: row.is_test,
       createdAt: row.created_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
@@ -869,6 +879,7 @@ export class SQLiteStorage implements IStorage {
       latitude: row.latitude,
       longitude: row.longitude,
       parentCallId: row.parent_call_id,
+      isTest: row.is_test,
       createdAt: row.created_at,
     }));
   }
@@ -1045,6 +1056,7 @@ export class SQLiteStorage implements IStorage {
       latitude: row.latitude,
       longitude: row.longitude,
       parentCallId: row.parent_call_id,
+      isTest: row.is_test,
       createdAt: row.created_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
@@ -1480,6 +1492,17 @@ export const storage = new SQLiteStorage();
     stmt.run("wholesaler", "Winston Water Cooler of Rigby, LP", "Winston Water Cooler of Rigby, LP", "(208) 709-9600", "acctg@winstonwatercooler.com", "6626 Oakbrrok Blvd. Dallas TX 75235", "Dallas", "TX", "ZIP: 75235");
     stmt.run("wholesaler", "WinWholesale", "WinWholesale", "(866) 351-3493", "apcentral@winwholesale.com", "3110 Kettering Blvd Dayton OH 45439", "Dayton", "OH", "ZIP: 45439");
     console.log("Migration 19: 40 contacts imported");
+  }
+}
+
+// Migration 23: Insert TEST CUSTOMER contact
+{
+  const testExists = (sqlite.prepare(`SELECT COUNT(*) as c FROM contacts WHERE company_name = 'TEST CUSTOMER'`).get() as any)?.c || 0;
+  if (testExists === 0) {
+    sqlite.prepare(
+      `INSERT INTO contacts (contact_type, company_name, contact_name, phone, email, address, city, state, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).run("customer", "TEST CUSTOMER", "Test Account", "000-000-0000", "test@test.com", "123 Test Street", "Test City", "UT", "Test account — excluded from reports");
+    console.log("Migration 23: TEST CUSTOMER contact inserted");
   }
 }
 
