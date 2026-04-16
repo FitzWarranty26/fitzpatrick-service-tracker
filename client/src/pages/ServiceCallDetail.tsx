@@ -468,6 +468,17 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   });
   const createdByName = teamMembers.find(u => u.id === call?.createdBy)?.displayName ?? null;
 
+  // Wholesaler contacts for edit dropdown
+  const { data: wholesalers = [] } = useQuery<{ id: number; companyName: string; contactName: string; phone: string | null }[]>({
+    queryKey: ["/api/contacts", "wholesalers"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/contacts?type=wholesaler");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!isEditing,
+  });
+
   const [showAddVisit, setShowAddVisit] = useState(false);
   const [editingVisit, setEditingVisit] = useState<ServiceCallVisit | null>(null);
   const [visitForm, setVisitForm] = useState({
@@ -1102,6 +1113,32 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     className="h-8 text-sm mt-0.5 w-24"
                     placeholder="ZIP"
                   />
+                </div>
+                {/* Wholesaler */}
+                <div>
+                  <label className="text-xs text-muted-foreground">Wholesaler</label>
+                  <Select
+                    value={(editData.wholesalerName ?? call.wholesalerName) as string || "__none__"}
+                    onValueChange={v => {
+                      if (v === "__none__") {
+                        setEditData(d => ({ ...d, wholesalerName: "", wholesalerPhone: "" }));
+                      } else {
+                        const w = wholesalers.find(w => (w.companyName || w.contactName) === v);
+                        setEditData(d => ({ ...d, wholesalerName: v, wholesalerPhone: w?.phone || "" }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-0.5"><SelectValue placeholder="Select wholesaler" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— None —</SelectItem>
+                      {wholesalers.map(w => (
+                        <SelectItem key={w.id} value={w.companyName || w.contactName}>{w.companyName || w.contactName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {((editData.wholesalerPhone ?? call.wholesalerPhone) as string) && (
+                    <p className="text-xs text-muted-foreground mt-1"><PhoneLink phone={(editData.wholesalerPhone ?? call.wholesalerPhone) as string} /></p>
+                  )}
                 </div>
                 {/* Contractor fields with suggest */}
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide pt-1">Installing Contractor</p>
