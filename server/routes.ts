@@ -5,7 +5,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { storage, sqlite as sqliteHandle, DB_PATH } from "./storage";
-import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema } from "@shared/schema";
+import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema, getWarrantyStatus } from "@shared/schema";
 import { z } from "zod";
 
 // Safe error response — never leak internal error details to the client
@@ -871,7 +871,278 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  // ─── Analytics ──────────────────────────────────────────────────────────────
+  // ─── Analytics Dashboard (consolidated) ─────────────────────────────────────
+
+  app.get("/api/analytics/dashboard", (req, res) => {
+    try {
+      const { from, to } = req.query as { from?: string; to?: string };
+      const dateFrom = from || "2000-01-01";
+      const dateTo = to || "2099-12-31";
+
+      // ── Revenue ──────────────────────────────────────────────────────────
+      const invoiceRows = sqliteHandle.prepare(`
+        SELECT status, total, issue_date, paid_date
+        FROM invoices
+        WHERE status != 'Draft' AND issue_date BETWEEN ? AND ?
+      `).all(dateFrom, dateTo) as Array<{ status: string; total: string; issue_date: string; paid_date: string | null }>;
+
+      let totalBilled = 0;
+      let totalCollected = 0;
+      const billedByMonthMap = new Map<string, number>();
+      const collectedByMonthMap = new Map<string, number>();
+
+      for (const inv of invoiceRows) {
+        const amt = parseFloat(inv.total) || 0;
+        totalBilled += amt;
+        const month = inv.issue_date.slice(0, 7);
+        billedByMonthMap.set(month, (billedByMonthMap.get(month) || 0) + amt);
+        if (inv.status === "Paid") {
+          totalCollected += amt;
+          collectedByMonthMap.set(month, (collectedByMonthMap.get(month) || 0) + amt);
+        }
+      }
+
+      const allMonths = new Set([...billedByMonthMap.keys(), ...collectedByMonthMap.keys()]);
+      const billedByMonth = Array.from(allMonths).sort().map(m => ({ month: m, amount: Math.round((billedByMonthMap.get(m) || 0) * 100) / 100 }));
+      const collectedByMonth = Array.from(allMonths).sort().map(m => ({ month: m, amount: Math.round((collectedByMonthMap.get(m) || 0) * 100) / 100 }));
+
+      // ── Service calls in date range ──────────────────────────────────────
+      const calls = storage.getAllServiceCalls({ dateFrom, dateTo });
+
+      // ── Tech Productivity ────────────────────────────────────────────────
+      let totalHours = 0;
+      let totalMiles = 0;
+      const hoursByMonthMap = new Map<string, number>();
+      const milesByMonthMap = new Map<string, number>();
+
+      for (const c of calls) {
+        const hrs = c.hoursOnJob ? parseFloat(c.hoursOnJob) || 0 : 0;
+        const mi = c.milesTraveled ? parseFloat(c.milesTraveled) || 0 : 0;
+        totalHours += hrs;
+        totalMiles += mi;
+        const month = c.callDate.slice(0, 7);
+        hoursByMonthMap.set(month, (hoursByMonthMap.get(month) || 0) + hrs);
+        milesByMonthMap.set(month, (milesByMonthMap.get(month) || 0) + mi);
+      }
+
+      // Also add visit-level hours/miles
+      const visitRows = sqliteHandle.prepare(`
+        SELECT scv.hours_on_job, scv.miles_traveled, sc.call_date
+        FROM service_call_visits scv
+        JOIN service_calls sc ON scv.service_call_id = sc.id
+        WHERE sc.call_date BETWEEN ? AND ?
+      `).all(dateFrom, dateTo) as Array<{ hours_on_job: string | null; miles_traveled: string | null; call_date: string }>;
+
+      for (const v of visitRows) {
+        const hrs = v.hours_on_job ? parseFloat(v.hours_on_job) || 0 : 0;
+        const mi = v.miles_traveled ? parseFloat(v.miles_traveled) || 0 : 0;
+        totalHours += hrs;
+        totalMiles += mi;
+        const month = v.call_date.slice(0, 7);
+        hoursByMonthMap.set(month, (hoursByMonthMap.get(month) || 0) + hrs);
+        milesByMonthMap.set(month, (milesByMonthMap.get(month) || 0) + mi);
+      }
+
+      const callCount = calls.length || 1;
+      const productivityMonths = new Set([...hoursByMonthMap.keys(), ...milesByMonthMap.keys()]);
+      const hoursByMonth = Array.from(productivityMonths).sort().map(m => ({ month: m, hours: Math.round((hoursByMonthMap.get(m) || 0) * 100) / 100 }));
+      const milesByMonth = Array.from(productivityMonths).sort().map(m => ({ month: m, miles: Math.round((milesByMonthMap.get(m) || 0) * 100) / 100 }));
+
+      // ── First-Time Fix Rate ──────────────────────────────────────────────
+      const visitCountRows = sqliteHandle.prepare(`
+        SELECT sc.id, COUNT(scv.id) as visit_count
+        FROM service_calls sc
+        LEFT JOIN service_call_visits scv ON scv.service_call_id = sc.id
+        WHERE sc.call_date BETWEEN ? AND ?
+        GROUP BY sc.id
+      `).all(dateFrom, dateTo) as Array<{ id: number; visit_count: number }>;
+
+      const totalCallsForFix = visitCountRows.length;
+      const singleVisitCalls = visitCountRows.filter(r => r.visit_count === 0).length;
+      const multiVisitCalls = totalCallsForFix - singleVisitCalls;
+      const firstTimeFixRate = totalCallsForFix > 0 ? Math.round((singleVisitCalls / totalCallsForFix) * 10000) / 100 : 0;
+
+      // ── Parts Spend ──────────────────────────────────────────────────────
+      const partsRows = sqliteHandle.prepare(`
+        SELECT pu.part_description, pu.quantity, pu.unit_cost, sc.manufacturer
+        FROM parts_used pu
+        JOIN service_calls sc ON pu.service_call_id = sc.id
+        WHERE sc.call_date BETWEEN ? AND ?
+          AND pu.unit_cost IS NOT NULL AND pu.unit_cost != ''
+      `).all(dateFrom, dateTo) as Array<{ part_description: string; quantity: number; unit_cost: string; manufacturer: string }>;
+
+      let totalPartsCost = 0;
+      const partsByMfg = new Map<string, { cost: number; count: number }>();
+      const topPartsMap = new Map<string, { totalCost: number; totalQty: number }>();
+
+      for (const p of partsRows) {
+        const cost = (p.quantity || 1) * (parseFloat(p.unit_cost) || 0);
+        totalPartsCost += cost;
+        if (!partsByMfg.has(p.manufacturer)) partsByMfg.set(p.manufacturer, { cost: 0, count: 0 });
+        const mfgEntry = partsByMfg.get(p.manufacturer)!;
+        mfgEntry.cost += cost;
+        mfgEntry.count += p.quantity || 1;
+
+        const desc = p.part_description || "Unknown Part";
+        if (!topPartsMap.has(desc)) topPartsMap.set(desc, { totalCost: 0, totalQty: 0 });
+        const partEntry = topPartsMap.get(desc)!;
+        partEntry.totalCost += cost;
+        partEntry.totalQty += p.quantity || 1;
+      }
+
+      const byManufacturerParts = Array.from(partsByMfg.entries())
+        .map(([manufacturer, data]) => ({ manufacturer, cost: Math.round(data.cost * 100) / 100, count: data.count }))
+        .sort((a, b) => b.cost - a.cost);
+
+      const topParts = Array.from(topPartsMap.entries())
+        .map(([partDescription, data]) => ({ partDescription, totalCost: Math.round(data.totalCost * 100) / 100, totalQty: data.totalQty }))
+        .sort((a, b) => b.totalCost - a.totalCost)
+        .slice(0, 10);
+
+      // ── Manufacturer Analysis ────────────────────────────────────────────
+      const mfgCallMap = new Map<string, { count: number; totalHours: number }>();
+      for (const c of calls) {
+        if (!mfgCallMap.has(c.manufacturer)) mfgCallMap.set(c.manufacturer, { count: 0, totalHours: 0 });
+        const entry = mfgCallMap.get(c.manufacturer)!;
+        entry.count++;
+        entry.totalHours += c.hoursOnJob ? parseFloat(c.hoursOnJob) || 0 : 0;
+      }
+
+      const callsByManufacturer = Array.from(mfgCallMap.entries())
+        .map(([manufacturer, data]) => ({ manufacturer, count: data.count }))
+        .sort((a, b) => b.count - a.count);
+
+      const avgHoursByManufacturer = Array.from(mfgCallMap.entries())
+        .map(([manufacturer, data]) => ({ manufacturer, avgHours: data.count > 0 ? Math.round((data.totalHours / data.count) * 100) / 100 : 0 }))
+        .sort((a, b) => b.avgHours - a.avgHours);
+
+      // ── Wholesaler Volume ────────────────────────────────────────────────
+      const wholesalerMap = new Map<string, number>();
+      for (const c of calls) {
+        if (c.wholesalerName) {
+          wholesalerMap.set(c.wholesalerName, (wholesalerMap.get(c.wholesalerName) || 0) + 1);
+        }
+      }
+      const wholesalerVolume = Array.from(wholesalerMap.entries())
+        .map(([wholesalerName, callCount]) => ({ wholesalerName, callCount }))
+        .sort((a, b) => b.callCount - a.callCount);
+
+      // ── Team Workload ────────────────────────────────────────────────────
+      const teamRows = sqliteHandle.prepare(`
+        SELECT u.display_name as user_name, COUNT(sc.id) as call_count,
+          COALESCE(SUM(CASE WHEN sc.hours_on_job != '' AND sc.hours_on_job IS NOT NULL THEN CAST(sc.hours_on_job AS REAL) ELSE 0 END), 0) as total_hours,
+          COALESCE(SUM(CASE WHEN sc.miles_traveled != '' AND sc.miles_traveled IS NOT NULL THEN CAST(sc.miles_traveled AS REAL) ELSE 0 END), 0) as total_miles
+        FROM service_calls sc
+        JOIN users u ON sc.created_by = u.id
+        WHERE sc.call_date BETWEEN ? AND ? AND sc.created_by IS NOT NULL
+        GROUP BY sc.created_by
+        ORDER BY call_count DESC
+      `).all(dateFrom, dateTo) as Array<{ user_name: string; call_count: number; total_hours: number; total_miles: number }>;
+
+      const teamWorkload = teamRows.map(r => ({
+        userName: r.user_name,
+        callCount: r.call_count,
+        totalHours: Math.round(r.total_hours * 100) / 100,
+        totalMiles: Math.round(r.total_miles * 100) / 100,
+      }));
+
+      // ── Warranty Mix ─────────────────────────────────────────────────────
+      let inWarranty = 0;
+      let outOfWarranty = 0;
+      let unknown = 0;
+
+      for (const c of calls) {
+        const ws = getWarrantyStatus(c.installationDate, c.manufacturer, c.productType);
+        if (ws.status === "in-warranty") inWarranty++;
+        else if (ws.status === "out-of-warranty") outOfWarranty++;
+        else unknown++;
+      }
+
+      // ── Repeat Failures ──────────────────────────────────────────────────
+      const serialMap = new Map<string, { address: string; customerName: string; manufacturer: string; callCount: number }>();
+      for (const c of calls) {
+        if (c.productSerial) {
+          if (!serialMap.has(c.productSerial)) {
+            serialMap.set(c.productSerial, {
+              address: c.jobSiteAddress || "",
+              customerName: c.customerName || "",
+              manufacturer: c.manufacturer,
+              callCount: 0,
+            });
+          }
+          serialMap.get(c.productSerial)!.callCount++;
+        }
+      }
+      const repeatFailures = Array.from(serialMap.entries())
+        .filter(([_, data]) => data.callCount > 1)
+        .map(([serialNumber, data]) => ({ serialNumber, ...data }))
+        .sort((a, b) => b.callCount - a.callCount)
+        .slice(0, 10);
+
+      // ── Seasonal Trends ──────────────────────────────────────────────────
+      const callsByMonthMap = new Map<string, number>();
+      for (const c of calls) {
+        const month = c.callDate.slice(0, 7);
+        callsByMonthMap.set(month, (callsByMonthMap.get(month) || 0) + 1);
+      }
+      const callsByMonth = Array.from(callsByMonthMap.entries())
+        .map(([month, count]) => ({ month, count }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      // ── Payment Speed ────────────────────────────────────────────────────
+      const paidInvoices = sqliteHandle.prepare(`
+        SELECT AVG(julianday(paid_date) - julianday(issue_date)) as avg_days
+        FROM invoices
+        WHERE status = 'Paid' AND paid_date IS NOT NULL
+          AND issue_date BETWEEN ? AND ?
+      `).get(dateFrom, dateTo) as { avg_days: number | null } | undefined;
+
+      const avgDaysToPayment = Math.round((paidInvoices?.avg_days || 0) * 100) / 100;
+
+      res.json({
+        revenue: {
+          totalBilled: Math.round(totalBilled * 100) / 100,
+          totalCollected: Math.round(totalCollected * 100) / 100,
+          totalOutstanding: Math.round((totalBilled - totalCollected) * 100) / 100,
+          billedByMonth,
+          collectedByMonth,
+        },
+        techProductivity: {
+          totalHours: Math.round(totalHours * 100) / 100,
+          totalMiles: Math.round(totalMiles * 100) / 100,
+          avgHoursPerCall: Math.round((totalHours / callCount) * 100) / 100,
+          avgMilesPerCall: Math.round((totalMiles / callCount) * 100) / 100,
+          hoursByMonth,
+          milesByMonth,
+        },
+        fixRate: {
+          totalCalls: totalCallsForFix,
+          singleVisitCalls,
+          multiVisitCalls,
+          firstTimeFixRate,
+        },
+        partsSpend: {
+          totalPartsCost: Math.round(totalPartsCost * 100) / 100,
+          byManufacturer: byManufacturerParts,
+          topParts,
+        },
+        manufacturerAnalysis: {
+          callsByManufacturer,
+          avgHoursByManufacturer,
+        },
+        wholesalerVolume,
+        teamWorkload,
+        warrantyMix: { inWarranty, outOfWarranty, unknown },
+        repeatFailures,
+        callsByMonth,
+        avgDaysToPayment,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── Analytics (legacy) ────────────────────────────────────────────────────
 
   app.get("/api/analytics/summary", (req, res) => {
     try {
