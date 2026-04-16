@@ -88,6 +88,92 @@ function daysBetween(from: string, to: Date): number {
   return Math.floor((to.getTime() - f.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+
+function MyCalls() {
+  const { data: calls = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/dashboard/my-calls"],
+    queryFn: async () => { const r = await apiRequest("GET", "/api/dashboard/my-calls"); return r.json(); },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+  if (isLoading) return <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>;
+  if (calls.length === 0) return <p className="text-sm text-muted-foreground text-center py-8">No calls assigned to you</p>;
+  const open = calls.filter((c: any) => ["Scheduled","In Progress","Needs Return Visit","Pending Parts"].includes(c.status));
+  const recent = calls.filter((c: any) => !["Scheduled","In Progress","Needs Return Visit","Pending Parts"].includes(c.status)).slice(0, 5);
+  return (
+    <div className="space-y-1">
+      {open.length > 0 && open.map((c: any) => (
+        <div key={c.id} onClick={() => window.location.hash = `/calls/${c.id}`}
+          className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
+          <StatusBadge status={c.status} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{c.customerName || c.jobSiteName || "—"}</p>
+            <p className="text-xs text-muted-foreground truncate">{c.manufacturer}{c.jobSiteCity ? ` · ${c.jobSiteCity}` : ""}</p>
+          </div>
+          <span className="text-xs text-muted-foreground">{formatDate(c.scheduledDate || c.callDate)}</span>
+        </div>
+      ))}
+      {recent.length > 0 && (
+        <>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold pt-2">Recently Closed</p>
+          {recent.map((c: any) => (
+            <div key={c.id} onClick={() => window.location.hash = `/calls/${c.id}`}
+              className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors opacity-70">
+              <StatusBadge status={c.status} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm truncate">{c.customerName || c.jobSiteName || "—"}</p>
+              </div>
+              <span className="text-xs text-muted-foreground">{formatDate(c.scheduledDate || c.callDate)}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function UpcomingWeek() {
+  const { data: calls = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/dashboard/upcoming-week"],
+    queryFn: async () => { const r = await apiRequest("GET", "/api/dashboard/upcoming-week"); return r.json(); },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+  if (isLoading) return <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>;
+  if (calls.length === 0) return <p className="text-sm text-muted-foreground text-center py-8">No calls scheduled this week</p>;
+
+  // Group by date
+  const byDate = new Map<string, any[]>();
+  calls.forEach((c: any) => {
+    const d = c.scheduledDate || c.callDate;
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d)!.push(c);
+  });
+
+  return (
+    <div className="space-y-3">
+      {Array.from(byDate.entries()).map(([date, dayCalls]) => (
+        <div key={date}>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1">
+            {new Date(date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+          </p>
+          {dayCalls.map((c: any) => (
+            <div key={c.id} onClick={() => window.location.hash = `/calls/${c.id}`}
+              className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
+              <StatusBadge status={c.status} />
+              {c.scheduledTime && <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{c.scheduledTime}</span>}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{c.customerName || c.jobSiteName || "—"}</p>
+                <p className="text-xs text-muted-foreground truncate">{c.manufacturer}{c.jobSiteCity ? ` · ${c.jobSiteCity}` : ""}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const isOnline = useOnlineStatus();
   const { toast } = useToast();
@@ -480,6 +566,25 @@ export default function Dashboard() {
       </div>
 
       {/* Row 4: Recent Activity */}
+      {/* Row 4: Non-manager — My Calls & Upcoming Week */}
+      {!isManager && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">My Calls</h2>
+              <MyCalls />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 md:p-6">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Upcoming Week</h2>
+              <UpcomingWeek />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Row 4: Manager — Recent Activity */}
       {isManager && <Card data-testid="recent-activity">
         <CardContent className="p-4 md:p-6">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">

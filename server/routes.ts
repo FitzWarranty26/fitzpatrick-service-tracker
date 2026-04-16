@@ -484,6 +484,54 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+
+  // My Calls — calls created by the current user
+  app.get("/api/dashboard/my-calls", (req: any, res: any) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.json([]);
+      const rows = sqliteHandle.prepare(`
+        SELECT * FROM service_calls
+        WHERE created_by = ? AND (is_test = 0 OR is_test IS NULL)
+        ORDER BY
+          CASE WHEN status IN ('Scheduled', 'In Progress', 'Needs Return Visit', 'Pending Parts') THEN 0 ELSE 1 END,
+          COALESCE(scheduled_date, call_date) DESC
+        LIMIT 15
+      `).all(userId) as any[];
+      res.json(rows.map((r: any) => ({
+        id: r.id, callType: r.call_type, callDate: r.call_date, manufacturer: r.manufacturer,
+        customerName: r.customer_name, jobSiteName: r.job_site_name,
+        jobSiteCity: r.job_site_city, jobSiteState: r.job_site_state,
+        status: r.status, scheduledDate: r.scheduled_date, scheduledTime: r.scheduled_time,
+        wholesalerName: r.wholesaler_name, contactName: r.contact_name, contactCompany: r.contact_company,
+      })));
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+  // Upcoming Week — calls scheduled in the next 7 days
+  app.get("/api/dashboard/upcoming-week", (req: any, res: any) => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+      const rows = sqliteHandle.prepare(`
+        SELECT * FROM service_calls
+        WHERE (is_test = 0 OR is_test IS NULL)
+          AND status IN ('Scheduled', 'In Progress', 'Needs Return Visit', 'Pending Parts')
+          AND COALESCE(scheduled_date, call_date) >= ?
+          AND COALESCE(scheduled_date, call_date) <= ?
+        ORDER BY COALESCE(scheduled_date, call_date) ASC, scheduled_time ASC
+        LIMIT 20
+      `).all(today, nextWeek) as any[];
+      res.json(rows.map((r: any) => ({
+        id: r.id, callType: r.call_type, callDate: r.call_date, manufacturer: r.manufacturer,
+        customerName: r.customer_name, jobSiteName: r.job_site_name,
+        jobSiteCity: r.job_site_city, jobSiteState: r.job_site_state,
+        status: r.status, scheduledDate: r.scheduled_date, scheduledTime: r.scheduled_time,
+        wholesalerName: r.wholesaler_name, contactName: r.contact_name, contactCompany: r.contact_company,
+      })));
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
   // ─── Global Search ──────────────────────────────────────────────────────────
 
   app.get("/api/search", (req, res) => {
