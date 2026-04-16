@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { getUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -115,15 +116,19 @@ export default function Analytics() {
     },
   });
 
+  const currentUser = getUser();
+  const userIsManager = currentUser?.role === "manager";
+  const userIsEditor = currentUser?.role !== "staff";
+
   // Merge billed + collected into one chart dataset
   const revenueChartData = useMemo(() => {
-    if (!data) return [];
+    if (!data?.revenue) return [];
     const months = new Set([
-      ...data.revenue.billedByMonth.map(d => d.month),
-      ...data.revenue.collectedByMonth.map(d => d.month),
+      ...data.revenue.billedByMonth.map((d: any) => d.month),
+      ...data.revenue.collectedByMonth.map((d: any) => d.month),
     ]);
-    const billedMap = new Map(data.revenue.billedByMonth.map(d => [d.month, d.amount]));
-    const collectedMap = new Map(data.revenue.collectedByMonth.map(d => [d.month, d.amount]));
+    const billedMap = new Map(data.revenue.billedByMonth.map((d: any) => [d.month, d.amount]));
+    const collectedMap = new Map(data.revenue.collectedByMonth.map((d: any) => [d.month, d.amount]));
     return Array.from(months).sort().map(m => ({
       month: fmtMonth(m),
       Billed: billedMap.get(m) || 0,
@@ -179,7 +184,7 @@ export default function Analytics() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         {/* ── S1: Revenue Overview (full) ──────────────────────────────────── */}
-        <Card className="md:col-span-2 rounded-lg border bg-card p-6">
+        {userIsManager && data?.revenue && <Card className="md:col-span-2 rounded-lg border bg-card p-6">
           <SectionTitle>Revenue Overview</SectionTitle>
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="rounded-lg p-4" style={{ backgroundColor: `${BLUE}15` }}>
@@ -208,7 +213,7 @@ export default function Analytics() {
               </BarChart>
             </ResponsiveContainer>
           )}
-        </Card>
+         </Card>}
 
         {/* ── S2: Tech Productivity (half) ─────────────────────────────────── */}
         <Card className="rounded-lg border bg-card p-6">
@@ -292,7 +297,7 @@ export default function Analytics() {
         </Card>
 
         {/* ── S6: Parts Spend (full) ──────────────────────────────────────── */}
-        <Card className="md:col-span-2 rounded-lg border bg-card p-6">
+        {userIsEditor && data?.partsSpend && <Card className="md:col-span-2 rounded-lg border bg-card p-6">
           <SectionTitle>Parts Spend</SectionTitle>
           <KPI label="Total Parts Cost" value={fmtDollar(d.partsSpend.totalPartsCost)} color="text-foreground" />
 
@@ -332,7 +337,7 @@ export default function Analytics() {
               </ResponsiveContainer>
             </div>
           )}
-        </Card>
+         </Card>}
 
         {/* ── S7: Wholesaler Volume (half) ────────────────────────────────── */}
         {d.wholesalerVolume.length > 0 && (
@@ -351,7 +356,7 @@ export default function Analytics() {
         )}
 
         {/* ── S8: Team Workload (half) ────────────────────────────────────── */}
-        <Card className="rounded-lg border bg-card p-6">
+        {userIsManager && data?.teamWorkload && <Card className="rounded-lg border bg-card p-6">
           <SectionTitle>Team Workload</SectionTitle>
           {d.teamWorkload.length > 0 ? (
             <div className="overflow-x-auto">
@@ -379,7 +384,7 @@ export default function Analytics() {
           ) : (
             <p className="text-sm text-muted-foreground text-center py-8">No team data available</p>
           )}
-        </Card>
+         </Card>}
 
         {/* ── S9: Warranty Mix (half) ─────────────────────────────────────── */}
         <Card className="rounded-lg border bg-card p-6">
@@ -469,7 +474,7 @@ export default function Analytics() {
         </Card>
 
         {/* ── S12: Payment Speed (small card) ─────────────────────────────── */}
-        <Card className="rounded-lg border bg-card p-6">
+        {userIsManager && data?.avgDaysToPayment != null && <Card className="rounded-lg border bg-card p-6">
           <SectionTitle>Payment Speed</SectionTitle>
           <div className="flex flex-col items-center justify-center py-4">
             <p className={`text-4xl font-bold ${paymentColor}`}>
@@ -477,7 +482,7 @@ export default function Analytics() {
             </p>
             <p className="text-sm text-muted-foreground mt-1">avg days to payment</p>
           </div>
-        </Card>
+         </Card>}
 
       </div>
     </div>

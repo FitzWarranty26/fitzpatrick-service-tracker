@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { getUser } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -430,7 +431,10 @@ export default function Reports() {
                   <SelectValue placeholder="Report Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {REPORT_TYPES.map(r => (
+                  {REPORT_TYPES.filter(r => {
+                    if (r.value === "invoice-aging" && getUser()?.role !== "manager") return false;
+                    return true;
+                  }).map(r => (
                     <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
                   ))}
                 </SelectContent>

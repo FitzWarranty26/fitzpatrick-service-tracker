@@ -873,7 +873,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Analytics Dashboard (consolidated) ─────────────────────────────────────
 
-  app.get("/api/analytics/dashboard", (req, res) => {
+  app.get("/api/analytics/dashboard", (req: any, res: any) => {
+    // Role-based field filtering: revenue, team workload, payment speed are manager-only
+    const isManager = req.user?.role === "manager";
+    const isEditor = req.user?.role !== "staff";
     try {
       const { from, to } = req.query as { from?: string; to?: string };
       const dateFrom = from || "2000-01-01";
@@ -1100,13 +1103,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const avgDaysToPayment = Math.round((paidInvoices?.avg_days || 0) * 100) / 100;
 
       res.json({
-        revenue: {
+        // Manager only: revenue, payment speed
+        revenue: isManager ? {
           totalBilled: Math.round(totalBilled * 100) / 100,
           totalCollected: Math.round(totalCollected * 100) / 100,
           totalOutstanding: Math.round((totalBilled - totalCollected) * 100) / 100,
           billedByMonth,
           collectedByMonth,
-        },
+        } : null,
         techProductivity: {
           totalHours: Math.round(totalHours * 100) / 100,
           totalMiles: Math.round(totalMiles * 100) / 100,
@@ -1121,21 +1125,24 @@ export function registerRoutes(httpServer: Server, app: Express) {
           multiVisitCalls,
           firstTimeFixRate,
         },
-        partsSpend: {
+        // Manager + Editor only: parts spend
+        partsSpend: isEditor ? {
           totalPartsCost: Math.round(totalPartsCost * 100) / 100,
           byManufacturer: byManufacturerParts,
           topParts,
-        },
+        } : null,
         manufacturerAnalysis: {
           callsByManufacturer,
           avgHoursByManufacturer,
         },
         wholesalerVolume,
-        teamWorkload,
+        // Manager only: team workload
+        teamWorkload: isManager ? teamWorkload : null,
         warrantyMix: { inWarranty, outOfWarranty, unknown },
         repeatFailures,
         callsByMonth,
-        avgDaysToPayment,
+        // Manager only: payment speed
+        avgDaysToPayment: isManager ? avgDaysToPayment : null,
       });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
