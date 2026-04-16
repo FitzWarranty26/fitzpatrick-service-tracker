@@ -891,7 +891,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 </Select>
               </div>
             </div>
-            {currentUser?.role === "manager" && (
+            {currentUser?.role !== "staff" && (
               <div className="flex items-center gap-2 mt-3">
                 <Checkbox
                   id="edit-is-test"

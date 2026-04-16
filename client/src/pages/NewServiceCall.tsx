@@ -549,7 +549,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                 )} />
               )}
 
-              {currentUser?.role === "manager" && (
+              {currentUser?.role !== "staff" && (
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="new-is-test"
