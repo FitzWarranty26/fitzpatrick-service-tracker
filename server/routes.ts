@@ -1036,6 +1036,43 @@ export function registerRoutes(httpServer: Server, app: Express) {
         .sort((a, b) => b.callCount - a.callCount);
 
       // ── Team Workload ────────────────────────────────────────────────────
+      // ── Contractor Analysis ──────────────────────────────────────────
+      const contractorMap = new Map();
+      for (const c of calls) {
+        const key = c.contactCompany || c.contactName;
+        if (!key) continue;
+        const existing = contractorMap.get(key) || { callCount: 0, totalHours: 0, totalMiles: 0 };
+        existing.callCount++;
+        const hrs = c.hoursOnJob ? parseFloat(c.hoursOnJob) : 0;
+        const mi = c.milesTraveled ? parseFloat(c.milesTraveled) : 0;
+        existing.totalHours += isNaN(hrs) ? 0 : hrs;
+        existing.totalMiles += isNaN(mi) ? 0 : mi;
+        contractorMap.set(key, existing);
+      }
+      const contractorInvoiceRows = sqliteHandle.prepare(`
+        SELECT COALESCE(sc.contact_company, sc.contact_name) as contractor,
+          COALESCE(SUM(CAST(i.total AS REAL)), 0) as total_billed
+        FROM invoices i
+        JOIN service_calls sc ON i.service_call_id = sc.id
+        WHERE i.status != 'Draft' AND sc.call_date BETWEEN ? AND ?
+          AND (sc.is_test = 0 OR sc.is_test IS NULL)
+          AND (sc.contact_company IS NOT NULL OR sc.contact_name IS NOT NULL)
+        GROUP BY contractor
+      `).all(dateFrom, dateTo) as any[];
+      const contractorInvoiceMap = new Map();
+      for (const r of contractorInvoiceRows) {
+        if (r.contractor) contractorInvoiceMap.set(r.contractor, r.total_billed);
+      }
+      const contractorAnalysis = Array.from(contractorMap.entries())
+        .map(([name, data]: [string, any]) => ({
+          contractorName: name,
+          callCount: data.callCount,
+          totalHours: Math.round(data.totalHours * 100) / 100,
+          totalMiles: Math.round(data.totalMiles * 100) / 100,
+          totalBilled: Math.round((contractorInvoiceMap.get(name) || 0) * 100) / 100,
+        }))
+        .sort((a: any, b: any) => b.callCount - a.callCount);
+
       const teamRows = sqliteHandle.prepare(`
         SELECT u.display_name as user_name, COUNT(sc.id) as call_count,
           COALESCE(SUM(CASE WHEN sc.hours_on_job != '' AND sc.hours_on_job IS NOT NULL THEN CAST(sc.hours_on_job AS REAL) ELSE 0 END), 0) as total_hours,
@@ -1142,6 +1179,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           avgHoursByManufacturer,
         },
         wholesalerVolume,
+        contractorAnalysis,
         // Manager only: team workload
         teamWorkload: isManager ? teamWorkload : null,
         warrantyMix: { inWarranty, outOfWarranty, unknown },

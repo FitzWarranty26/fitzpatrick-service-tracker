@@ -62,6 +62,7 @@ interface DashboardData {
     avgHoursByManufacturer: Array<{ manufacturer: string; avgHours: number }>;
   };
   wholesalerVolume: Array<{ wholesalerName: string; callCount: number }>;
+  contractorAnalysis: Array<{ contractorName: string; callCount: number; totalHours: number; totalMiles: number; totalBilled: number }>;
   teamWorkload: Array<{ userName: string; callCount: number; totalHours: number; totalMiles: number }>;
   warrantyMix: { inWarranty: number; outOfWarranty: number; unknown: number };
   repeatFailures: Array<{ serialNumber: string; address: string; customerName: string; manufacturer: string; callCount: number }>;
@@ -352,6 +353,37 @@ export default function Analytics() {
                 <Bar dataKey="callCount" name="Calls" fill="#6366f1" radius={[0, 4, 4, 0]} maxBarSize={28} />
               </BarChart>
             </ResponsiveContainer>
+          </Card>
+        )}
+
+        {/* ── Contractor Analysis (full) ────────────────────────────────── */}
+        {d.contractorAnalysis.length > 0 && (
+          <Card className="md:col-span-2 rounded-lg border bg-card p-6">
+            <SectionTitle>Contractor Analysis</SectionTitle>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Contractor / Company</th>
+                    <th className="text-right px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Calls</th>
+                    <th className="text-right px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Hours</th>
+                    <th className="text-right px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Miles</th>
+                    <th className="text-right px-4 py-2 text-[10px] tracking-wider font-semibold text-muted-foreground uppercase">Billed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.contractorAnalysis.map((c: any) => (
+                    <tr key={c.contractorName} className="border-b border-border/50 last:border-0">
+                      <td className="px-4 py-2 font-medium">{c.contractorName}</td>
+                      <td className="px-4 py-2 text-right">{c.callCount}</td>
+                      <td className="px-4 py-2 text-right">{c.totalHours}</td>
+                      <td className="px-4 py-2 text-right">{c.totalMiles}</td>
+                      <td className="px-4 py-2 text-right font-medium">${c.totalBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
 
