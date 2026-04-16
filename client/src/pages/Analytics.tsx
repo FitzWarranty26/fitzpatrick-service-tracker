@@ -63,6 +63,7 @@ interface DashboardData {
   };
   wholesalerVolume: Array<{ wholesalerName: string; callCount: number }>;
   contractorAnalysis: Array<{ contractorName: string; callCount: number; totalHours: number; totalMiles: number; totalBilled: number }>;
+  callTypeBreakdown: Array<{ type: string; count: number }>;
   teamWorkload: Array<{ userName: string; callCount: number; totalHours: number; totalMiles: number }>;
   warrantyMix: { inWarranty: number; outOfWarranty: number; unknown: number };
   repeatFailures: Array<{ serialNumber: string; address: string; customerName: string; manufacturer: string; callCount: number }>;

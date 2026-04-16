@@ -1136,6 +1136,16 @@ export function registerRoutes(httpServer: Server, app: Express) {
         .sort((a, b) => a.month.localeCompare(b.month));
 
       // ── Payment Speed ────────────────────────────────────────────────────
+      // ── Call Type Breakdown (Residential vs Commercial) ─────────────────
+      const callTypeMap = new Map();
+      for (const c of calls) {
+        const t = c.callType || "residential";
+        callTypeMap.set(t, (callTypeMap.get(t) || 0) + 1);
+      }
+      const callTypeBreakdown = Array.from(callTypeMap.entries())
+        .map(([type, count]: [string, number]) => ({ type: type === "commercial" ? "Commercial" : "Residential", count }))
+        .sort((a: any, b: any) => b.count - a.count);
+
       const paidInvoices = sqliteHandle.prepare(`
         SELECT AVG(julianday(paid_date) - julianday(issue_date)) as avg_days
         FROM invoices
@@ -1185,6 +1195,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         warrantyMix: { inWarranty, outOfWarranty, unknown },
         repeatFailures,
         callsByMonth,
+        callTypeBreakdown,
         // Manager only: payment speed
         avgDaysToPayment: isManager ? avgDaysToPayment : null,
       });
