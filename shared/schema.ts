@@ -8,6 +8,7 @@ import { z } from "zod";
 export const serviceCalls = sqliteTable("service_calls", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   callType: text("call_type").default("residential"),  // "residential" | "commercial"
+  serviceMethod: text("service_method").default("In-Person"),  // "In-Person" | "Phone Call" | "Video Call"
   callDate: text("call_date").notNull(),
   manufacturer: text("manufacturer").notNull(),
   manufacturerOther: text("manufacturer_other"),
@@ -278,6 +279,9 @@ export const PHOTO_TYPES = [
 export const JOB_STATES = ["UT", "ID"] as const;
 
 export const PRODUCT_TYPES = ["Residential", "Commercial", "Tankless"] as const;
+
+export const SERVICE_METHODS = ["In-Person", "Phone Call", "Video Call"] as const;
+export type ServiceMethod = typeof SERVICE_METHODS[number];
 
 // Water heater manufacturers
 const WATER_HEATER_MANUFACTURERS = new Set([

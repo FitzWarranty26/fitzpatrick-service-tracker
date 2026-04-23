@@ -26,7 +26,7 @@ import { getUser } from "@/lib/auth";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Receipt,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
-  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, CalendarDays, FilePlus
+  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, CalendarDays, FilePlus, Video, PhoneCall, UserCheck
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -754,6 +754,16 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={displayCall.status ?? call.status} />
             <ClaimBadge status={displayCall.claimStatus ?? call.claimStatus} />
+            {(() => {
+              const method = (displayCall as any).serviceMethod ?? (call as any).serviceMethod;
+              if (!method) return null;
+              const Icon = method === "Phone Call" ? PhoneCall : method === "Video Call" ? Video : UserCheck;
+              return (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-muted text-foreground/80" data-testid="badge-service-method">
+                  <Icon className="w-3 h-3" /> {method}
+                </span>
+              );
+            })()}
             <span className="text-xs text-muted-foreground">{formatDate(call.callDate)}</span>
           </div>
         </div>
@@ -861,7 +871,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       {isEditing && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Status</label>
                 <Select
@@ -890,6 +900,22 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Service Method</label>
+                <Select
+                  value={(editData as any).serviceMethod ?? (call as any).serviceMethod ?? "In-Person"}
+                  onValueChange={v => setEditData(d => ({ ...d, serviceMethod: v } as any))}
+                >
+                  <SelectTrigger className="h-8 text-sm" data-testid="edit-service-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="In-Person">In-Person</SelectItem>
+                    <SelectItem value="Phone Call">Phone Call</SelectItem>
+                    <SelectItem value="Video Call">Video Call</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             {currentUser?.role !== "staff" && (
               <div className="flex items-center gap-2 mt-3">
@@ -907,6 +933,67 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           </CardContent>
         </Card>
       )}
+
+      {/* Activity Log */}
+      <Card>
+        <CardHeader className="pb-3 border-b border-border">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            <span className="flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> Activity Log ({call.activities?.length || 0})</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Add note input */}
+          <div className="flex gap-2">
+            <Input
+              value={newNote}
+              onChange={e => setNewNote(e.target.value)}
+              placeholder="Add a note… e.g. Left voicemail, Parts shipped"
+              className="text-sm"
+              onKeyDown={e => {
+                if (e.key === "Enter" && newNote.trim()) {
+                  addActivityMutation.mutate(newNote.trim());
+                }
+              }}
+              data-testid="input-activity-note"
+            />
+            <Button
+              size="sm"
+              disabled={!newNote.trim() || addActivityMutation.isPending}
+              onClick={() => newNote.trim() && addActivityMutation.mutate(newNote.trim())}
+              data-testid="button-add-activity"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+          {/* Activity timeline */}
+          {call.activities && call.activities.length > 0 ? (
+            <div className="space-y-2">
+              {[...call.activities].reverse().map((activity) => {
+                const date = new Date(activity.createdAt);
+                const timeStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " at " + date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                return (
+                  <div key={activity.id} className="flex items-start gap-2 group" data-testid={`activity-${activity.id}`}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground">{activity.note}</p>
+                      <p className="text-[10px] text-muted-foreground">{timeStr}</p>
+                    </div>
+                    <button
+                      onClick={() => deleteActivityMutation.mutate(activity.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"
+                      title="Delete note"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-2">No activity notes yet.</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Main Info */}
       <div className="grid md:grid-cols-2 gap-4">
@@ -1501,67 +1588,6 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 ))}
               </div>
             </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Activity Log */}
-      <Card>
-        <CardHeader className="pb-3 border-b border-border">
-          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            <span className="flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> Activity Log ({call.activities?.length || 0})</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Add note input */}
-          <div className="flex gap-2">
-            <Input
-              value={newNote}
-              onChange={e => setNewNote(e.target.value)}
-              placeholder="Add a note… e.g. Left voicemail, Parts shipped"
-              className="text-sm"
-              onKeyDown={e => {
-                if (e.key === "Enter" && newNote.trim()) {
-                  addActivityMutation.mutate(newNote.trim());
-                }
-              }}
-              data-testid="input-activity-note"
-            />
-            <Button
-              size="sm"
-              disabled={!newNote.trim() || addActivityMutation.isPending}
-              onClick={() => newNote.trim() && addActivityMutation.mutate(newNote.trim())}
-              data-testid="button-add-activity"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-          {/* Activity timeline */}
-          {call.activities && call.activities.length > 0 ? (
-            <div className="space-y-2">
-              {[...call.activities].reverse().map((activity) => {
-                const date = new Date(activity.createdAt);
-                const timeStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " at " + date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-                return (
-                  <div key={activity.id} className="flex items-start gap-2 group" data-testid={`activity-${activity.id}`}>
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground">{activity.note}</p>
-                      <p className="text-[10px] text-muted-foreground">{timeStr}</p>
-                    </div>
-                    <button
-                      onClick={() => deleteActivityMutation.mutate(activity.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"
-                      title="Delete note"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground text-center py-2">No activity notes yet.</p>
           )}
         </CardContent>
       </Card>

@@ -12,8 +12,21 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   PlusCircle, Search, SlidersHorizontal, X, ChevronRight, ClipboardList,
-  Image, Package, MapPin, ArrowRight,
+  Image, Package, MapPin, ArrowRight, Video, PhoneCall, UserCheck,
 } from "lucide-react";
+
+function ServiceMethodIcon({ method }: { method: string | null | undefined }) {
+  if (!method || method === "In-Person") {
+    return <UserCheck className="w-3 h-3 text-muted-foreground/60" aria-label="In-Person" />;
+  }
+  if (method === "Phone Call") {
+    return <PhoneCall className="w-3 h-3 text-[#1a7fad]" aria-label="Phone Call" />;
+  }
+  if (method === "Video Call") {
+    return <Video className="w-3 h-3 text-purple-600 dark:text-purple-400" aria-label="Video Call" />;
+  }
+  return null;
+}
 import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall } from "@shared/schema";
 
@@ -387,6 +400,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                         <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
+                        <ServiceMethodIcon method={(call as any).serviceMethod} />
                         {formatDate(call.scheduledDate || call.callDate)}
                       </span>
                     </td>
@@ -451,6 +465,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                   <div className="flex items-center justify-between gap-3 mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
+                      <ServiceMethodIcon method={(call as any).serviceMethod} />
                       <StatusBadge status={call.status} />
                       <span className="text-xs text-muted-foreground">{formatDate(call.scheduledDate || call.callDate)}</span>
                     </div>

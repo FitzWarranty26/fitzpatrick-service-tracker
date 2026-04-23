@@ -452,6 +452,12 @@ if (!columnExists("service_calls", "is_test")) {
   console.log("Migration 22: added is_test column to service_calls");
 }
 
+// Migration 26: Add service_method to service_calls (In-Person / Phone Call / Video Call)
+if (!columnExists("service_calls", "service_method")) {
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN service_method TEXT DEFAULT 'In-Person'`).run();
+  console.log("Migration 26: added service_method column to service_calls");
+}
+
 // Seed default admin user if users table is empty
 const userCount = (sqlite.prepare(`SELECT COUNT(*) as count FROM users`).get() as any).count;
 if (userCount === 0) {
@@ -623,6 +629,7 @@ export class SQLiteStorage implements IStorage {
     return rows.map(row => ({
       id: row.id,
       callType: row.call_type,
+      serviceMethod: row.service_method,
       callDate: row.call_date,
       manufacturer: row.manufacturer,
       manufacturerOther: row.manufacturer_other,
@@ -844,6 +851,7 @@ export class SQLiteStorage implements IStorage {
     const todayScheduled: ServiceCallWithCounts[] = rows.map(row => ({
       id: row.id,
       callType: row.call_type,
+      serviceMethod: row.service_method,
       callDate: row.call_date,
       manufacturer: row.manufacturer,
       manufacturerOther: row.manufacturer_other,
@@ -947,6 +955,7 @@ export class SQLiteStorage implements IStorage {
     return rows.map(row => ({
       id: row.id,
       callType: row.call_type,
+      serviceMethod: row.service_method,
       callDate: row.call_date,
       manufacturer: row.manufacturer,
       manufacturerOther: row.manufacturer_other,
@@ -1040,6 +1049,7 @@ export class SQLiteStorage implements IStorage {
     return rows.map(row => ({
       id: row.id,
       callType: row.call_type,
+      serviceMethod: row.service_method,
       callDate: row.call_date,
       manufacturer: row.manufacturer,
       manufacturerOther: row.manufacturer_other,
@@ -1221,6 +1231,7 @@ export class SQLiteStorage implements IStorage {
     return rows.map(row => ({
       id: row.id,
       callType: row.call_type,
+      serviceMethod: row.service_method,
       callDate: row.call_date,
       manufacturer: row.manufacturer,
       manufacturerOther: row.manufacturer_other,

@@ -67,6 +67,7 @@ interface DashboardData {
   wholesalerVolume: Array<{ wholesalerName: string; callCount: number }>;
   contractorAnalysis: Array<{ contractorName: string; callCount: number; totalHours: number; totalMiles: number; totalBilled: number }>;
   callTypeBreakdown: Array<{ type: string; count: number }>;
+  serviceMethodBreakdown: Array<{ method: string; count: number }>;
   teamWorkload: Array<{ userName: string; callCount: number; totalHours: number; totalMiles: number }>;
   warrantyMix: { inWarranty: number; outOfWarranty: number; unknown: number };
   repeatFailures: Array<{ serialNumber: string; address: string; customerName: string; manufacturer: string; callCount: number }>;
@@ -257,6 +258,20 @@ export default function Analytics() {
       name: c.type,
       value: c.count,
       color: c.type === "Commercial" ? PURPLE : BLUE,
+    })).filter(d => d.value > 0);
+  }, [data]);
+
+  const serviceMethodData = useMemo(() => {
+    if (!data?.serviceMethodBreakdown) return [];
+    const colorMap: Record<string, string> = {
+      "In-Person": "#1a7fad",
+      "Phone Call": "#f59e0b",
+      "Video Call": "#8b5cf6",
+    };
+    return data.serviceMethodBreakdown.map((m) => ({
+      name: m.method,
+      value: m.count,
+      color: colorMap[m.method] || GRAY,
     })).filter(d => d.value > 0);
   }, [data]);
 
@@ -521,6 +536,48 @@ export default function Analytics() {
                       <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{c.name}</span>
                     </div>
                     <p className="text-xl font-bold tabular-nums mt-1">{c.value.toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <EmptyState />
+          )}
+        </PanelCard>
+
+        {/* Service Method */}
+        <PanelCard>
+          <SectionTitle className="mb-4">Service Method</SectionTitle>
+          {serviceMethodData.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={serviceMethodData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={54}
+                    outerRadius={84}
+                    paddingAngle={2}
+                    dataKey="value"
+                    nameKey="name"
+                    animationDuration={800}
+                  >
+                    {serviceMethodData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} stroke="hsl(var(--card))" strokeWidth={2} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex justify-center gap-4 mt-2 flex-wrap">
+                {serviceMethodData.map((m, i) => (
+                  <div key={i} className="flex flex-col items-center">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: m.color }} />
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{m.name}</span>
+                    </div>
+                    <p className="text-xl font-bold tabular-nums mt-1">{m.value.toLocaleString()}</p>
                   </div>
                 ))}
               </div>

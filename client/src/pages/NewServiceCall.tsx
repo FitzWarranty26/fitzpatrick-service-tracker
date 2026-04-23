@@ -39,6 +39,7 @@ const US_STATES = [
 
 const formSchema = z.object({
   callType: z.string().default("residential"),
+  serviceMethod: z.string().default("In-Person"),
   callDate: z.string().min(1, "Required"),
   manufacturer: z.string().min(1, "Required"),
   manufacturerOther: z.string().optional().nullable(),
@@ -208,6 +209,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
     resolver: zodResolver(formSchema),
     defaultValues: {
       callType: "residential",
+      serviceMethod: "In-Person",
       callDate: todayISO(),
       manufacturer: "",
       customerName: "",
@@ -290,6 +292,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       form.setValue("jobSiteState", copyFromCall.jobSiteState ?? "");
       form.setValue("jobSiteZip", copyFromCall.jobSiteZip ?? "");
       if (copyFromCall.callType) form.setValue("callType", copyFromCall.callType);
+      if (copyFromCall.serviceMethod) form.setValue("serviceMethod", copyFromCall.serviceMethod);
       form.setValue("contactName", copyFromCall.contactName ?? "");
       form.setValue("contactCompany", copyFromCall.contactCompany ?? "");
       form.setValue("contactPhone", copyFromCall.contactPhone ?? "");
@@ -496,21 +499,51 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
           {/* Call Type Toggle */}
-          <div className="flex gap-2">
-            {["residential", "commercial"].map(t => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => form.setValue("callType", t)}
-                className={`flex-1 py-3 rounded-lg border-2 text-sm font-semibold transition-all ${
-                  form.watch("callType") === t
-                    ? "border-[hsl(200,72%,40%)] bg-[hsl(200,72%,40%)]/10 text-[hsl(200,72%,40%)]"
-                    : "border-border bg-card text-muted-foreground hover:border-muted-foreground/30"
-                }`}
-              >
-                {t === "residential" ? "Residential" : "Commercial"}
-              </button>
-            ))}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground mb-1.5">Call Type</p>
+            <div className="flex gap-2">
+              {["residential", "commercial"].map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => form.setValue("callType", t)}
+                  className={`flex-1 py-3 rounded-lg border-2 text-sm font-semibold transition-all ${
+                    form.watch("callType") === t
+                      ? "border-[hsl(200,72%,40%)] bg-[hsl(200,72%,40%)]/10 text-[hsl(200,72%,40%)]"
+                      : "border-border bg-card text-muted-foreground hover:border-muted-foreground/30"
+                  }`}
+                  data-testid={`button-call-type-${t}`}
+                >
+                  {t === "residential" ? "Residential" : "Commercial"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Service Method */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground mb-1.5">Service Method</p>
+            <div className="flex gap-2">
+              {[
+                { v: "In-Person", label: "In-Person" },
+                { v: "Phone Call", label: "Phone Call" },
+                { v: "Video Call", label: "Video Call" },
+              ].map(m => (
+                <button
+                  key={m.v}
+                  type="button"
+                  onClick={() => form.setValue("serviceMethod", m.v)}
+                  className={`flex-1 py-3 rounded-lg border-2 text-sm font-semibold transition-all ${
+                    form.watch("serviceMethod") === m.v
+                      ? "border-[hsl(200,72%,40%)] bg-[hsl(200,72%,40%)]/10 text-[hsl(200,72%,40%)]"
+                      : "border-border bg-card text-muted-foreground hover:border-muted-foreground/30"
+                  }`}
+                  data-testid={`button-service-method-${m.v.toLowerCase().replace(" ", "-")}`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* ── Call Info ─────────────────────────────────────────────── */}

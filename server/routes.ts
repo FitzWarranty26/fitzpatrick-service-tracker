@@ -499,7 +499,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         LIMIT 15
       `).all(userId) as any[];
       res.json(rows.map((r: any) => ({
-        id: r.id, callType: r.call_type, callDate: r.call_date, manufacturer: r.manufacturer,
+        id: r.id, callType: r.call_type, serviceMethod: r.service_method, callDate: r.call_date, manufacturer: r.manufacturer,
         customerName: r.customer_name, jobSiteName: r.job_site_name,
         jobSiteCity: r.job_site_city, jobSiteState: r.job_site_state,
         status: r.status, scheduledDate: r.scheduled_date, scheduledTime: r.scheduled_time,
@@ -523,7 +523,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         LIMIT 20
       `).all(today, nextWeek) as any[];
       res.json(rows.map((r: any) => ({
-        id: r.id, callType: r.call_type, callDate: r.call_date, manufacturer: r.manufacturer,
+        id: r.id, callType: r.call_type, serviceMethod: r.service_method, callDate: r.call_date, manufacturer: r.manufacturer,
         customerName: r.customer_name, jobSiteName: r.job_site_name,
         jobSiteCity: r.job_site_city, jobSiteState: r.job_site_state,
         status: r.status, scheduledDate: r.scheduled_date, scheduledTime: r.scheduled_time,
@@ -1212,6 +1212,16 @@ export function registerRoutes(httpServer: Server, app: Express) {
         .map(([type, count]: [string, number]) => ({ type: type === "commercial" ? "Commercial" : "Residential", count }))
         .sort((a: any, b: any) => b.count - a.count);
 
+      // ── Service Method Breakdown (In-Person / Phone / Video) ─────────────
+      const serviceMethodMap = new Map<string, number>();
+      for (const c of calls) {
+        const m = (c as any).serviceMethod || "In-Person";
+        serviceMethodMap.set(m, (serviceMethodMap.get(m) || 0) + 1);
+      }
+      const serviceMethodBreakdown = Array.from(serviceMethodMap.entries())
+        .map(([method, count]: [string, number]) => ({ method, count }))
+        .sort((a: any, b: any) => b.count - a.count);
+
       const paidInvoices = sqliteHandle.prepare(`
         SELECT AVG(julianday(paid_date) - julianday(issue_date)) as avg_days
         FROM invoices
@@ -1262,6 +1272,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         repeatFailures,
         callsByMonth,
         callTypeBreakdown,
+        serviceMethodBreakdown,
         // Manager only: payment speed
         avgDaysToPayment: isManager ? avgDaysToPayment : null,
       });
