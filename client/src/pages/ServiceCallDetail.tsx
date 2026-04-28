@@ -1656,7 +1656,14 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                       {v.milesTraveled && <>Miles: {v.milesTraveled} mi</>}
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground">Notes: <span className="text-sm text-foreground">{v.notes || "—"}</span></p>
+                  {v.notes ? (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Notes</p>
+                      <p className="text-sm text-foreground whitespace-pre-wrap" data-testid={`visit-${v.visitNumber}-notes`}>{v.notes}</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Notes: <span className="text-sm text-foreground">—</span></p>
+                  )}
                 </div>
               </div>
             );
