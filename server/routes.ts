@@ -484,6 +484,41 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ── Executive Briefing ── KPIs with MoM deltas + sparkline data
+  app.get("/api/dashboard/briefing", (_req, res) => {
+    try {
+      const sqliteHandle: any = (storage as any).sqliteHandle ?? null;
+      const sql = sqliteHandle || (storage as any)["db"]?.session?.client || null;
+      // Use the storage helper for consistency
+      const briefing = (storage as any).getExecutiveBriefing?.() ?? null;
+      if (briefing) return res.json(briefing);
+      // Fallback: empty
+      res.json({});
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ── 90-day trend data ── daily counts and revenue
+  app.get("/api/dashboard/trend", (_req, res) => {
+    try {
+      const trend = (storage as any).getDashboardTrend90Days?.() ?? [];
+      res.json(trend);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ── Watchlist ── prioritized list of items needing attention
+  app.get("/api/dashboard/watchlist", (_req, res) => {
+    try {
+      const watch = (storage as any).getDashboardWatchlist?.() ?? [];
+      res.json(watch);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
 
   // My Calls — calls created by the current user
   app.get("/api/dashboard/my-calls", (req: any, res: any) => {

@@ -16,6 +16,7 @@ import {
   PlusCircle, CloudOff, RefreshCw, AlertTriangle, ChevronRight,
 } from "lucide-react";
 import type { ServiceCall } from "@shared/schema";
+import ManagerDashboard from "./ManagerDashboard";
 
 interface DashboardStats {
   totalCalls: number;
@@ -175,6 +176,18 @@ function UpcomingWeek() {
 }
 
 export default function Dashboard() {
+  const user = getUser();
+  const isManager = user?.role === "manager";
+
+  // Managers get the executive briefing dashboard
+  if (isManager) {
+    return <ManagerDashboard />;
+  }
+
+  return <TechnicianDashboard />;
+}
+
+function TechnicianDashboard() {
   const isOnline = useOnlineStatus();
   const { toast } = useToast();
   const [pendingCount, setPendingCount] = useState(0);

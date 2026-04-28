@@ -1660,6 +1660,272 @@ export class SQLiteStorage implements IStorage {
     }));
     return { entries, total };
   }
+
+  // ─── Executive Briefing ────────────────────────────────────────────────────
+  getExecutiveBriefing(): any {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = now.getMonth();
+    const monthStart = `${yyyy}-${String(mm + 1).padStart(2, "0")}-01`;
+    const monthEnd = `${yyyy}-${String(mm + 1).padStart(2, "0")}-31`;
+    // Previous month range
+    const prevDate = new Date(yyyy, mm - 1, 1);
+    const prevStart = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}-01`;
+    const prevEnd = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}-31`;
+    const today = now.toISOString().split("T")[0];
+
+    // Helpers
+    const num = (q: any, ...p: any[]) => Number((sqlite.prepare(q).get(...p) as any)?.v ?? 0);
+
+    // Revenue this month vs last month
+    const revThis = num(
+      `SELECT COALESCE(SUM(CAST(total AS REAL)), 0) AS v FROM invoices WHERE status != 'Draft' AND issue_date >= ? AND issue_date <= ?`,
+      monthStart, monthEnd
+    );
+    const revPrev = num(
+      `SELECT COALESCE(SUM(CAST(total AS REAL)), 0) AS v FROM invoices WHERE status != 'Draft' AND issue_date >= ? AND issue_date <= ?`,
+      prevStart, prevEnd
+    );
+    const revDelta = revPrev > 0 ? Math.round(((revThis - revPrev) / revPrev) * 100) : (revThis > 0 ? 100 : 0);
+
+    // Calls completed this month vs last month
+    const completedThis = num(
+      `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND call_date >= ? AND call_date <= ? AND (is_test = 0 OR is_test IS NULL)`,
+      monthStart, monthEnd
+    );
+    const completedPrev = num(
+      `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND call_date >= ? AND call_date <= ? AND (is_test = 0 OR is_test IS NULL)`,
+      prevStart, prevEnd
+    );
+    const completedDelta = completedPrev > 0 ? Math.round(((completedThis - completedPrev) / completedPrev) * 100) : (completedThis > 0 ? 100 : 0);
+
+    // Open calls now vs new calls in last 7 days (proxy for trend)
+    const openNow = num(`SELECT COUNT(*) AS v FROM service_calls WHERE status != 'Completed' AND (is_test = 0 OR is_test IS NULL)`);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0];
+    const newCallsThisWeek = num(
+      `SELECT COUNT(*) AS v FROM service_calls WHERE call_date >= ? AND (is_test = 0 OR is_test IS NULL)`,
+      sevenDaysAgo
+    );
+    const completedThisWeek = num(
+      `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND call_date >= ? AND (is_test = 0 OR is_test IS NULL)`,
+      sevenDaysAgo
+    );
+    // Net change in open calls this week (positive = improving / shrinking backlog)
+    const openDelta = completedThisWeek - newCallsThisWeek;
+
+    // First-time fix rate this month vs last month
+    const ftfThis = sqlite.prepare(`
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM service_calls c WHERE c.parent_call_id = sc.id) THEN 1 ELSE 0 END) AS first_time
+      FROM service_calls sc WHERE sc.status = 'Completed' AND sc.call_date >= ? AND sc.call_date <= ? AND (sc.is_test = 0 OR sc.is_test IS NULL)
+    `).get(monthStart, monthEnd) as any;
+    const ftfPrev = sqlite.prepare(`
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM service_calls c WHERE c.parent_call_id = sc.id) THEN 1 ELSE 0 END) AS first_time
+      FROM service_calls sc WHERE sc.status = 'Completed' AND sc.call_date >= ? AND sc.call_date <= ? AND (sc.is_test = 0 OR sc.is_test IS NULL)
+    `).get(prevStart, prevEnd) as any;
+    const ftfThisRate = (ftfThis?.total ?? 0) > 0 ? Math.round((ftfThis.first_time / ftfThis.total) * 100) : 0;
+    const ftfPrevRate = (ftfPrev?.total ?? 0) > 0 ? Math.round((ftfPrev.first_time / ftfPrev.total) * 100) : 0;
+    const ftfDelta = ftfThisRate - ftfPrevRate;  // points
+
+    // Pulse strip stats
+    const callsToday = num(`SELECT COUNT(*) AS v FROM service_calls WHERE (scheduled_date = ? OR (scheduled_date IS NULL AND call_date = ?)) AND status != 'Completed' AND (is_test = 0 OR is_test IS NULL)`, today, today);
+    const inProgress = num(`SELECT COUNT(*) AS v FROM service_calls WHERE status = 'In Progress' AND (is_test = 0 OR is_test IS NULL)`);
+    const overdueInvoices = num(`SELECT COUNT(*) AS v FROM invoices WHERE status = 'Overdue'`);
+
+    // 12-week sparkline data for revenue (weekly buckets)
+    const sparkRevenue: number[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const wkEnd = new Date(now.getTime() - i * 7 * 86400000);
+      const wkStart = new Date(wkEnd.getTime() - 6 * 86400000);
+      const ws = wkStart.toISOString().split("T")[0];
+      const we = wkEnd.toISOString().split("T")[0];
+      sparkRevenue.push(num(
+        `SELECT COALESCE(SUM(CAST(total AS REAL)), 0) AS v FROM invoices WHERE status != 'Draft' AND issue_date >= ? AND issue_date <= ?`,
+        ws, we
+      ));
+    }
+
+    // 12-week sparkline data for completed calls
+    const sparkCompleted: number[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const wkEnd = new Date(now.getTime() - i * 7 * 86400000);
+      const wkStart = new Date(wkEnd.getTime() - 6 * 86400000);
+      const ws = wkStart.toISOString().split("T")[0];
+      const we = wkEnd.toISOString().split("T")[0];
+      sparkCompleted.push(num(
+        `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND call_date >= ? AND call_date <= ? AND (is_test = 0 OR is_test IS NULL)`,
+        ws, we
+      ));
+    }
+
+    // Outstanding balance
+    const outstanding = num(`SELECT COALESCE(SUM(CAST(total AS REAL)), 0) AS v FROM invoices WHERE status IN ('Sent', 'Overdue')`);
+
+    // Avg days to payment
+    const payRows = sqlite.prepare(`SELECT paid_date, issue_date FROM invoices WHERE status = 'Paid' AND paid_date IS NOT NULL AND issue_date IS NOT NULL`).all() as any[];
+    let avgDaysToPayment = 0;
+    if (payRows.length > 0) {
+      const totalDays = payRows.reduce((sum, r) => {
+        const days = Math.max(0, Math.round((new Date(r.paid_date).getTime() - new Date(r.issue_date).getTime()) / 86400000));
+        return sum + days;
+      }, 0);
+      avgDaysToPayment = Math.round(totalDays / payRows.length);
+    }
+
+    return {
+      pulse: {
+        date: today,
+        callsToday,
+        inProgress,
+        overdueInvoices,
+        revenueMTD: Math.round(revThis),
+      },
+      heroKPIs: {
+        revenue: { value: Math.round(revThis), delta: revDelta, deltaLabel: "vs last month", spark: sparkRevenue },
+        completed: { value: completedThis, delta: completedDelta, deltaLabel: "vs last month", spark: sparkCompleted },
+        openCalls: { value: openNow, delta: openDelta, deltaLabel: openDelta > 0 ? "fewer than last week" : openDelta < 0 ? "more than last week" : "vs last week" },
+        firstTimeFix: { value: ftfThisRate, delta: ftfDelta, deltaLabel: "pts vs last month" },
+      },
+      financial: {
+        outstanding: Math.round(outstanding),
+        avgDaysToPayment,
+      },
+    };
+  }
+
+  // ─── 90-Day Trend ──────────────────────────────────────────────────────────
+  getDashboardTrend90Days(): Array<{ date: string; calls: number; revenue: number; completed: number }> {
+    const now = new Date();
+    const start = new Date(now.getTime() - 89 * 86400000);
+    const startStr = start.toISOString().split("T")[0];
+
+    // Get all calls created/scheduled in the last 90 days
+    const callRows = sqlite.prepare(`
+      SELECT call_date AS d, COUNT(*) AS cnt FROM service_calls
+      WHERE call_date >= ? AND (is_test = 0 OR is_test IS NULL)
+      GROUP BY call_date
+    `).all(startStr) as any[];
+    const callMap = new Map<string, number>();
+    callRows.forEach(r => callMap.set(r.d, r.cnt));
+
+    const completedRows = sqlite.prepare(`
+      SELECT call_date AS d, COUNT(*) AS cnt FROM service_calls
+      WHERE call_date >= ? AND status = 'Completed' AND (is_test = 0 OR is_test IS NULL)
+      GROUP BY call_date
+    `).all(startStr) as any[];
+    const completedMap = new Map<string, number>();
+    completedRows.forEach(r => completedMap.set(r.d, r.cnt));
+
+    const revenueRows = sqlite.prepare(`
+      SELECT issue_date AS d, COALESCE(SUM(CAST(total AS REAL)), 0) AS v FROM invoices
+      WHERE issue_date >= ? AND status != 'Draft'
+      GROUP BY issue_date
+    `).all(startStr) as any[];
+    const revMap = new Map<string, number>();
+    revenueRows.forEach(r => revMap.set(r.d, r.v));
+
+    const out: Array<{ date: string; calls: number; revenue: number; completed: number }> = [];
+    for (let i = 0; i < 90; i++) {
+      const d = new Date(start.getTime() + i * 86400000).toISOString().split("T")[0];
+      out.push({
+        date: d,
+        calls: callMap.get(d) || 0,
+        completed: completedMap.get(d) || 0,
+        revenue: Math.round(revMap.get(d) || 0),
+      });
+    }
+    return out;
+  }
+
+  // ─── Watchlist ──────────────────────────────────────────────────────────
+  getDashboardWatchlist(): Array<{ kind: string; severity: string; title: string; subtitle: string; href: string; amount?: number; days?: number }> {
+    const today = new Date().toISOString().split("T")[0];
+    const out: Array<any> = [];
+
+    // Overdue invoices
+    const overdueInv = sqlite.prepare(`
+      SELECT id, invoice_number, bill_to_name, total, due_date,
+        CAST(julianday(?) - julianday(COALESCE(due_date, issue_date)) AS INTEGER) AS days_overdue
+      FROM invoices WHERE status = 'Overdue' ORDER BY COALESCE(due_date, issue_date) ASC LIMIT 10
+    `).all(today) as any[];
+    for (const inv of overdueInv) {
+      out.push({
+        kind: "overdue-invoice",
+        severity: inv.days_overdue > 30 ? "high" : "medium",
+        title: `${inv.invoice_number} — ${inv.bill_to_name || "Unknown"}`,
+        subtitle: `${inv.days_overdue} day${inv.days_overdue !== 1 ? "s" : ""} overdue`,
+        amount: Math.round(Number(inv.total) || 0),
+        days: inv.days_overdue,
+        href: `/invoices/${inv.id}`,
+      });
+    }
+
+    // Stalled calls — In Progress for over 7 days
+    const stalled = sqlite.prepare(`
+      SELECT id, customer_name, job_site_name, call_date,
+        CAST(julianday(?) - julianday(call_date) AS INTEGER) AS days_open
+      FROM service_calls
+      WHERE status = 'In Progress' AND call_date <= date(?, '-7 days') AND (is_test = 0 OR is_test IS NULL)
+      ORDER BY call_date ASC LIMIT 5
+    `).all(today, today) as any[];
+    for (const c of stalled) {
+      out.push({
+        kind: "stalled-call",
+        severity: c.days_open > 14 ? "high" : "medium",
+        title: `Call #${c.id} — ${c.customer_name || c.job_site_name || "Unknown"}`,
+        subtitle: `In Progress for ${c.days_open} days`,
+        days: c.days_open,
+        href: `/calls/${c.id}`,
+      });
+    }
+
+    // Overdue follow-ups
+    const followUps = sqlite.prepare(`
+      SELECT id, customer_name, job_site_name, follow_up_date,
+        CAST(julianday(?) - julianday(follow_up_date) AS INTEGER) AS days_overdue
+      FROM service_calls
+      WHERE follow_up_date IS NOT NULL AND follow_up_date < ? AND status != 'Completed' AND (is_test = 0 OR is_test IS NULL)
+      ORDER BY follow_up_date ASC LIMIT 5
+    `).all(today, today) as any[];
+    for (const c of followUps) {
+      out.push({
+        kind: "overdue-followup",
+        severity: c.days_overdue > 14 ? "high" : "medium",
+        title: `Follow-up overdue: ${c.customer_name || c.job_site_name || "Unknown"}`,
+        subtitle: `${c.days_overdue} day${c.days_overdue !== 1 ? "s" : ""} past due`,
+        days: c.days_overdue,
+        href: `/calls/${c.id}`,
+      });
+    }
+
+    // Repeat failures — equipment with 3+ calls
+    const repeats = sqlite.prepare(`
+      SELECT product_serial, customer_name, job_site_name, COUNT(*) AS cnt
+      FROM service_calls
+      WHERE product_serial IS NOT NULL AND product_serial != '' AND (is_test = 0 OR is_test IS NULL)
+      GROUP BY product_serial
+      HAVING cnt >= 3
+      ORDER BY cnt DESC LIMIT 5
+    `).all() as any[];
+    for (const r of repeats) {
+      out.push({
+        kind: "repeat-failure",
+        severity: r.cnt >= 5 ? "high" : "medium",
+        title: `Repeat failure: ${r.product_serial}`,
+        subtitle: `${r.cnt} service calls — ${r.customer_name || r.job_site_name || "Unknown"}`,
+        href: `/equipment?q=${encodeURIComponent(r.product_serial)}`,
+      });
+    }
+
+    // Sort: high severity first, then by days/amount
+    out.sort((a, b) => {
+      if (a.severity !== b.severity) return a.severity === "high" ? -1 : 1;
+      return (b.days || 0) - (a.days || 0);
+    });
+
+    return out.slice(0, 12);
+  }
 }
 
 export const storage = new SQLiteStorage();
