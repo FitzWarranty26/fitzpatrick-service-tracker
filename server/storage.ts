@@ -458,6 +458,40 @@ if (!columnExists("service_calls", "service_method")) {
   console.log("Migration 26: added service_method column to service_calls");
 }
 
+// Migration 27: Add scheduled_appointments table for schedule history
+const hasSchedAppts = (sqlite.prepare(
+  `SELECT name FROM sqlite_master WHERE type='table' AND name='scheduled_appointments'`
+).get() as any);
+if (!hasSchedAppts) {
+  sqlite.prepare(`
+    CREATE TABLE scheduled_appointments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL REFERENCES service_calls(id) ON DELETE CASCADE,
+      scheduled_date TEXT NOT NULL,
+      scheduled_time TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      reason TEXT,
+      created_by_id INTEGER REFERENCES users(id),
+      created_by_name TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_sched_appts_call ON scheduled_appointments(call_id)`).run();
+  // Backfill from existing service_calls.scheduled_date
+  const existing = sqlite.prepare(`
+    SELECT id, scheduled_date, scheduled_time FROM service_calls
+    WHERE scheduled_date IS NOT NULL AND scheduled_date != ''
+  `).all() as any[];
+  const insertAppt = sqlite.prepare(`
+    INSERT INTO scheduled_appointments (call_id, scheduled_date, scheduled_time, status, reason, created_by_name, created_at)
+    VALUES (?, ?, ?, 'active', NULL, 'System', CURRENT_TIMESTAMP)
+  `);
+  for (const c of existing) {
+    insertAppt.run(c.id, c.scheduled_date, c.scheduled_time);
+  }
+  console.log(`Migration 27: created scheduled_appointments table, backfilled ${existing.length} active appointments`);
+}
+
 // Seed default admin user if users table is empty
 const userCount = (sqlite.prepare(`SELECT COUNT(*) as count FROM users`).get() as any).count;
 if (userCount === 0) {

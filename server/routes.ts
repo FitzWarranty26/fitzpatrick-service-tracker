@@ -2239,7 +2239,96 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  // ─── Calendar ───────────────────────────────────────────────────────────────
+    // ─── Schedule History ─────────────────────────────────────────────────────
+
+  // GET all scheduled appointments for a call
+  app.get("/api/service-calls/:id/appointments", (req: any, res: any) => {
+    try {
+      const id = parseInt(req.params.id);
+      const rows = sqliteHandle.prepare(`
+        SELECT id, call_id, scheduled_date, scheduled_time, status, reason,
+               created_by_id, created_by_name, created_at
+        FROM scheduled_appointments
+        WHERE call_id = ?
+        ORDER BY status = 'active' DESC, scheduled_date DESC, scheduled_time DESC, created_at DESC
+      `).all(id) as any[];
+      res.json(rows.map(r => ({
+        id: r.id,
+        callId: r.call_id,
+        scheduledDate: r.scheduled_date,
+        scheduledTime: r.scheduled_time,
+        status: r.status,
+        reason: r.reason,
+        createdById: r.created_by_id,
+        createdByName: r.created_by_name,
+        createdAt: r.created_at,
+      })));
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+  // POST reschedule — marks current active as Rescheduled, creates a new active. Reason REQUIRED.
+  app.post("/api/service-calls/:id/appointments/reschedule", requireEditor, (req: any, res: any) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { scheduledDate, scheduledTime, reason } = req.body || {};
+      if (!scheduledDate) return res.status(400).json({ error: "scheduledDate is required" });
+      if (!reason || !String(reason).trim()) return res.status(400).json({ error: "Reason is required when rescheduling" });
+
+      const userId = req.user?.id;
+      const userName = req.user?.displayName || req.user?.username || "Unknown";
+
+      const tx = sqliteHandle.transaction(() => {
+        sqliteHandle.prepare(`
+          UPDATE scheduled_appointments
+          SET status = 'rescheduled', reason = ?
+          WHERE call_id = ? AND status = 'active'
+        `).run(String(reason).trim(), id);
+        sqliteHandle.prepare(`
+          INSERT INTO scheduled_appointments (call_id, scheduled_date, scheduled_time, status, reason, created_by_id, created_by_name, created_at)
+          VALUES (?, ?, ?, 'active', NULL, ?, ?, CURRENT_TIMESTAMP)
+        `).run(id, scheduledDate, scheduledTime || null, userId || null, userName);
+        sqliteHandle.prepare(`
+          UPDATE service_calls SET scheduled_date = ?, scheduled_time = ? WHERE id = ?
+        `).run(scheduledDate, scheduledTime || null, id);
+      });
+      tx();
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+  // PUT inline edit of the active appointment (typo fix). No reason, no new history entry.
+  app.put("/api/service-calls/:id/appointments/active", requireEditor, (req: any, res: any) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { scheduledDate, scheduledTime } = req.body || {};
+      if (!scheduledDate) return res.status(400).json({ error: "scheduledDate is required" });
+
+      const tx = sqliteHandle.transaction(() => {
+        const existing = sqliteHandle.prepare(`
+          SELECT id FROM scheduled_appointments WHERE call_id = ? AND status = 'active' LIMIT 1
+        `).get(id) as any;
+        if (existing) {
+          sqliteHandle.prepare(`
+            UPDATE scheduled_appointments SET scheduled_date = ?, scheduled_time = ? WHERE id = ?
+          `).run(scheduledDate, scheduledTime || null, existing.id);
+        } else {
+          const userId = req.user?.id;
+          const userName = req.user?.displayName || req.user?.username || "Unknown";
+          sqliteHandle.prepare(`
+            INSERT INTO scheduled_appointments (call_id, scheduled_date, scheduled_time, status, created_by_id, created_by_name, created_at)
+            VALUES (?, ?, ?, 'active', ?, ?, CURRENT_TIMESTAMP)
+          `).run(id, scheduledDate, scheduledTime || null, userId || null, userName);
+        }
+        sqliteHandle.prepare(`
+          UPDATE service_calls SET scheduled_date = ?, scheduled_time = ? WHERE id = ?
+        `).run(scheduledDate, scheduledTime || null, id);
+      });
+      tx();
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
+  });
+
+// ─── Calendar ───────────────────────────────────────────────────────────────
 
   app.get("/api/calendar", (req, res) => {
     try {

@@ -260,6 +260,12 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
   const [newPhotoFiles, setNewPhotoFiles] = useState<Array<{ photoUrl: string; caption: string; photoType: string }>>([]);
 
+  // Schedule history
+  const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
+  const [showEditActiveDialog, setShowEditActiveDialog] = useState(false);
+  const [reschedForm, setReschedForm] = useState({ date: "", time: "", reason: "" });
+  const [editActiveForm, setEditActiveForm] = useState({ date: "", time: "" });
+
   // Contact suggest state for edit mode
   const [showContractorSuggest, setShowContractorSuggest] = useState(false);
   const [showSiteContactSuggest, setShowSiteContactSuggest] = useState(false);
@@ -397,6 +403,65 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   // Fix 2: Add Part state and mutations
   const [showAddPart, setShowAddPart] = useState(false);
   const [newPart, setNewPart] = useState({ partNumber: "", partDescription: "", quantity: 1, unitCost: "", source: "" });
+
+  // ─── Scheduled Appointments ───────────────────────────────────────────────────────
+  interface AppointmentEntry {
+    id: number;
+    callId: number;
+    scheduledDate: string;
+    scheduledTime: string | null;
+    status: "active" | "rescheduled" | string;
+    reason: string | null;
+    createdById: number | null;
+    createdByName: string | null;
+    createdAt: string;
+  }
+
+  const { data: appointments } = useQuery<AppointmentEntry[]>({
+    queryKey: [`/api/service-calls/${callId}/appointments`],
+    queryFn: async () => (await apiRequest("GET", `/api/service-calls/${callId}/appointments`)).json(),
+    enabled: !!callId,
+  });
+
+  const rescheduleMutation = useMutation({
+    mutationFn: async (data: { scheduledDate: string; scheduledTime: string | null; reason: string }) => {
+      const res = await apiRequest("POST", `/api/service-calls/${callId}/appointments/reschedule`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/appointments`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/briefing"] });
+      setShowRescheduleDialog(false);
+      setReschedForm({ date: "", time: "", reason: "" });
+      toast({ title: "Rescheduled", description: "New appointment created." });
+    },
+    onError: (e: any) => {
+      toast({ title: "Reschedule failed", description: e?.message || "Try again.", variant: "destructive" });
+    },
+  });
+
+  const editActiveAppointmentMutation = useMutation({
+    mutationFn: async (data: { scheduledDate: string; scheduledTime: string | null }) => {
+      const res = await apiRequest("PUT", `/api/service-calls/${callId}/appointments/active`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/appointments`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today"] });
+      setShowEditActiveDialog(false);
+      toast({ title: "Updated", description: "Active appointment updated." });
+    },
+    onError: (e: any) => {
+      toast({ title: "Update failed", description: e?.message || "Try again.", variant: "destructive" });
+    },
+  });
 
   const addPartMutation = useMutation({
     mutationFn: async (part: { partNumber: string; partDescription: string; quantity: number; unitCost: string; source: string }) => {
@@ -1299,49 +1364,220 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </Card>
       </div>
 
-      {/* Scheduling */}
-      {(call.scheduledDate || call.scheduledTime || isEditing) && (
-        <Card>
-          <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Scheduling</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {!isEditing ? (
-                <>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">Scheduled Date</p>
-                    <p className="text-sm">{call.scheduledDate ? formatDate(call.scheduledDate) : "\u2014"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">Scheduled Time</p>
-                    <p className="text-sm">{call.scheduledTime ? formatTime(call.scheduledTime) : "\u2014"}</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Scheduled Date</label>
-                    <Input
-                      type="date"
-                      value={(editData.scheduledDate ?? call.scheduledDate ?? "") as string}
-                      onChange={e => setEditData(d => ({ ...d, scheduledDate: e.target.value }))}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Scheduled Time (approx.)</label>
-                    <Input
-                      type="time"
-                      value={(editData.scheduledTime ?? call.scheduledTime ?? "") as string}
-                      onChange={e => setEditData(d => ({ ...d, scheduledTime: e.target.value }))}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                </>
+      {/* Scheduled Appointments */}
+      <Card>
+        <CardHeader className="pb-3 border-b border-border">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              <span className="flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" /> Scheduled Appointments {appointments && appointments.length > 0 ? `(${appointments.length})` : ""}</span>
+            </CardTitle>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => {
+                  setReschedForm({
+                    date: "",
+                    time: "",
+                    reason: "",
+                  });
+                  setShowRescheduleDialog(true);
+                }}
+                data-testid="button-reschedule"
+              >
+                <Plus className="w-3 h-3 mr-1" /> Reschedule
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {!appointments || appointments.length === 0 ? (
+            <div className="p-5 text-center">
+              <p className="text-sm text-muted-foreground mb-3">No appointments scheduled yet.</p>
+              {canEdit && (
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => {
+                  setReschedForm({ date: "", time: "", reason: "Initial scheduling" });
+                  setShowRescheduleDialog(true);
+                }}>
+                  <Plus className="w-3 h-3 mr-1" /> Schedule
+                </Button>
               )}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <div className="divide-y divide-border">
+              {appointments.map((appt) => {
+                const isActive = appt.status === "active";
+                const ts = new Date(appt.createdAt);
+                const tsStr = ts.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                return (
+                  <div
+                    key={appt.id}
+                    className={`px-5 py-3.5 flex items-start gap-4 ${isActive ? "bg-primary/5" : "bg-transparent"}`}
+                    data-testid={`appointment-${appt.id}`}
+                  >
+                    <div className="flex-shrink-0 pt-0.5">
+                      {isActive ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500" /> ACTIVE
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                          Rescheduled
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold ${isActive ? "text-base text-foreground" : "text-sm text-muted-foreground line-through"}`}>
+                        {formatDate(appt.scheduledDate)}{appt.scheduledTime && <> &middot; {formatTime(appt.scheduledTime)}</>}
+                      </p>
+                      {appt.reason && !isActive && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          <span className="font-medium">Reason:</span> {appt.reason}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground/60 mt-1">
+                        {appt.createdByName ? `Set by ${appt.createdByName}` : ""}{appt.createdByName ? " \u00b7 " : ""}{tsStr}
+                      </p>
+                    </div>
+                    {isActive && canEdit && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs flex-shrink-0"
+                        onClick={() => {
+                          setEditActiveForm({
+                            date: appt.scheduledDate,
+                            time: appt.scheduledTime || "",
+                          });
+                          setShowEditActiveDialog(true);
+                        }}
+                        data-testid="button-edit-active-appt"
+                      >
+                        <Edit3 className="w-3 h-3 mr-1" /> Edit
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Reschedule Dialog */}
+      <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reschedule Appointment</DialogTitle>
+            <DialogDescription>
+              The current appointment will be marked as rescheduled and a new active appointment will be created.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">New Date <span className="text-red-500">*</span></label>
+                <Input
+                  type="date"
+                  value={reschedForm.date}
+                  onChange={e => setReschedForm(f => ({ ...f, date: e.target.value }))}
+                  data-testid="reschedule-date"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">New Time</label>
+                <Input
+                  type="time"
+                  value={reschedForm.time}
+                  onChange={e => setReschedForm(f => ({ ...f, time: e.target.value }))}
+                  data-testid="reschedule-time"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Reason <span className="text-red-500">*</span></label>
+              <Textarea
+                value={reschedForm.reason}
+                onChange={e => setReschedForm(f => ({ ...f, reason: e.target.value }))}
+                placeholder="e.g. Customer requested different day, parts delayed…"
+                className="min-h-[70px] text-sm"
+                data-testid="reschedule-reason"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">Required — helps you remember why the appointment moved.</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowRescheduleDialog(false)} disabled={rescheduleMutation.isPending}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!reschedForm.date || !reschedForm.reason.trim()) {
+                  toast({ title: "Missing info", description: "Date and reason are required.", variant: "destructive" });
+                  return;
+                }
+                rescheduleMutation.mutate({
+                  scheduledDate: reschedForm.date,
+                  scheduledTime: reschedForm.time || null,
+                  reason: reschedForm.reason.trim(),
+                });
+              }}
+              disabled={rescheduleMutation.isPending}
+              data-testid="button-confirm-reschedule"
+            >
+              {rescheduleMutation.isPending ? "Saving…" : "Reschedule"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Active Appointment Dialog (typo/quick fix — no history entry) */}
+      <Dialog open={showEditActiveDialog} onOpenChange={setShowEditActiveDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Active Appointment</DialogTitle>
+            <DialogDescription>
+              Quick fix — update the date or time without creating a history entry. Use this for typos or small corrections.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Date</label>
+              <Input
+                type="date"
+                value={editActiveForm.date}
+                onChange={e => setEditActiveForm(f => ({ ...f, date: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Time</label>
+              <Input
+                type="time"
+                value={editActiveForm.time}
+                onChange={e => setEditActiveForm(f => ({ ...f, time: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowEditActiveDialog(false)} disabled={editActiveAppointmentMutation.isPending}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!editActiveForm.date) {
+                  toast({ title: "Missing date", description: "Date is required.", variant: "destructive" });
+                  return;
+                }
+                editActiveAppointmentMutation.mutate({
+                  scheduledDate: editActiveForm.date,
+                  scheduledTime: editActiveForm.time || null,
+                });
+              }}
+              disabled={editActiveAppointmentMutation.isPending}
+              data-testid="button-confirm-edit-active"
+            >
+              {editActiveAppointmentMutation.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Product with Warranty Badge */}
       <Card>
