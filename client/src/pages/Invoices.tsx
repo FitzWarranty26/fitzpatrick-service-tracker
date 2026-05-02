@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
+import { PageHero } from "@/components/PageHero";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -97,19 +98,18 @@ export default function Invoices() {
   ];
 
   return (
-    <main className="p-4 md:p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Invoices</h1>
-          <p className="text-sm text-muted-foreground">{invoices.length} invoice{invoices.length !== 1 ? "s" : ""}</p>
-        </div>
-        <Link href="/invoices/new">
-          <Button className="bg-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,35%)]">
-            <Plus className="w-4 h-4 mr-1" /> New Invoice
-          </Button>
-        </Link>
-      </div>
+    <main className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto pb-24 md:pb-6">
+      <PageHero
+        title="Invoices"
+        subtitle={<span>{invoices.length} invoice{invoices.length !== 1 ? "s" : ""}</span>}
+        actions={
+          <Link href="/invoices/new">
+            <Button size="sm" className="bg-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,35%)] shadow-sm">
+              <Plus className="w-4 h-4 mr-1" /> New Invoice
+            </Button>
+          </Link>
+        }
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

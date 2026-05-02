@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { PageHero } from "@/components/PageHero";
 import { Users, Plus, Shield, Wrench, Eye, Briefcase, Trash2 } from "lucide-react";
 
 const ROLE_CONFIG = {
@@ -118,16 +119,16 @@ export default function Team() {
   const inactiveUsers = users.filter(u => !u.active);
 
   return (
-    <main className="p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Team</h1>
-          <p className="text-sm text-muted-foreground">Manage user accounts and roles</p>
-        </div>
-        <Button onClick={openCreate} className="bg-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,35%)]">
-          <Plus className="w-4 h-4 mr-1" /> Add User
-        </Button>
-      </div>
+    <main className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto pb-24 md:pb-6">
+      <PageHero
+        title="Team"
+        subtitle={<span>Manage user accounts and roles</span>}
+        actions={
+          <Button onClick={openCreate} size="sm" className="bg-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,35%)] shadow-sm">
+            <Plus className="w-4 h-4 mr-1" /> Add User
+          </Button>
+        }
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

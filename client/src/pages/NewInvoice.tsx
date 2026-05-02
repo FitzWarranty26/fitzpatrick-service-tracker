@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { PageHero } from "@/components/PageHero";
 
 interface LineItem {
   type: string;
@@ -261,16 +262,13 @@ export default function NewInvoice() {
   }
 
   return (
-    <main className="p-4 md:p-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/invoices")}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">New Invoice</h1>
-          <p className="text-sm text-muted-foreground">{invoiceNumber || "Generating number..."}</p>
-        </div>
-      </div>
+    <main className="p-4 md:p-6 max-w-4xl mx-auto pb-24 md:pb-6 space-y-5">
+      <PageHero
+        backHref="/invoices"
+        backLabel="Back to Invoices"
+        title="New Invoice"
+        subtitle={<span>{invoiceNumber || "Generating number…"}</span>}
+      />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Bill To */}

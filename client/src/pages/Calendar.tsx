@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronRight, CalendarDays, List } from "lucide-react";
+import { PageHero } from "@/components/PageHero";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -419,53 +420,47 @@ export default function CalendarPage() {
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <main className="p-4 md:p-6 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Calendar</h1>
-          <p className="text-sm text-muted-foreground">Scheduled service calls by date</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* User filter */}
-          <Select value={filterUser} onValueChange={setFilterUser}>
-            <SelectTrigger className="w-[160px] h-8 text-xs">
-              <SelectValue placeholder="All Team Members" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All Team Members</SelectItem>
-              {users.filter(u => u.active !== 0).map(u => (
-                <SelectItem key={u.id} value={u.username}>{u.displayName}</SelectItem>
+    <main className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto pb-24 md:pb-6">
+      <PageHero
+        title="Calendar"
+        subtitle={<span>Scheduled service calls by date</span>}
+        actions={
+          <>
+            <Select value={filterUser} onValueChange={setFilterUser}>
+              <SelectTrigger className="w-[160px] h-9 text-xs rounded-lg">
+                <SelectValue placeholder="All Team Members" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Team Members</SelectItem>
+                {users.filter(u => u.active !== 0).map(u => (
+                  <SelectItem key={u.id} value={u.username}>{u.displayName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <button
+              onClick={() => setHideCompleted(h => !h)}
+              className={`h-9 px-3 text-xs font-medium rounded-lg border transition-colors ${
+                hideCompleted
+                  ? "bg-[hsl(200,72%,40%)] text-white border-[hsl(200,72%,40%)]"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted"
+              }`}
+            >
+              {hideCompleted ? "Open Only" : "All Calls"}
+            </button>
+            <div className="flex rounded-lg border overflow-hidden h-9">
+              {(["month","week","list"] as const).map(v => (
+                <button
+                  key={v}
+                  onClick={() => setViewMode(v)}
+                  className={`px-3 text-xs font-medium capitalize border-r last:border-r-0 transition-colors ${viewMode === v ? "bg-[hsl(200,72%,40%)] text-white" : "bg-card text-muted-foreground hover:bg-muted"}`}
+                >
+                  {v}
+                </button>
               ))}
-            </SelectContent>
-          </Select>
-
-          {/* Hide completed toggle */}
-          <button
-            onClick={() => setHideCompleted(h => !h)}
-            className={`h-8 px-3 text-xs font-medium rounded-lg border transition-colors ${
-              hideCompleted
-                ? "bg-[hsl(200,72%,40%)] text-white border-[hsl(200,72%,40%)]"
-                : "bg-card text-muted-foreground border-border hover:bg-muted"
-            }`}
-          >
-            {hideCompleted ? "Open Only" : "All Calls"}
-          </button>
-
-          {/* View toggle */}
-          <div className="flex rounded-lg border overflow-hidden">
-            {(["month","week","list"] as const).map(v => (
-              <button
-                key={v}
-                onClick={() => setViewMode(v)}
-                className={`px-3 py-1.5 text-xs font-medium capitalize border-r last:border-r-0 transition-colors ${viewMode === v ? "bg-[hsl(200,72%,40%)] text-white" : "bg-card text-muted-foreground hover:bg-muted"}`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+            </div>
+          </>
+        }
+      />
 
       {/* Navigation */}
       <div className="flex items-center gap-3">

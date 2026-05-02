@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { PageHero } from "@/components/PageHero";
 import { formatDate } from "@/lib/utils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { getWarrantyStatus } from "@shared/schema";
@@ -170,14 +171,11 @@ export default function EquipmentHistory() {
   } : null;
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6">
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Equipment History</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Look up any unit by serial number, address, or customer — view full service timelines and warranty status
-        </p>
-      </div>
+    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6 space-y-5">
+      <PageHero
+        title="Equipment History"
+        subtitle={<span>Look up any unit by serial number, address, or customer — view full service timelines and warranty status</span>}
+      />
 
       {/* ── Search Bar ───────────────────────────────────────────────────── */}
       <div className="relative mb-6">

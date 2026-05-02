@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import { getUser } from "@/lib/auth";
+import { PageHero } from "@/components/PageHero";
 import { todayISO } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -444,23 +445,13 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto pb-32 md:pb-10">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => history.back()}
-          className="h-8 w-8"
-          data-testid="button-back"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </Button>
-        <div>
-          <h1 className="text-xl font-bold">{followUpId ? "Follow-up Service Call" : "New Service Call"}</h1>
-          <p className="text-sm text-muted-foreground">Fill out all required fields</p>
-        </div>
-      </div>
+    <div className="p-4 md:p-6 max-w-3xl mx-auto pb-32 md:pb-10 space-y-5">
+      <PageHero
+        backHref="/calls"
+        backLabel="Back to Service Calls"
+        title={followUpId ? "Follow-up Service Call" : "New Service Call"}
+        subtitle={<span>Fill out all required fields to create a service call</span>}
+      />
 
       {/* Copy-from banner (New Issue) */}
       {copyFromId && copyFromCall && !followUpId && (
