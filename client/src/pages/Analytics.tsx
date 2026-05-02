@@ -328,7 +328,7 @@ export default function Analytics() {
     },
     {
       label: "Fix Rate",
-      value: `${d.fixRate.firstTimeFixRate}%`,
+      value: `${Math.round(d.fixRate.firstTimeFixRate)}%`,
       context: "first-time fix",
       accent: AMBER,
       show: true,
@@ -490,10 +490,10 @@ export default function Analytics() {
               />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <p
-                  className="text-5xl font-bold tabular-nums leading-none"
+                  className="text-4xl font-bold tabular-nums leading-none"
                   style={{ color: d.fixRate.firstTimeFixRate >= 80 ? EMERALD : d.fixRate.firstTimeFixRate >= 60 ? AMBER : RED }}
                 >
-                  {d.fixRate.firstTimeFixRate}%
+                  {Math.round(d.fixRate.firstTimeFixRate)}%
                 </p>
               </div>
             </div>
