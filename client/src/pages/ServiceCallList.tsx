@@ -12,7 +12,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   PlusCircle, Search, SlidersHorizontal, X, ChevronRight, ClipboardList,
-  Image, Package, MapPin, ArrowRight, Video, PhoneCall, UserCheck,
+  Image, Package, MapPin, ArrowRight, Video, PhoneCall, UserCheck, Building,
 } from "lucide-react";
 
 function ServiceMethodIcon({ method }: { method: string | null | undefined }) {
@@ -393,39 +393,45 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                 {filteredCalls.map((call) => (
                   <tr
                     key={call.id}
-                    className="text-sm hover:bg-muted/40 transition-colors cursor-pointer border-b border-border/30 last:border-0"
+                    className="group text-sm hover:bg-muted/40 transition-colors cursor-pointer border-b border-border/30 last:border-0"
                     onClick={() => window.location.hash = `/calls/${call.id}`}
                     data-testid={`row-call-${call.id}`}
                   >
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <td className="px-5 py-4 whitespace-nowrap align-top">
+                      <div className="flex items-center gap-2 mb-1">
                         <WarrantyDot installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
                         <ServiceMethodIcon method={(call as any).serviceMethod} />
-                        {formatDate(call.scheduledDate || call.callDate)}
-                      </span>
+                        <span className="text-xs font-semibold text-foreground">{formatDate(call.scheduledDate || call.callDate)}</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">#{call.id}</p>
                     </td>
-                    <td className="px-5 py-3.5 min-w-[200px]">
-                      <p className="font-semibold text-sm text-foreground leading-tight">{call.customerName}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-xs text-muted-foreground truncate max-w-[180px]">{call.jobSiteName}</span>
+                    <td className="px-5 py-4 min-w-[260px] align-top">
+                      <p className="font-semibold text-base text-foreground leading-tight">{call.customerName || "Unnamed"}</p>
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {call.jobSiteName && (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <Building className="w-3 h-3" />
+                            <span className="truncate max-w-[180px]">{call.jobSiteName}</span>
+                          </span>
+                        )}
                         {call.jobSiteCity && (
-                          <>
-                            <span className="text-border">·</span>
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">
-                              {call.jobSiteCity}{call.jobSiteState ? `, ${call.jobSiteState}` : ""}
-                            </span>
-                          </>
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <MapPin className="w-3 h-3" />
+                            {call.jobSiteCity}{call.jobSiteState ? `, ${call.jobSiteState}` : ""}
+                          </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-5 py-3.5">
-                      <p className="text-xs text-muted-foreground">{call.manufacturer}</p>
-                      <p className="font-mono text-xs text-foreground/80 mt-0.5">{call.productModel}</p>
+                    <td className="px-5 py-4 align-top">
+                      <p className="text-sm text-foreground font-medium leading-tight">{call.manufacturer}</p>
+                      {call.productModel && (
+                        <p className="font-mono text-[11px] text-muted-foreground mt-1">{call.productModel}</p>
+                      )}
                     </td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-5 py-4 align-top">
                       <StatusBadge status={call.status} />
                     </td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-5 py-4 align-top">
                       <div className="flex items-center gap-2">
                         <ClaimBadge status={call.claimStatus} />
                         {(call.photoCount > 0 || call.partCount > 0) && (
@@ -444,8 +450,8 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                         )}
                       </div>
                     </td>
-                    <td className="px-3 py-3.5 text-muted-foreground/40">
-                      <ChevronRight className="w-4 h-4" />
+                    <td className="px-3 py-4 text-muted-foreground/30 group-hover:text-foreground transition-colors align-top">
+                      <ChevronRight className="w-4 h-4 mt-0.5" />
                     </td>
                   </tr>
                 ))}
