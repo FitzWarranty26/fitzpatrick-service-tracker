@@ -14,6 +14,7 @@ import {
   Download, FileText, Mail, Play,
 } from "lucide-react";
 import { MANUFACTURERS, CLAIM_STATUSES } from "@shared/schema";
+import { PageHero } from "@/components/PageHero";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -491,50 +492,29 @@ export default function Reports() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
-          <p className="text-sm text-muted-foreground mt-1">Generate and download service reports</p>
-        </div>
-        {hasReport && (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEmailReport}
-              disabled={!reportData || isLoading}
-              data-testid="button-email-report"
-            >
-              <Mail className="w-4 h-4 mr-1.5" />
-              Email
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCSVDownload}
-              disabled={!reportData || isLoading}
-              data-testid="button-download-csv"
-            >
-              <Download className="w-4 h-4 mr-1.5" />
-              CSV
-            </Button>
-            <Button
-              size="sm"
-              onClick={handlePDFDownload}
-              disabled={!reportData || isLoading}
-              data-testid="button-download-pdf"
-            >
-              <FileText className="w-4 h-4 mr-1.5" />
-              PDF
-            </Button>
-          </div>
-        )}
-      </div>
+    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6 space-y-5">
+      <PageHero
+        title="Reports"
+        subtitle={<span>Generate and download service reports</span>}
+        actions={
+          hasReport ? (
+            <>
+              <Button variant="outline" size="sm" onClick={handleEmailReport} disabled={!reportData || isLoading} data-testid="button-email-report">
+                <Mail className="w-4 h-4 mr-1.5" /> Email
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleCSVDownload} disabled={!reportData || isLoading} data-testid="button-download-csv">
+                <Download className="w-4 h-4 mr-1.5" /> CSV
+              </Button>
+              <Button size="sm" onClick={handlePDFDownload} disabled={!reportData || isLoading} data-testid="button-download-pdf">
+                <FileText className="w-4 h-4 mr-1.5" /> PDF
+              </Button>
+            </>
+          ) : null
+        }
+      />
 
       {/* Section 1: Report Catalog */}
-      <div className="mb-5">
+      <div>
         <h2 className="text-[10px] uppercase tracking-[0.15em] font-semibold text-muted-foreground mb-3">Report Catalog</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {visibleCatalog.map(item => {

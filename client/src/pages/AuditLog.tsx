@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { PageHero } from "@/components/PageHero";
 import { Badge } from "@/components/ui/badge";
 import { ClipboardList, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -59,13 +60,11 @@ export default function AuditLog() {
   const hasPrev = offset > 0;
 
   return (
-    <main className="p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Activity Log</h1>
-          <p className="text-sm text-muted-foreground">{total} entries</p>
-        </div>
-      </div>
+    <main className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto pb-24 md:pb-6">
+      <PageHero
+        title="Activity Log"
+        subtitle={<span>{total.toLocaleString()} entries · system audit trail</span>}
+      />
 
       {/* Filters */}
       <div className="bg-card rounded-lg border p-4">

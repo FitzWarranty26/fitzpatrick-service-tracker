@@ -782,6 +782,50 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // Get all service calls related to a contact (by company, phone, or email)
+  app.get("/api/contacts/:id/calls", (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const contact = storage.getContactById(id);
+      if (!contact) return res.status(404).json({ error: "Not found" });
+      // Match calls by company name (most reliable identifier)
+      const company = contact.companyName || contact.contactName || "";
+      const phone = contact.phone || "";
+      const email = contact.email || "";
+      const rows = sqliteHandle.prepare(`
+        SELECT id, call_date, scheduled_date, scheduled_time, manufacturer, customer_name, job_site_name,
+               job_site_city, job_site_state, status, claim_status, contact_company, contractor_company,
+               wholesaler_name, contact_phone, contact_email, hours_on_job, miles_traveled, service_method,
+               product_model, product_serial, installation_date, product_type
+        FROM service_calls
+        WHERE (is_test = 0 OR is_test IS NULL) AND (
+          (? != '' AND (customer_name = ? OR job_site_name = ? OR contact_company = ? OR contractor_company = ? OR wholesaler_name = ?))
+          OR (? != '' AND contact_phone = ?)
+          OR (? != '' AND contact_email = ?)
+        )
+        ORDER BY COALESCE(scheduled_date, call_date) DESC
+        LIMIT 200
+      `).all(
+        company, company, company, company, company, company,
+        phone, phone,
+        email, email,
+      ) as any[];
+      res.json(rows.map((r: any) => ({
+        id: r.id, callDate: r.call_date, scheduledDate: r.scheduled_date, scheduledTime: r.scheduled_time,
+        manufacturer: r.manufacturer, customerName: r.customer_name, jobSiteName: r.job_site_name,
+        jobSiteCity: r.job_site_city, jobSiteState: r.job_site_state,
+        status: r.status, claimStatus: r.claim_status,
+        contactCompany: r.contact_company, contractorCompany: r.contractor_company, wholesalerName: r.wholesaler_name,
+        hoursOnJob: r.hours_on_job, milesTraveled: r.miles_traveled, serviceMethod: r.service_method,
+        productModel: r.product_model, productSerial: r.product_serial,
+        installationDate: r.installation_date, productType: r.product_type,
+      })));
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   app.post("/api/contacts", requireEditor, (req, res) => {
     try {
       const data = insertContactSchema.parse(req.body);

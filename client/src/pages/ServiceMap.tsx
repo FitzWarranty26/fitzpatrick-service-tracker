@@ -163,6 +163,15 @@ export default function ServiceMap() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-[calc(100vh-2.75rem)]" data-testid="service-map-page">
+      {/* Page Hero (compact for map layout) */}
+      <div className="px-4 md:px-6 py-3 md:py-4 bg-card border-b border-border/50">
+        <div className="flex items-center justify-between gap-3 max-w-[1400px] mx-auto">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight">Map</h1>
+            <p className="text-xs md:text-sm text-muted-foreground mt-0.5">Service calls plotted by location</p>
+          </div>
+        </div>
+      </div>
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 p-3 bg-background border-b border-border">
         <div className="flex items-center gap-1.5">

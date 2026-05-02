@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { PageHero } from "@/components/PageHero";
 import { getUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -371,21 +372,23 @@ export default function Analytics() {
   const visibleKpis = kpis.filter(k => k.show);
 
   return (
-    <div className="p-4 md:p-6 max-w-[1400px] mx-auto space-y-4 pb-24 md:pb-6">
-      {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-foreground tracking-tight">Analytics</h1>
-        <div className="flex items-end gap-3">
-          <div>
-            <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground mb-1.5 block">From</label>
-            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 text-sm w-40" />
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground mb-1.5 block">To</label>
-            <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9 text-sm w-40" />
-          </div>
-        </div>
-      </div>
+    <div className="p-4 md:p-6 max-w-[1400px] mx-auto space-y-5 pb-24 md:pb-6">
+      <PageHero
+        title="Analytics"
+        subtitle={<span>Service performance, revenue, and team metrics</span>}
+        actions={
+          <>
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground mb-1.5 block">From</label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 text-sm w-40 rounded-lg" />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground mb-1.5 block">To</label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9 text-sm w-40 rounded-lg" />
+            </div>
+          </>
+        }
+      />
 
       {/* ── Section 1: KPI Summary Strip ────────────────────────────────── */}
       <div className={`grid grid-cols-2 md:grid-cols-4 ${visibleKpis.length >= 8 ? "xl:grid-cols-8" : visibleKpis.length >= 5 ? "xl:grid-cols-5" : ""} gap-3`}>

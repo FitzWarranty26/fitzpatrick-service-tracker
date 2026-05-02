@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { PageHero } from "@/components/PageHero";
 import { formatDate } from "@/lib/utils";
 import { StatusBadge, ClaimBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -211,24 +212,23 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6">
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Service Calls</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {filteredCalls
-              ? `${filteredCalls.length} call${filteredCalls.length !== 1 ? "s" : ""}${presetFilter && presetLabels[presetFilter] ? ` — ${presetLabels[presetFilter]}` : ""}`
-              : "Loading…"}
-          </p>
-        </div>
-        <Button asChild size="sm" className="shadow-sm" data-testid="button-new-call">
-          <Link href="/new">
-            <PlusCircle className="w-4 h-4 mr-1.5" />
-            New Call
-          </Link>
-        </Button>
-      </div>
+    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6 space-y-5">
+      <PageHero
+        title="Service Calls"
+        subtitle={
+          filteredCalls
+            ? <span>{filteredCalls.length} call{filteredCalls.length !== 1 ? "s" : ""}{presetFilter && presetLabels[presetFilter] ? <> — {presetLabels[presetFilter]}</> : ""}</span>
+            : <span>Loading…</span>
+        }
+        actions={
+          <Button asChild size="sm" className="shadow-sm" data-testid="button-new-call">
+            <Link href="/new">
+              <PlusCircle className="w-4 h-4 mr-1.5" />
+              New Call
+            </Link>
+          </Button>
+        }
+      />
 
       {/* ── Stat Cards ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">

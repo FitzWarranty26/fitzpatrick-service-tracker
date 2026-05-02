@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { PageHero } from "@/components/PageHero";
 import { useToast } from "@/hooks/use-toast";
 import { getUser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -237,36 +238,25 @@ export default function Contacts() {
   const activeTypeLabel = filterType ? typeLabels[filterType] : "All";
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6">
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Contacts</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Your service network — contractors, wholesalers, customers, and site contacts
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => backfillMutation.mutate()}
-            disabled={backfillMutation.isPending}
-            data-testid="button-backfill-contacts"
-          >
-            <RefreshCw className={`w-4 h-4 mr-1.5 ${backfillMutation.isPending ? "animate-spin" : ""}`} />
-            {backfillMutation.isPending ? "Importing…" : "Import from Calls"}
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export-contacts">
-            <Download className="w-4 h-4 mr-1.5" />
-            Export CSV
-          </Button>
-          <Button size="sm" onClick={openCreate} data-testid="button-add-contact" className="shadow-sm">
-            <PlusCircle className="w-4 h-4 mr-1.5" />
-            Add Contact
-          </Button>
-        </div>
-      </div>
+    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6 space-y-5">
+      <PageHero
+        title="Contacts"
+        subtitle={<span>Your service network — contractors, wholesalers, customers, and site contacts</span>}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => backfillMutation.mutate()} disabled={backfillMutation.isPending} data-testid="button-backfill-contacts">
+              <RefreshCw className={`w-4 h-4 mr-1.5 ${backfillMutation.isPending ? "animate-spin" : ""}`} />
+              {backfillMutation.isPending ? "Importing…" : "Import from Calls"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export-contacts">
+              <Download className="w-4 h-4 mr-1.5" /> Export CSV
+            </Button>
+            <Button size="sm" onClick={openCreate} data-testid="button-add-contact" className="shadow-sm">
+              <PlusCircle className="w-4 h-4 mr-1.5" /> Add Contact
+            </Button>
+          </>
+        }
+      />
 
       {/* ── Section 1: Summary Strip ─────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -358,7 +348,7 @@ export default function Contacts() {
                 {contactsList.map(contact => (
                   <tr
                     key={contact.id}
-                    onClick={() => openEdit(contact)}
+                    onClick={() => { window.location.hash = `/contacts/${contact.id}`; }}
                     className="text-sm hover:bg-muted/40 transition-colors cursor-pointer even:bg-muted/10 border-b border-border/30 last:border-0"
                     data-testid={`contact-row-${contact.id}`}
                   >
@@ -433,7 +423,7 @@ export default function Contacts() {
             {contactsList.map(contact => (
               <div
                 key={contact.id}
-                onClick={() => openEdit(contact)}
+                onClick={() => { window.location.hash = `/contacts/${contact.id}`; }}
                 className="bg-card rounded-xl border border-border/50 p-4 shadow-sm cursor-pointer hover:bg-muted/30 transition-colors"
                 data-testid={`contact-card-${contact.id}`}
               >

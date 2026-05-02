@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Trash2, Send, CheckCircle, FileDown, Mail, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Send, CheckCircle, FileDown, Mail, Pencil, Building } from "lucide-react";
+import { PageHero, KPICell } from "@/components/PageHero";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { getAuthHeaders } from "@/lib/auth";
 import { PhoneLink } from "@/components/PhoneLink";
@@ -237,64 +238,87 @@ export default function InvoiceDetail({ id }: { id: string }) {
     return groups;
   }
 
+  // Compute days outstanding
+  const daysOutstanding = (() => {
+    if (invoice.status === "Paid") return null;
+    if (!invoice.dueDate) return null;
+    const due = new Date(invoice.dueDate + "T00:00:00").getTime();
+    const days = Math.floor((Date.now() - due) / 86400000);
+    return days;
+  })();
+  const total = Number(invoice.total ?? 0);
+  const paidAmount = invoice.status === "Paid" ? total : 0;
+  const balance = total - paidAmount;
+
   return (
-    <main className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/invoices")}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold font-mono">{invoice.invoiceNumber}</h1>
-              <Badge variant="outline" className={`text-xs ${STATUS_STYLES[invoice.status] || STATUS_STYLES["Draft"]}`}>
-                {invoice.status}
+    <main className="p-4 md:p-6 max-w-5xl mx-auto space-y-5 pb-24 md:pb-6">
+      <PageHero
+        backHref="/invoices"
+        backLabel="Back to Invoices"
+        title={
+          <span className="font-mono">{invoice.invoiceNumber}</span>
+        }
+        subtitle={<span><Building className="inline w-3.5 h-3.5 mr-1 -mt-0.5" /> {invoice.billToName || "Unnamed"}</span>}
+        badges={
+          <>
+            <Badge variant="outline" className={`text-xs ${STATUS_STYLES[invoice.status] || STATUS_STYLES["Draft"]}`}>
+              {invoice.status}
+            </Badge>
+            {daysOutstanding !== null && daysOutstanding > 0 && invoice.status !== "Paid" && (
+              <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-300 dark:bg-red-900/20 dark:text-red-400">
+                {daysOutstanding} day{daysOutstanding !== 1 ? "s" : ""} overdue
               </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">{invoice.billToName}</p>
-          </div>
-        </div>
-
-        <div className="flex gap-2 flex-wrap">
-          {/* Status actions */}
-          {invoice.status === "Draft" && !isEditing && (
-            <Button size="sm" variant="outline" onClick={() => setStatus("Sent")} className="text-sky-600 border-sky-300">
-              <Send className="w-3.5 h-3.5 mr-1" /> Mark Sent
-            </Button>
-          )}
-          {(invoice.status === "Sent" || invoice.status === "Overdue") && !isEditing && (
-            <Button size="sm" variant="outline" onClick={() => setStatus("Paid")} className="text-emerald-600 border-emerald-300">
-              <CheckCircle className="w-3.5 h-3.5 mr-1" /> Mark Paid
-            </Button>
-          )}
-
-          {/* Actions */}
-          {!isEditing && (
-            <>
-              <Button size="sm" variant="outline" onClick={handleEmail}>
-                <Mail className="w-3.5 h-3.5 mr-1" /> Email
+            )}
+          </>
+        }
+        actions={
+          <>
+            {invoice.status === "Draft" && !isEditing && (
+              <Button size="sm" variant="outline" onClick={() => setStatus("Sent")} className="text-sky-600 border-sky-300">
+                <Send className="w-3.5 h-3.5 mr-1" /> Mark Sent
               </Button>
-              <Button size="sm" variant="outline" onClick={handlePdf}>
-                <FileDown className="w-3.5 h-3.5 mr-1" /> PDF
+            )}
+            {(invoice.status === "Sent" || invoice.status === "Overdue") && !isEditing && (
+              <Button size="sm" variant="outline" onClick={() => setStatus("Paid")} className="text-emerald-600 border-emerald-300">
+                <CheckCircle className="w-3.5 h-3.5 mr-1" /> Mark Paid
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
-                <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
-              </Button>
-            </>
-          )}
-          {isEditing && (
-            <>
-              <Button size="sm" variant="outline" onClick={() => { setIsEditing(false); setForm(invoice); setItems(invoice.items || []); }}>
-                Cancel
-              </Button>
-              <Button size="sm" className="bg-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,35%)]" onClick={handleSave} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? "Saving..." : "Save Changes"}
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+            )}
+            {!isEditing && (
+              <>
+                <Button size="sm" variant="outline" onClick={handleEmail}>
+                  <Mail className="w-3.5 h-3.5 mr-1" /> Email
+                </Button>
+                <Button size="sm" variant="outline" onClick={handlePdf}>
+                  <FileDown className="w-3.5 h-3.5 mr-1" /> PDF
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
+                  <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                </Button>
+              </>
+            )}
+            {isEditing && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => { setIsEditing(false); setForm(invoice); setItems(invoice.items || []); }}>
+                  Cancel
+                </Button>
+                <Button size="sm" className="bg-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,35%)]" onClick={handleSave} disabled={saveMutation.isPending}>
+                  {saveMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </>
+            )}
+          </>
+        }
+        kpis={
+          <>
+            <KPICell label="Issue Date" value={invoice.issueDate ? new Date(invoice.issueDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"} />
+            <KPICell label="Due Date" value={invoice.dueDate ? new Date(invoice.dueDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"} />
+            <KPICell label="Total" value={`$${total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+            <KPICell label="Paid" value={`$${paidAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+            <KPICell label="Balance" value={`$${balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+            <KPICell label="Status" value={invoice.status || "Draft"} />
+          </>
+        }
+      />
 
       {/* Invoice card */}
       <div className="bg-card rounded-xl border overflow-hidden">
