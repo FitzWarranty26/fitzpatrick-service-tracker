@@ -15,6 +15,7 @@ import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 const NewServiceCall = lazy(() => import("@/pages/NewServiceCall"));
 const ServiceCallDetail = lazy(() => import("@/pages/ServiceCallDetail"));
 const ServiceCallDetailLegacy = lazy(() => import("@/pages/ServiceCallDetail.legacy"));
+const ServiceCallListLegacy = lazy(() => import("@/pages/ServiceCallList.legacy"));
 const ContactDetail = lazy(() => import("@/pages/ContactDetail"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
@@ -49,6 +50,13 @@ function AppRouter() {
         <Route path="/calls">{() => <ServiceCallList />}</Route>
         <Route path="/calls/filter/:preset">
           {(params) => <ServiceCallList preset={params.preset} />}
+        </Route>
+        <Route path="/calls/list/legacy">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+              <ServiceCallListLegacy />
+            </Suspense>
+          )}
         </Route>
         <Route path="/scheduled">{() => <ServiceCallList preset="scheduled" />}</Route>
         <Route path="/new">

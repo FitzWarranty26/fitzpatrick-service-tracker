@@ -505,6 +505,15 @@ if (userCount === 0) {
 export interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;
+  // Roll-up fields for the operational list view
+  primaryTechnicianId: number | null;     // technician on most-recent visit
+  primaryTechnicianName: string | null;
+  visitCount: number;                      // # of return visits
+  invoiceId: number | null;                // latest invoice on this call
+  invoiceNumber: string | null;
+  invoiceStatus: string | null;            // Draft | Sent | Paid | Overdue
+  invoiceTotal: string | null;
+  invoiceDueDate: string | null;
 }
 
 export interface ServiceCallFull extends ServiceCall {
@@ -647,11 +656,50 @@ export class SQLiteStorage implements IStorage {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    // Single query with subqueries for counts — eliminates N+1 pattern
+    // Single query with subqueries for counts + rollups (tech, invoice) — eliminates N+1
+    // primary_technician_id = most-recent visit's technician (or NULL)
+    // invoice_* = latest invoice (by issue_date) on this call (or NULL)
     const query = `
       SELECT sc.*,
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
-        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
+        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count,
+        (SELECT COUNT(*) FROM service_call_visits v WHERE v.service_call_id = sc.id) AS visit_count,
+        (
+          SELECT v.technician_id FROM service_call_visits v
+          WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
+          ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+        ) AS primary_technician_id,
+        (
+          SELECT u.display_name FROM service_call_visits v
+          LEFT JOIN users u ON u.id = v.technician_id
+          WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
+          ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+        ) AS primary_technician_name,
+        (
+          SELECT i.id FROM invoices i
+          WHERE i.service_call_id = sc.id
+          ORDER BY i.issue_date DESC, i.id DESC LIMIT 1
+        ) AS invoice_id,
+        (
+          SELECT i.invoice_number FROM invoices i
+          WHERE i.service_call_id = sc.id
+          ORDER BY i.issue_date DESC, i.id DESC LIMIT 1
+        ) AS invoice_number,
+        (
+          SELECT i.status FROM invoices i
+          WHERE i.service_call_id = sc.id
+          ORDER BY i.issue_date DESC, i.id DESC LIMIT 1
+        ) AS invoice_status,
+        (
+          SELECT i.total FROM invoices i
+          WHERE i.service_call_id = sc.id
+          ORDER BY i.issue_date DESC, i.id DESC LIMIT 1
+        ) AS invoice_total,
+        (
+          SELECT i.due_date FROM invoices i
+          WHERE i.service_call_id = sc.id
+          ORDER BY i.issue_date DESC, i.id DESC LIMIT 1
+        ) AS invoice_due_date
       FROM service_calls sc
       ${whereClause}
       ORDER BY sc.call_date DESC
@@ -710,6 +758,14 @@ export class SQLiteStorage implements IStorage {
       createdAt: row.created_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
+      visitCount: row.visit_count ?? 0,
+      primaryTechnicianId: row.primary_technician_id ?? null,
+      primaryTechnicianName: row.primary_technician_name ?? null,
+      invoiceId: row.invoice_id ?? null,
+      invoiceNumber: row.invoice_number ?? null,
+      invoiceStatus: row.invoice_status ?? null,
+      invoiceTotal: row.invoice_total ?? null,
+      invoiceDueDate: row.invoice_due_date ?? null,
     }));
   }
 
