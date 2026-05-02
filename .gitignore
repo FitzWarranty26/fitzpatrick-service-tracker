@@ -1,4 +1,18 @@
 node_modules/
 dist/
 *.db
+*.db-journal
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
 .DS_Store
+
+# Backups produced by /api/backup
+backups/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp

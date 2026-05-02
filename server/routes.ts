@@ -2492,12 +2492,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
           AND (
             customer_name = ? OR
             job_site_name = ? OR
-            contact_company = ? OR
-            contractor_company = ?
+            contact_company = ?
           )
         ORDER BY COALESCE(scheduled_date, call_date) DESC
         LIMIT 10
-      `).all(name, name, name, name) as any[];
+      `).all(name, name, name) as any[];
       res.json(rows.map((r: any) => ({
         id: r.id, callDate: r.call_date, scheduledDate: r.scheduled_date, scheduledTime: r.scheduled_time,
         manufacturer: r.manufacturer, customerName: r.customer_name, jobSiteName: r.job_site_name,
@@ -2633,14 +2632,17 @@ export function registerRoutes(httpServer: Server, app: Express) {
   const BACKUP_SECRET = process.env.BACKUP_SECRET || "";
 
   // Middleware: backup endpoints accept either the session Bearer token
-  // OR a dedicated BACKUP_SECRET via x-backup-secret header (for cron jobs)
+  // OR a dedicated BACKUP_SECRET via x-backup-secret header (for cron jobs).
+  // The secret is intentionally NOT accepted as a query string — query strings
+  // commonly leak into proxy logs, CDN logs, and browser history. Cron jobs
+  // must send it as a header.
   const requireBackupAuth = (req: any, res: any, next: any) => {
     // Try session token first
     const token = (req.headers.authorization || "").replace("Bearer ", "");
     if (token && isValidSession(token)) return next();
-    // Try backup secret (for Render Cron Job)
-    const secret = req.headers["x-backup-secret"] || req.query.secret;
-    if (BACKUP_SECRET && secret === BACKUP_SECRET) return next();
+    // Try backup secret — header only, never query
+    const secret = req.headers["x-backup-secret"];
+    if (BACKUP_SECRET && typeof secret === "string" && secret === BACKUP_SECRET) return next();
     return res.status(401).json({ error: "Unauthorized" });
   };
 

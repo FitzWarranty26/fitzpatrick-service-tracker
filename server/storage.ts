@@ -988,6 +988,14 @@ export class SQLiteStorage implements IStorage {
       createdAt: row.created_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
+      visitCount: 0,
+      primaryTechnicianId: null,
+      primaryTechnicianName: null,
+      invoiceId: null,
+      invoiceNumber: null,
+      invoiceStatus: null,
+      invoiceTotal: null,
+      invoiceDueDate: null,
     }));
 
     const inProgressCount = todayScheduled.filter(c => c.status === "In Progress").length;
@@ -1092,6 +1100,14 @@ export class SQLiteStorage implements IStorage {
       createdAt: row.created_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
+      visitCount: 0,
+      primaryTechnicianId: null,
+      primaryTechnicianName: null,
+      invoiceId: null,
+      invoiceNumber: null,
+      invoiceStatus: null,
+      invoiceTotal: null,
+      invoiceDueDate: null,
     }));
   }
 
@@ -1368,6 +1384,14 @@ export class SQLiteStorage implements IStorage {
       createdAt: row.created_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
+      visitCount: 0,
+      primaryTechnicianId: null,
+      primaryTechnicianName: null,
+      invoiceId: null,
+      invoiceNumber: null,
+      invoiceStatus: null,
+      invoiceTotal: null,
+      invoiceDueDate: null,
     }));
   }
 
