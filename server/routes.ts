@@ -2476,6 +2476,66 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Equipment History Search ─────────────────────────────────────────────
 
+  // Lightweight history lookups for the New Service Call sidebar.
+  // /api/calls/by-customer?name=...   → recent calls matching customer/job/contact name
+  // /api/calls/by-serial?serial=...   → all prior calls on this exact serial
+  app.get("/api/calls/by-customer", (req: any, res: any) => {
+    try {
+      const name = ((req.query.name as string) || "").trim();
+      if (name.length < 2) return res.json([]);
+      const rows = sqliteHandle.prepare(`
+        SELECT id, call_date, scheduled_date, scheduled_time,
+               manufacturer, customer_name, job_site_name,
+               job_site_city, job_site_state, status, product_model, product_serial
+        FROM service_calls
+        WHERE (is_test = 0 OR is_test IS NULL)
+          AND (
+            customer_name = ? OR
+            job_site_name = ? OR
+            contact_company = ? OR
+            contractor_company = ?
+          )
+        ORDER BY COALESCE(scheduled_date, call_date) DESC
+        LIMIT 10
+      `).all(name, name, name, name) as any[];
+      res.json(rows.map((r: any) => ({
+        id: r.id, callDate: r.call_date, scheduledDate: r.scheduled_date, scheduledTime: r.scheduled_time,
+        manufacturer: r.manufacturer, customerName: r.customer_name, jobSiteName: r.job_site_name,
+        jobSiteCity: r.job_site_city, jobSiteState: r.job_site_state,
+        status: r.status, productModel: r.product_model, productSerial: r.product_serial,
+      })));
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.get("/api/calls/by-serial", (req: any, res: any) => {
+    try {
+      const serial = ((req.query.serial as string) || "").trim();
+      if (serial.length < 3) return res.json([]);
+      const rows = sqliteHandle.prepare(`
+        SELECT id, call_date, scheduled_date, manufacturer, customer_name,
+               job_site_name, status, product_model, product_serial,
+               installation_date, product_type, issue_description
+        FROM service_calls
+        WHERE (is_test = 0 OR is_test IS NULL)
+          AND product_serial = ?
+        ORDER BY call_date DESC
+        LIMIT 10
+      `).all(serial) as any[];
+      res.json(rows.map((r: any) => ({
+        id: r.id, callDate: r.call_date, scheduledDate: r.scheduled_date,
+        manufacturer: r.manufacturer, customerName: r.customer_name,
+        jobSiteName: r.job_site_name, status: r.status,
+        productModel: r.product_model, productSerial: r.product_serial,
+        installationDate: r.installation_date, productType: r.product_type,
+        issueDescription: r.issue_description,
+      })));
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   app.get("/api/equipment/search", (req: any, res: any) => {
     try {
       const q = (req.query.q as string || "").trim();

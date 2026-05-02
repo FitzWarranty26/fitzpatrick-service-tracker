@@ -28,11 +28,9 @@ import {
 import type { ServiceCall, Contact } from "@shared/schema";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Camera, Plus, Trash2, ChevronLeft, Save, WifiOff, ArrowLeft, UserPlus, X, FilePlus,
-  Home, Building2, Phone, Video, User, CalendarDays, ClipboardList, Wrench, Settings,
+  Camera, Plus, Trash2, ChevronLeft, Save, WifiOff, ArrowLeft, UserPlus, X, FilePlus
 } from "lucide-react";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
-import { NewCallSidebar } from "@/components/NewCallSidebar";
 
 const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
@@ -152,7 +150,7 @@ function SuggestDropdown({ suggestions, onSelect, onClose }: {
   );
 }
 
-export default function NewServiceCall({ followUpId: followUpIdProp }: { followUpId?: string }) {
+export default function NewServiceCallLegacy({ followUpId: followUpIdProp }: { followUpId?: string }) {
   const [, navigate] = useLocation();
   const search = useSearch();
   const { toast } = useToast();
@@ -446,93 +444,14 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
     }
   };
 
-  // Live progress: count required fields complete (4 required: callDate, status, manufacturer, createdBy)
-  const watchedCallDate = form.watch("callDate");
-  const watchedStatus = form.watch("status");
-  const watchedManufacturer = form.watch("manufacturer");
-  const watchedCustomerName = form.watch("customerName") || "";
-  const watchedJobSiteName = form.watch("jobSiteName") || "";
-  const watchedSerial = form.watch("productSerial") || "";
-  const watchedProductType = form.watch("productType") || "";
-  const watchedInstall = form.watch("installationDate") || "";
-  const watchedScheduledDate = form.watch("scheduledDate") || "";
-  const watchedScheduledTime = form.watch("scheduledTime") || "";
-  const watchedCallType = form.watch("callType");
-  const watchedServiceMethod = form.watch("serviceMethod");
-
-  const requiredFilled = [
-    !!watchedCallDate,
-    !!watchedStatus,
-    !!watchedManufacturer,
-    !!createdBy,
-  ].filter(Boolean).length;
-  const requiredPct = (requiredFilled / 4) * 100;
-
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-32 md:pb-10 space-y-4">
-      {/* Hero with progress + actions */}
-      <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-card to-card/60 p-5 md:p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <Link href="/calls" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2" data-testid="link-back">
-              <ChevronLeft className="w-3.5 h-3.5" /> Back to Service Calls
-            </Link>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight" data-testid="hero-title">
-              {followUpId ? "Follow-up Service Call" : "New Service Call"}
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">Fill out the required fields to create a service call</p>
-          </div>
-          <div className="md:w-72 lg:w-80 flex-shrink-0">
-            <div className="flex justify-between text-[11px] text-muted-foreground mb-1.5">
-              <span>Required fields</span>
-              <span><strong className="text-foreground">{requiredFilled} of 4</strong> · {Math.round(requiredPct)}%</span>
-            </div>
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${requiredPct === 100 ? "bg-emerald-500" : "bg-gradient-to-r from-amber-500 to-emerald-500"}`}
-                style={{ width: `${requiredPct}%` }}
-                data-testid="progress-required"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI strip — live configuration summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-        <div className="rounded-xl border border-border/50 bg-card border-l-[3px] border-l-sky-500 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Type</p>
-          <p className="text-sm font-semibold mt-1 flex items-center gap-1.5" data-testid="kpi-call-type">
-            {watchedCallType === "commercial" ? <Building2 className="w-3.5 h-3.5 text-muted-foreground" /> : <Home className="w-3.5 h-3.5 text-muted-foreground" />}
-            {watchedCallType === "commercial" ? "Commercial" : "Residential"}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border/50 bg-card border-l-[3px] border-l-cyan-500 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Method</p>
-          <p className="text-sm font-semibold mt-1 flex items-center gap-1.5" data-testid="kpi-method">
-            {watchedServiceMethod === "Phone Call" ? <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-              : watchedServiceMethod === "Video Call" ? <Video className="w-3.5 h-3.5 text-muted-foreground" />
-              : <User className="w-3.5 h-3.5 text-muted-foreground" />}
-            {watchedServiceMethod || "In-Person"}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border/50 bg-card border-l-[3px] border-l-amber-500 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Status</p>
-          <p className="text-sm font-semibold mt-1 flex items-center gap-1.5" data-testid="kpi-status">
-            <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
-            {watchedStatus || <span className="text-muted-foreground/60 font-normal">—</span>}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border/50 bg-card border-l-[3px] border-l-violet-500 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Manufacturer</p>
-          <p className="text-sm font-semibold mt-1 flex items-center gap-1.5 truncate" data-testid="kpi-manufacturer">
-            <Settings className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="truncate">
-              {watchedManufacturer ? watchedManufacturer.replace(" Water Heaters", "").replace(" Valve Company", "") : <span className="text-muted-foreground/60 font-normal">—</span>}
-            </span>
-          </p>
-        </div>
-      </div>
+    <div className="p-4 md:p-6 max-w-3xl mx-auto pb-32 md:pb-10 space-y-5">
+      <PageHero
+        backHref="/calls"
+        backLabel="Back to Service Calls"
+        title={followUpId ? "Follow-up Service Call" : "New Service Call"}
+        subtitle={<span>Fill out all required fields to create a service call</span>}
+      />
 
       {/* Copy-from banner (New Issue) */}
       {copyFromId && copyFromCall && !followUpId && (
@@ -567,9 +486,8 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
           {/* Call Type Toggle */}
           <div>
@@ -621,7 +539,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
           {/* ── Call Info ─────────────────────────────────────────────── */}
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-sky-500 rounded-sm" />Call Information</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Call Information</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="callDate" render={({ field }) => (
@@ -709,7 +627,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
           {/* ── Scheduling ─────────────────────────────────────────── */}
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-amber-500 rounded-sm" />Scheduling</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Scheduling</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField control={form.control} name="scheduledDate" render={({ field }) => (
@@ -739,7 +657,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
           {/* ── Customer / Site ───────────────────────────────────────── */}
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-emerald-500 rounded-sm" />Customer & Job Site</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Customer & Job Site</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="customerName" render={({ field }) => (
@@ -981,7 +899,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
           {/* ── Product Info ──────────────────────────────────────────── */}
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-violet-500 rounded-sm" />Product Information</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Product Information</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="productModel" render={({ field }) => (
@@ -1030,7 +948,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
           {/* ── Job Logistics ─────────────────────────────────────────── */}
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-muted-foreground/40 rounded-sm" />Job Logistics</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Job Logistics</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="hoursOnJob" render={({ field }) => (
@@ -1053,7 +971,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
           {/* ── Issue / Diagnosis ─────────────────────────────────────── */}
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-sky-500 rounded-sm" />Issue & Diagnosis</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Issue & Diagnosis</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="issueDescription" render={({ field }) => (
                 <FormItem>
@@ -1096,7 +1014,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
           {/* ── Claim Tracking ────────────────────────────────────────── */}
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-cyan-500 rounded-sm" />Warranty Claim</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Warranty Claim</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="claimStatus" render={({ field }) => (
                 <FormItem>
@@ -1158,7 +1076,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
           {/* ── Photos ───────────────────────────────────────────────── */}
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-muted-foreground/40 rounded-sm" />Photos</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Photos</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <input
                 ref={fileInputRef}
@@ -1192,7 +1110,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
           {/* ── Parts Used ───────────────────────────────────────────── */}
           <Card>
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-muted-foreground/40 rounded-sm" />Parts Used</CardTitle>
+              <CardTitle className="text-base">Parts Used</CardTitle>
               <Button type="button" variant="outline" size="sm" onClick={addPart} data-testid="button-add-part">
                 <Plus className="w-3.5 h-3.5 mr-1" /> Add Part
               </Button>
@@ -1270,31 +1188,9 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
         </form>
       </Form>
 
-      {/* Live context sidebar */}
-      <aside className="hidden lg:block">
-        <div className="sticky top-4">
-          <NewCallSidebar
-            customerName={watchedCustomerName}
-            jobSiteName={watchedJobSiteName}
-            productSerial={watchedSerial}
-            manufacturer={watchedManufacturer || ""}
-            productType={watchedProductType}
-            installationDate={watchedInstall}
-            scheduledDate={watchedScheduledDate}
-            scheduledTime={watchedScheduledTime}
-          />
-        </div>
-      </aside>
-      </div>
-
       {/* Floating save bar — fixed to bottom of viewport */}
       <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border md:left-[216px]">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex justify-between items-center gap-2">
-          <div className="text-[11px] text-muted-foreground hidden sm:flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${requiredPct === 100 ? "bg-emerald-500" : "bg-amber-500"}`} />
-            {requiredPct === 100 ? "All required fields complete" : `${requiredFilled} of 4 required fields complete`}
-          </div>
-          <div className="flex justify-end gap-2 ml-auto">
+        <div className="max-w-3xl mx-auto px-4 md:px-6 py-3 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate("/calls")} data-testid="button-cancel-new">
             <X className="w-4 h-4 mr-1.5" /> Cancel
           </Button>
@@ -1307,7 +1203,6 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
             <Save className="w-4 h-4 mr-1.5" />
             {(createMutation.isPending || savingOffline) ? "Saving…" : isOnline ? "Save Service Call" : "Save Offline"}
           </Button>
-          </div>
         </div>
       </div>
     </div>
