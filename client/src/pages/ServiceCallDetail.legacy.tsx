@@ -26,12 +26,10 @@ import { getUser } from "@/lib/auth";
 import {
   ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Receipt,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
-  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, CalendarDays, FilePlus, Video, PhoneCall, UserCheck,
-  Image as ImageIcon, Wrench, ListChecks, MapPin as MapPinIcon,
+  Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, CalendarDays, FilePlus, Video, PhoneCall, UserCheck
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { generatePDF } from "@/lib/pdf";
 import { PhoneLink } from "@/components/PhoneLink";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
@@ -87,15 +85,6 @@ function VisitStatusBadge({ status }: { status: string }) {
     <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${colors[status] || colors["Scheduled"]}`}>
       {status}
     </span>
-  );
-}
-
-function KPICell({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">{label}</p>
-      <p className="text-sm md:text-base font-bold text-foreground tabular-nums mt-1 truncate" data-testid={`kpi-${label.toLowerCase().replace(/\s+/g, "-")}`}>{value}</p>
-    </div>
   );
 }
 
@@ -260,7 +249,7 @@ function EditablePhotoGrid({ photos, onReorder, onDelete }: {
   );
 }
 
-export default function ServiceCallDetail({ id }: { id: string }) {
+export default function ServiceCallDetailLegacy({ id }: { id: string }) {
   const callId = parseInt(id);
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -813,60 +802,21 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
   const displayCall = isEditing ? { ...call, ...editData } : call;
 
-  // KPI strip values
-  const daysOpen = (() => {
-    if (!call.callDate) return 0;
-    const start = new Date(call.callDate + "T00:00:00").getTime();
-    return Math.max(0, Math.floor((Date.now() - start) / 86400000));
-  })();
-  const visitCount = (call.visits?.length || 0) + 1;
-  const photoCount = call.photos?.length || 0;
-  const partsCount = call.parts?.length || 0;
-  const activityCount = call.activities?.length || 0;
-
-  const subtitleParts = [
-    call.jobSiteName,
-    call.jobSiteCity && (call.jobSiteState ? `${call.jobSiteCity}, ${call.jobSiteState}` : call.jobSiteCity),
-    call.manufacturer,
-  ].filter(Boolean) as string[];
-
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto pb-32 md:pb-10 space-y-5">
-      {/* ── Back link ── */}
-      <button
-        onClick={() => navigate("/calls")}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        data-testid="button-back"
-      >
-        <ChevronLeft className="w-4 h-4" /> Back to Service Calls
-      </button>
-
-      {/* ── Hero Header ── */}
-      <div className="bg-card rounded-xl border border-border/50 p-5 md:p-6 shadow-sm">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="p-4 md:p-6 max-w-4xl mx-auto pb-32 md:pb-10 space-y-5">
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <Button variant="ghost" size="icon" className="h-8 w-8 mt-0.5" onClick={() => navigate("/calls")} data-testid="button-back">
+          <ChevronLeft className="w-4 h-4" />
+        </Button>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-2">
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight truncate">
-              Call #{call.id} — {call.customerName || "Unnamed"}
-            </h1>
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <h1 className="text-xl font-bold truncate">Call #{call.id} — {call.customerName}</h1>
             {call.isTest === 1 && (
               <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5" data-testid="badge-test">TEST</Badge>
             )}
           </div>
-          {subtitleParts.length > 0 && (
-            <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap">
-              {subtitleParts.map((p, i) => (
-                <span key={i} className="flex items-center gap-1.5">
-                  {i === 0 && <Building className="w-3.5 h-3.5 text-muted-foreground/60" />}
-                  {i === 1 && <MapPinIcon className="w-3.5 h-3.5 text-muted-foreground/60" />}
-                  {i === 2 && <Wrench className="w-3.5 h-3.5 text-muted-foreground/60" />}
-                  <span>{p}</span>
-                  {i < subtitleParts.length - 1 && <span className="text-border ml-1.5">·</span>}
-                </span>
-              ))}
-            </p>
-          )}
-          <div className="flex items-center gap-2 flex-wrap mt-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={displayCall.status ?? call.status} />
             <ClaimBadge status={displayCall.claimStatus ?? call.claimStatus} />
             {(() => {
@@ -879,7 +829,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 </span>
               );
             })()}
-            <WarrantyBadge installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
+            <span className="text-xs text-muted-foreground">{formatDate(call.callDate)}</span>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -924,17 +874,6 @@ export default function ServiceCallDetail({ id }: { id: string }) {
               </Button>
             </>
           )}
-        </div>
-        </div>
-
-        {/* ── KPI Strip ── */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 mt-5 pt-5 border-t border-border/50">
-          <KPICell label="Call Date" value={formatDate(call.callDate)} />
-          <KPICell label="Scheduled" value={call.scheduledDate ? formatDate(call.scheduledDate) + (call.scheduledTime ? ` · ${formatTime(call.scheduledTime)}` : "") : "—"} />
-          <KPICell label="Days Open" value={call.status === "Completed" ? "—" : `${daysOpen}d`} />
-          <KPICell label="Visits" value={String(visitCount)} />
-          <KPICell label="Hours on Job" value={call.hoursOnJob ? `${call.hoursOnJob}h` : "—"} />
-          <KPICell label="Photos" value={String(photoCount)} />
         </div>
       </div>
 
@@ -992,35 +931,6 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           </div>
         );
       })()}
-
-      {/* ─── TABS ─── */}
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="w-full justify-start overflow-x-auto bg-card border border-border/50 rounded-xl p-1 h-auto flex-wrap md:flex-nowrap">
-          <TabsTrigger value="overview" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-1.5 px-3 md:px-4" data-testid="tab-overview">
-            <FileText className="w-3.5 h-3.5" /> Overview
-          </TabsTrigger>
-          <TabsTrigger value="visits" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-1.5 px-3 md:px-4" data-testid="tab-visits">
-            <ListChecks className="w-3.5 h-3.5" /> Visits <span className="text-[10px] opacity-60">{visitCount}</span>
-          </TabsTrigger>
-          <TabsTrigger value="photos" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-1.5 px-3 md:px-4" data-testid="tab-photos">
-            <ImageIcon className="w-3.5 h-3.5" /> Photos <span className="text-[10px] opacity-60">{photoCount}</span>
-          </TabsTrigger>
-          <TabsTrigger value="parts" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-1.5 px-3 md:px-4" data-testid="tab-parts">
-            <Wrench className="w-3.5 h-3.5" /> Parts <span className="text-[10px] opacity-60">{partsCount}</span>
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-1.5 px-3 md:px-4" data-testid="tab-activity">
-            <MessageSquare className="w-3.5 h-3.5" /> Activity <span className="text-[10px] opacity-60">{activityCount}</span>
-          </TabsTrigger>
-          <TabsTrigger value="schedule" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-1.5 px-3 md:px-4" data-testid="tab-schedule">
-            <CalendarDays className="w-3.5 h-3.5" /> Schedule
-          </TabsTrigger>
-          <TabsTrigger value="claim" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-1.5 px-3 md:px-4" data-testid="tab-claim">
-            <Shield className="w-3.5 h-3.5" /> Claim
-          </TabsTrigger>
-        </TabsList>
-
-        {/* ─── OVERVIEW TAB ─── */}
-        <TabsContent value="overview" className="space-y-5 mt-5">
 
       {/* Status / Claim (editable) */}
       {isEditing && (
@@ -1088,6 +998,67 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           </CardContent>
         </Card>
       )}
+
+      {/* Activity Log */}
+      <Card>
+        <CardHeader className="pb-3 border-b border-border">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            <span className="flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> Activity Log ({call.activities?.length || 0})</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Add note input */}
+          <div className="flex gap-2">
+            <Input
+              value={newNote}
+              onChange={e => setNewNote(e.target.value)}
+              placeholder="Add a note… e.g. Left voicemail, Parts shipped"
+              className="text-sm"
+              onKeyDown={e => {
+                if (e.key === "Enter" && newNote.trim()) {
+                  addActivityMutation.mutate(newNote.trim());
+                }
+              }}
+              data-testid="input-activity-note"
+            />
+            <Button
+              size="sm"
+              disabled={!newNote.trim() || addActivityMutation.isPending}
+              onClick={() => newNote.trim() && addActivityMutation.mutate(newNote.trim())}
+              data-testid="button-add-activity"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+          {/* Activity timeline */}
+          {call.activities && call.activities.length > 0 ? (
+            <div className="space-y-2">
+              {[...call.activities].reverse().map((activity) => {
+                const date = new Date(activity.createdAt);
+                const timeStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " at " + date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                return (
+                  <div key={activity.id} className="flex items-start gap-2 group" data-testid={`activity-${activity.id}`}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground">{activity.note}</p>
+                      <p className="text-[10px] text-muted-foreground">{timeStr}</p>
+                    </div>
+                    <button
+                      onClick={() => deleteActivityMutation.mutate(activity.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"
+                      title="Delete note"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-2">No activity notes yet.</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Main Info */}
       <div className="grid md:grid-cols-2 gap-4">
@@ -1393,6 +1364,221 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </Card>
       </div>
 
+      {/* Scheduled Appointments */}
+      <Card>
+        <CardHeader className="pb-3 border-b border-border">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              <span className="flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" /> Scheduled Appointments {appointments && appointments.length > 0 ? `(${appointments.length})` : ""}</span>
+            </CardTitle>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => {
+                  setReschedForm({
+                    date: "",
+                    time: "",
+                    reason: "",
+                  });
+                  setShowRescheduleDialog(true);
+                }}
+                data-testid="button-reschedule"
+              >
+                <Plus className="w-3 h-3 mr-1" /> Reschedule
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {!appointments || appointments.length === 0 ? (
+            <div className="p-5 text-center">
+              <p className="text-sm text-muted-foreground mb-3">No appointments scheduled yet.</p>
+              {canEdit && (
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => {
+                  setReschedForm({ date: "", time: "", reason: "Initial scheduling" });
+                  setShowRescheduleDialog(true);
+                }}>
+                  <Plus className="w-3 h-3 mr-1" /> Schedule
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {appointments.map((appt) => {
+                const isActive = appt.status === "active";
+                const ts = new Date(appt.createdAt);
+                const tsStr = ts.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                return (
+                  <div
+                    key={appt.id}
+                    className={`px-5 py-3.5 flex items-start gap-4 ${isActive ? "bg-primary/5" : "bg-transparent"}`}
+                    data-testid={`appointment-${appt.id}`}
+                  >
+                    <div className="flex-shrink-0 pt-0.5">
+                      {isActive ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500" /> ACTIVE
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                          Rescheduled
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold ${isActive ? "text-base text-foreground" : "text-sm text-muted-foreground line-through"}`}>
+                        {formatDate(appt.scheduledDate)}{appt.scheduledTime && <> &middot; {formatTime(appt.scheduledTime)}</>}
+                      </p>
+                      {appt.reason && !isActive && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          <span className="font-medium">Reason:</span> {appt.reason}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground/60 mt-1">
+                        {appt.createdByName ? `Set by ${appt.createdByName}` : ""}{appt.createdByName ? " \u00b7 " : ""}{tsStr}
+                      </p>
+                    </div>
+                    {isActive && canEdit && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs flex-shrink-0"
+                        onClick={() => {
+                          setEditActiveForm({
+                            date: appt.scheduledDate,
+                            time: appt.scheduledTime || "",
+                          });
+                          setShowEditActiveDialog(true);
+                        }}
+                        data-testid="button-edit-active-appt"
+                      >
+                        <Edit3 className="w-3 h-3 mr-1" /> Edit
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Reschedule Dialog */}
+      <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reschedule Appointment</DialogTitle>
+            <DialogDescription>
+              The current appointment will be marked as rescheduled and a new active appointment will be created.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">New Date <span className="text-red-500">*</span></label>
+                <Input
+                  type="date"
+                  value={reschedForm.date}
+                  onChange={e => setReschedForm(f => ({ ...f, date: e.target.value }))}
+                  data-testid="reschedule-date"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">New Time</label>
+                <Input
+                  type="time"
+                  value={reschedForm.time}
+                  onChange={e => setReschedForm(f => ({ ...f, time: e.target.value }))}
+                  data-testid="reschedule-time"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Reason <span className="text-red-500">*</span></label>
+              <Textarea
+                value={reschedForm.reason}
+                onChange={e => setReschedForm(f => ({ ...f, reason: e.target.value }))}
+                placeholder="e.g. Customer requested different day, parts delayed…"
+                className="min-h-[70px] text-sm"
+                data-testid="reschedule-reason"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">Required — helps you remember why the appointment moved.</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowRescheduleDialog(false)} disabled={rescheduleMutation.isPending}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!reschedForm.date || !reschedForm.reason.trim()) {
+                  toast({ title: "Missing info", description: "Date and reason are required.", variant: "destructive" });
+                  return;
+                }
+                rescheduleMutation.mutate({
+                  scheduledDate: reschedForm.date,
+                  scheduledTime: reschedForm.time || null,
+                  reason: reschedForm.reason.trim(),
+                });
+              }}
+              disabled={rescheduleMutation.isPending}
+              data-testid="button-confirm-reschedule"
+            >
+              {rescheduleMutation.isPending ? "Saving…" : "Reschedule"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Active Appointment Dialog (typo/quick fix — no history entry) */}
+      <Dialog open={showEditActiveDialog} onOpenChange={setShowEditActiveDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Active Appointment</DialogTitle>
+            <DialogDescription>
+              Quick fix — update the date or time without creating a history entry. Use this for typos or small corrections.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Date</label>
+              <Input
+                type="date"
+                value={editActiveForm.date}
+                onChange={e => setEditActiveForm(f => ({ ...f, date: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Time</label>
+              <Input
+                type="time"
+                value={editActiveForm.time}
+                onChange={e => setEditActiveForm(f => ({ ...f, time: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowEditActiveDialog(false)} disabled={editActiveAppointmentMutation.isPending}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!editActiveForm.date) {
+                  toast({ title: "Missing date", description: "Date is required.", variant: "destructive" });
+                  return;
+                }
+                editActiveAppointmentMutation.mutate({
+                  scheduledDate: editActiveForm.date,
+                  scheduledTime: editActiveForm.time || null,
+                });
+              }}
+              disabled={editActiveAppointmentMutation.isPending}
+              data-testid="button-confirm-edit-active"
+            >
+              {editActiveAppointmentMutation.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Product with Warranty Badge */}
       <Card>
         <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Product</CardTitle></CardHeader>
@@ -1549,11 +1735,98 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         );
       })}
 
-
-        </TabsContent>
-
-        {/* ─── VISITS TAB ─── */}
-        <TabsContent value="visits" className="space-y-5 mt-5">
+      {/* Claim Tracking */}
+      <Card>
+        <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Warranty Claim</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            <ClaimBadge status={displayCall.claimStatus ?? call.claimStatus} />
+            {(displayCall.claimStatus === "Approved") && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+            {(displayCall.claimStatus === "Denied") && <AlertCircle className="w-4 h-4 text-red-500" />}
+            {call.claimNumber && (
+              <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded" data-testid="claim-number-display">#{call.claimNumber}</span>
+            )}
+          </div>
+          {!isEditing ? (
+            <>
+              {call.claimNotes ? <p className="text-sm text-foreground whitespace-pre-wrap">{call.claimNotes}</p> : <p className="text-sm text-muted-foreground">No claim notes.</p>}
+              {(call.partsCost || call.laborCost || call.otherCost || call.claimAmount) && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 mt-2 border-t border-border">
+                  {call.partsCost && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Parts Cost</p>
+                      <p className="text-sm font-medium">${parseFloat(call.partsCost).toFixed(2)}</p>
+                    </div>
+                  )}
+                  {call.laborCost && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Labor Cost</p>
+                      <p className="text-sm font-medium">${parseFloat(call.laborCost).toFixed(2)}</p>
+                    </div>
+                  )}
+                  {call.otherCost && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Other Cost</p>
+                      <p className="text-sm font-medium">${parseFloat(call.otherCost).toFixed(2)}</p>
+                    </div>
+                  )}
+                  {call.claimAmount && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Claim Amount</p>
+                      <p className="text-sm font-semibold text-green-600 dark:text-green-400">${parseFloat(call.claimAmount).toFixed(2)}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Claim / Reference Number</label>
+                <Input
+                  value={(editData.claimNumber ?? call.claimNumber ?? "") as string}
+                  onChange={e => setEditData(d => ({ ...d, claimNumber: e.target.value }))}
+                  placeholder="e.g. WC-2026-04512"
+                  className="h-8 text-sm font-mono"
+                  data-testid="edit-claim-number"
+                />
+              </div>
+              <Textarea
+                rows={2}
+                value={(editData.claimNotes ?? call.claimNotes) as string ?? ""}
+                onChange={e => setEditData(d => ({ ...d, claimNotes: e.target.value }))}
+                placeholder="Claim notes…"
+                className="text-sm"
+                data-testid="edit-claim-notes"
+              />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                {[
+                  { key: "partsCost", label: "Parts Cost" },
+                  { key: "laborCost", label: "Labor Cost" },
+                  { key: "otherCost", label: "Other Cost" },
+                  { key: "claimAmount", label: "Claim Amount" },
+                ].map(({ key, label }) => (
+                  <div key={key}>
+                    <label className="text-xs text-muted-foreground">{label}</label>
+                    <div className="relative mt-0.5">
+                      <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={(editData[key as keyof typeof editData] ?? call[key as keyof ServiceCall]) as string ?? ""}
+                        onChange={e => setEditData(d => ({ ...d, [key]: e.target.value }))}
+                        className="h-8 text-sm pl-7"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Visit History (Return Visits) */}
       <Card data-testid="visit-history-card">
@@ -1653,11 +1926,93 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </CardContent>
       </Card>
 
-
-        </TabsContent>
-
-        {/* ─── PHOTOS TAB ─── */}
-        <TabsContent value="photos" className="space-y-5 mt-5">
+      {/* Add / Edit Visit Dialog */}
+      <Dialog open={showAddVisit} onOpenChange={(open) => { if (!open) { setShowAddVisit(false); setEditingVisit(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingVisit ? `Edit Visit ${editingVisit.visitNumber}` : "Add Return Visit"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Visit Date *</label>
+              <Input
+                type="date"
+                value={visitForm.visitDate}
+                onChange={e => { setVisitForm(f => ({ ...f, visitDate: e.target.value })); setVisitDateError(""); }}
+                className="h-8 text-sm"
+                data-testid="input-visit-date"
+              />
+              {visitDateError && <p className="text-xs text-destructive mt-1">{visitDateError}</p>}
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Status</label>
+              <Select value={visitForm.status} onValueChange={v => setVisitForm(f => ({ ...f, status: v }))}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-visit-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VISIT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Technician</label>
+              <Select value={visitForm.technicianId || "__none__"} onValueChange={v => setVisitForm(f => ({ ...f, technicianId: v === "__none__" ? "" : v }))}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-visit-tech">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Select —</SelectItem>
+                  {techUsers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Hours on Job</label>
+                <Input
+                  type="text"
+                  value={visitForm.hoursOnJob}
+                  onChange={e => setVisitForm(f => ({ ...f, hoursOnJob: e.target.value }))}
+                  placeholder="e.g. 2.5"
+                  className="h-8 text-sm"
+                  data-testid="input-visit-hours"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Miles Traveled</label>
+                <Input
+                  type="text"
+                  value={visitForm.milesTraveled}
+                  onChange={e => setVisitForm(f => ({ ...f, milesTraveled: e.target.value }))}
+                  placeholder="e.g. 45"
+                  className="h-8 text-sm"
+                  data-testid="input-visit-miles"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
+              <Textarea
+                rows={3}
+                value={visitForm.notes}
+                onChange={e => setVisitForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Visit notes…"
+                className="text-sm"
+                data-testid="input-visit-notes"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowAddVisit(false); setEditingVisit(null); }}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleVisitSubmit} disabled={createVisitMutation.isPending || updateVisitMutation.isPending} data-testid="button-save-visit">
+                {(createVisitMutation.isPending || updateVisitMutation.isPending) ? "Saving…" : (editingVisit ? "Update Visit" : "Add Visit")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Photos */}
       <Card>
@@ -1744,12 +2099,6 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           )}
         </CardContent>
       </Card>
-
-
-        </TabsContent>
-
-        {/* ─── PARTS TAB ─── */}
-        <TabsContent value="parts" className="space-y-5 mt-5">
 
       {/* Parts Used */}
       <Card>
@@ -1842,486 +2191,6 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           ) : null}
         </CardContent>
       </Card>
-
-
-        </TabsContent>
-
-        {/* ─── ACTIVITY TAB ─── */}
-        <TabsContent value="activity" className="space-y-5 mt-5">
-
-      {/* Activity Log */}
-      <Card>
-        <CardHeader className="pb-3 border-b border-border">
-          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            <span className="flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> Activity Log ({call.activities?.length || 0})</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Add note input */}
-          <div className="flex gap-2">
-            <Input
-              value={newNote}
-              onChange={e => setNewNote(e.target.value)}
-              placeholder="Add a note… e.g. Left voicemail, Parts shipped"
-              className="text-sm"
-              onKeyDown={e => {
-                if (e.key === "Enter" && newNote.trim()) {
-                  addActivityMutation.mutate(newNote.trim());
-                }
-              }}
-              data-testid="input-activity-note"
-            />
-            <Button
-              size="sm"
-              disabled={!newNote.trim() || addActivityMutation.isPending}
-              onClick={() => newNote.trim() && addActivityMutation.mutate(newNote.trim())}
-              data-testid="button-add-activity"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-          {/* Activity timeline */}
-          {call.activities && call.activities.length > 0 ? (
-            <div className="space-y-2">
-              {[...call.activities].reverse().map((activity) => {
-                const date = new Date(activity.createdAt);
-                const timeStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " at " + date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-                return (
-                  <div key={activity.id} className="flex items-start gap-2 group" data-testid={`activity-${activity.id}`}>
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground">{activity.note}</p>
-                      <p className="text-[10px] text-muted-foreground">{timeStr}</p>
-                    </div>
-                    <button
-                      onClick={() => deleteActivityMutation.mutate(activity.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"
-                      title="Delete note"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground text-center py-2">No activity notes yet.</p>
-          )}
-        </CardContent>
-      </Card>
-
-
-        </TabsContent>
-
-        {/* ─── SCHEDULE TAB ─── */}
-        <TabsContent value="schedule" className="space-y-5 mt-5">
-
-      {/* Scheduled Appointments */}
-      <Card>
-        <CardHeader className="pb-3 border-b border-border">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              <span className="flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" /> Scheduled Appointments {appointments && appointments.length > 0 ? `(${appointments.length})` : ""}</span>
-            </CardTitle>
-            {canEdit && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs"
-                onClick={() => {
-                  setReschedForm({
-                    date: "",
-                    time: "",
-                    reason: "",
-                  });
-                  setShowRescheduleDialog(true);
-                }}
-                data-testid="button-reschedule"
-              >
-                <Plus className="w-3 h-3 mr-1" /> Reschedule
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {!appointments || appointments.length === 0 ? (
-            <div className="p-5 text-center">
-              <p className="text-sm text-muted-foreground mb-3">No appointments scheduled yet.</p>
-              {canEdit && (
-                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => {
-                  setReschedForm({ date: "", time: "", reason: "Initial scheduling" });
-                  setShowRescheduleDialog(true);
-                }}>
-                  <Plus className="w-3 h-3 mr-1" /> Schedule
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {appointments.map((appt) => {
-                const isActive = appt.status === "active";
-                const ts = new Date(appt.createdAt);
-                const tsStr = ts.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-                return (
-                  <div
-                    key={appt.id}
-                    className={`px-5 py-3.5 flex items-start gap-4 ${isActive ? "bg-primary/5" : "bg-transparent"}`}
-                    data-testid={`appointment-${appt.id}`}
-                  >
-                    <div className="flex-shrink-0 pt-0.5">
-                      {isActive ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500" /> ACTIVE
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                          Rescheduled
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-semibold ${isActive ? "text-base text-foreground" : "text-sm text-muted-foreground line-through"}`}>
-                        {formatDate(appt.scheduledDate)}{appt.scheduledTime && <> &middot; {formatTime(appt.scheduledTime)}</>}
-                      </p>
-                      {appt.reason && !isActive && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          <span className="font-medium">Reason:</span> {appt.reason}
-                        </p>
-                      )}
-                      <p className="text-[10px] text-muted-foreground/60 mt-1">
-                        {appt.createdByName ? `Set by ${appt.createdByName}` : ""}{appt.createdByName ? " \u00b7 " : ""}{tsStr}
-                      </p>
-                    </div>
-                    {isActive && canEdit && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs flex-shrink-0"
-                        onClick={() => {
-                          setEditActiveForm({
-                            date: appt.scheduledDate,
-                            time: appt.scheduledTime || "",
-                          });
-                          setShowEditActiveDialog(true);
-                        }}
-                        data-testid="button-edit-active-appt"
-                      >
-                        <Edit3 className="w-3 h-3 mr-1" /> Edit
-                      </Button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-
-        </TabsContent>
-
-        {/* ─── CLAIM TAB ─── */}
-        <TabsContent value="claim" className="space-y-5 mt-5">
-
-      {/* Claim Tracking */}
-      <Card>
-        <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Warranty Claim</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center gap-3">
-            <ClaimBadge status={displayCall.claimStatus ?? call.claimStatus} />
-            {(displayCall.claimStatus === "Approved") && <CheckCircle2 className="w-4 h-4 text-green-500" />}
-            {(displayCall.claimStatus === "Denied") && <AlertCircle className="w-4 h-4 text-red-500" />}
-            {call.claimNumber && (
-              <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded" data-testid="claim-number-display">#{call.claimNumber}</span>
-            )}
-          </div>
-          {!isEditing ? (
-            <>
-              {call.claimNotes ? <p className="text-sm text-foreground whitespace-pre-wrap">{call.claimNotes}</p> : <p className="text-sm text-muted-foreground">No claim notes.</p>}
-              {(call.partsCost || call.laborCost || call.otherCost || call.claimAmount) && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 mt-2 border-t border-border">
-                  {call.partsCost && (
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Parts Cost</p>
-                      <p className="text-sm font-medium">${parseFloat(call.partsCost).toFixed(2)}</p>
-                    </div>
-                  )}
-                  {call.laborCost && (
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Labor Cost</p>
-                      <p className="text-sm font-medium">${parseFloat(call.laborCost).toFixed(2)}</p>
-                    </div>
-                  )}
-                  {call.otherCost && (
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Other Cost</p>
-                      <p className="text-sm font-medium">${parseFloat(call.otherCost).toFixed(2)}</p>
-                    </div>
-                  )}
-                  {call.claimAmount && (
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Claim Amount</p>
-                      <p className="text-sm font-semibold text-green-600 dark:text-green-400">${parseFloat(call.claimAmount).toFixed(2)}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Claim / Reference Number</label>
-                <Input
-                  value={(editData.claimNumber ?? call.claimNumber ?? "") as string}
-                  onChange={e => setEditData(d => ({ ...d, claimNumber: e.target.value }))}
-                  placeholder="e.g. WC-2026-04512"
-                  className="h-8 text-sm font-mono"
-                  data-testid="edit-claim-number"
-                />
-              </div>
-              <Textarea
-                rows={2}
-                value={(editData.claimNotes ?? call.claimNotes) as string ?? ""}
-                onChange={e => setEditData(d => ({ ...d, claimNotes: e.target.value }))}
-                placeholder="Claim notes…"
-                className="text-sm"
-                data-testid="edit-claim-notes"
-              />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
-                {[
-                  { key: "partsCost", label: "Parts Cost" },
-                  { key: "laborCost", label: "Labor Cost" },
-                  { key: "otherCost", label: "Other Cost" },
-                  { key: "claimAmount", label: "Claim Amount" },
-                ].map(({ key, label }) => (
-                  <div key={key}>
-                    <label className="text-xs text-muted-foreground">{label}</label>
-                    <div className="relative mt-0.5">
-                      <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={(editData[key as keyof typeof editData] ?? call[key as keyof ServiceCall]) as string ?? ""}
-                        onChange={e => setEditData(d => ({ ...d, [key]: e.target.value }))}
-                        className="h-8 text-sm pl-7"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-
-        </TabsContent>
-      </Tabs>
-
-      {/* ─── Globally-mounted dialogs (work from any tab) ─── */}
-      {/* Reschedule Dialog */}
-      <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reschedule Appointment</DialogTitle>
-            <DialogDescription>
-              The current appointment will be marked as rescheduled and a new active appointment will be created.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">New Date <span className="text-red-500">*</span></label>
-                <Input
-                  type="date"
-                  value={reschedForm.date}
-                  onChange={e => setReschedForm(f => ({ ...f, date: e.target.value }))}
-                  data-testid="reschedule-date"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">New Time</label>
-                <Input
-                  type="time"
-                  value={reschedForm.time}
-                  onChange={e => setReschedForm(f => ({ ...f, time: e.target.value }))}
-                  data-testid="reschedule-time"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Reason <span className="text-red-500">*</span></label>
-              <Textarea
-                value={reschedForm.reason}
-                onChange={e => setReschedForm(f => ({ ...f, reason: e.target.value }))}
-                placeholder="e.g. Customer requested different day, parts delayed…"
-                className="min-h-[70px] text-sm"
-                data-testid="reschedule-reason"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">Required — helps you remember why the appointment moved.</p>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowRescheduleDialog(false)} disabled={rescheduleMutation.isPending}>Cancel</Button>
-            <Button
-              onClick={() => {
-                if (!reschedForm.date || !reschedForm.reason.trim()) {
-                  toast({ title: "Missing info", description: "Date and reason are required.", variant: "destructive" });
-                  return;
-                }
-                rescheduleMutation.mutate({
-                  scheduledDate: reschedForm.date,
-                  scheduledTime: reschedForm.time || null,
-                  reason: reschedForm.reason.trim(),
-                });
-              }}
-              disabled={rescheduleMutation.isPending}
-              data-testid="button-confirm-reschedule"
-            >
-              {rescheduleMutation.isPending ? "Saving…" : "Reschedule"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Active Appointment Dialog (typo/quick fix — no history entry) */}
-      <Dialog open={showEditActiveDialog} onOpenChange={setShowEditActiveDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Active Appointment</DialogTitle>
-            <DialogDescription>
-              Quick fix — update the date or time without creating a history entry. Use this for typos or small corrections.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Date</label>
-              <Input
-                type="date"
-                value={editActiveForm.date}
-                onChange={e => setEditActiveForm(f => ({ ...f, date: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Time</label>
-              <Input
-                type="time"
-                value={editActiveForm.time}
-                onChange={e => setEditActiveForm(f => ({ ...f, time: e.target.value }))}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowEditActiveDialog(false)} disabled={editActiveAppointmentMutation.isPending}>Cancel</Button>
-            <Button
-              onClick={() => {
-                if (!editActiveForm.date) {
-                  toast({ title: "Missing date", description: "Date is required.", variant: "destructive" });
-                  return;
-                }
-                editActiveAppointmentMutation.mutate({
-                  scheduledDate: editActiveForm.date,
-                  scheduledTime: editActiveForm.time || null,
-                });
-              }}
-              disabled={editActiveAppointmentMutation.isPending}
-              data-testid="button-confirm-edit-active"
-            >
-              {editActiveAppointmentMutation.isPending ? "Saving…" : "Save"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add / Edit Visit Dialog */}
-      <Dialog open={showAddVisit} onOpenChange={(open) => { if (!open) { setShowAddVisit(false); setEditingVisit(null); } }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingVisit ? `Edit Visit ${editingVisit.visitNumber}` : "Add Return Visit"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Visit Date *</label>
-              <Input
-                type="date"
-                value={visitForm.visitDate}
-                onChange={e => { setVisitForm(f => ({ ...f, visitDate: e.target.value })); setVisitDateError(""); }}
-                className="h-8 text-sm"
-                data-testid="input-visit-date"
-              />
-              {visitDateError && <p className="text-xs text-destructive mt-1">{visitDateError}</p>}
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Status</label>
-              <Select value={visitForm.status} onValueChange={v => setVisitForm(f => ({ ...f, status: v }))}>
-                <SelectTrigger className="h-8 text-sm" data-testid="select-visit-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {VISIT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Technician</label>
-              <Select value={visitForm.technicianId || "__none__"} onValueChange={v => setVisitForm(f => ({ ...f, technicianId: v === "__none__" ? "" : v }))}>
-                <SelectTrigger className="h-8 text-sm" data-testid="select-visit-tech">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">— Select —</SelectItem>
-                  {techUsers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Hours on Job</label>
-                <Input
-                  type="text"
-                  value={visitForm.hoursOnJob}
-                  onChange={e => setVisitForm(f => ({ ...f, hoursOnJob: e.target.value }))}
-                  placeholder="e.g. 2.5"
-                  className="h-8 text-sm"
-                  data-testid="input-visit-hours"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Miles Traveled</label>
-                <Input
-                  type="text"
-                  value={visitForm.milesTraveled}
-                  onChange={e => setVisitForm(f => ({ ...f, milesTraveled: e.target.value }))}
-                  placeholder="e.g. 45"
-                  className="h-8 text-sm"
-                  data-testid="input-visit-miles"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
-              <Textarea
-                rows={3}
-                value={visitForm.notes}
-                onChange={e => setVisitForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Visit notes…"
-                className="text-sm"
-                data-testid="input-visit-notes"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => { setShowAddVisit(false); setEditingVisit(null); }}>
-                Cancel
-              </Button>
-              <Button size="sm" onClick={handleVisitSubmit} disabled={createVisitMutation.isPending || updateVisitMutation.isPending} data-testid="button-save-visit">
-                {(createVisitMutation.isPending || updateVisitMutation.isPending) ? "Saving…" : (editingVisit ? "Update Visit" : "Add Visit")}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Fixed save bar at bottom of viewport */}
       {isEditing && (

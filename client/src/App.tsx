@@ -14,6 +14,7 @@ import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 // Lazy-load heavy pages — keeps initial bundle small for fast first load
 const NewServiceCall = lazy(() => import("@/pages/NewServiceCall"));
 const ServiceCallDetail = lazy(() => import("@/pages/ServiceCallDetail"));
+const ServiceCallDetailLegacy = lazy(() => import("@/pages/ServiceCallDetail.legacy"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
 const Contacts = lazy(() => import("@/pages/Contacts"));
@@ -130,6 +131,13 @@ function AppRouter() {
           {(params) => (
             <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
               <ServiceCallDetail id={params.id} />
+            </Suspense>
+          )}
+        </Route>
+        <Route path="/calls/legacy/:id">
+          {(params) => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+              <ServiceCallDetailLegacy id={params.id} />
             </Suspense>
           )}
         </Route>
