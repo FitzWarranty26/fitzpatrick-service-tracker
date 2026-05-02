@@ -16,6 +16,7 @@ const NewServiceCall = lazy(() => import("@/pages/NewServiceCall"));
 const ServiceCallDetail = lazy(() => import("@/pages/ServiceCallDetail"));
 const ServiceCallDetailLegacy = lazy(() => import("@/pages/ServiceCallDetail.legacy"));
 const ServiceCallListLegacy = lazy(() => import("@/pages/ServiceCallList.legacy"));
+const NewServiceCallLegacy = lazy(() => import("@/pages/NewServiceCall.legacy"));
 const ContactDetail = lazy(() => import("@/pages/ContactDetail"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
@@ -70,6 +71,13 @@ function AppRouter() {
           {(params) => (
             <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
               <NewServiceCall followUpId={params.parentId} />
+            </Suspense>
+          )}
+        </Route>
+        <Route path="/new/legacy">
+          {() => (
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
+              <NewServiceCallLegacy />
             </Suspense>
           )}
         </Route>
