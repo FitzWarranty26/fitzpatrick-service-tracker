@@ -271,6 +271,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
   const [newPhotoFiles, setNewPhotoFiles] = useState<Array<{ photoUrl: string; caption: string; photoType: string }>>([]);
 
+  // Controlled tab (lets us jump Overview from a Visit-1 link)
+  const [activeTab, setActiveTab] = useState("overview");
+
   // Schedule history
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
   const [showEditActiveDialog, setShowEditActiveDialog] = useState(false);
@@ -994,7 +997,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       })()}
 
       {/* ─── TABS ─── */}
-      <Tabs defaultValue="overview" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full justify-start overflow-x-auto bg-card border border-border/50 rounded-xl p-1 h-auto flex-wrap md:flex-nowrap">
           <TabsTrigger value="overview" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-1.5 px-3 md:px-4" data-testid="tab-overview">
             <FileText className="w-3.5 h-3.5" /> Overview
@@ -1567,6 +1570,24 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           )}
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Empty state when there are no return visits at all — don't render a
+              synthesized 'Visit 1' card because the original visit data lives on
+              the Overview tab. Showing a non-editable Visit 1 card confused users. */}
+          {visits.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border/60 bg-muted/10 p-5 text-center" data-testid="visits-empty-state">
+              <p className="text-sm text-foreground mb-1 font-medium">No return visits yet</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                The initial on-site work is captured on the <strong>Overview</strong> tab — Issue, Diagnosis, Resolution, Hours, Miles.
+                <br />Add a return visit only when the technician has to come back.
+              </p>
+              {canEdit && (
+                <Button variant="outline" size="sm" onClick={openAddVisit}
+                  className="text-[hsl(200,72%,40%)] border-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,40%)]/10">
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Return Visit
+                </Button>
+              )}
+            </div>
+          )}
           {/* Visit N cards — sorted newest first */}
           {[...visits].sort((a, b) => b.visitNumber - a.visitNumber).map((v) => {
             const tech = techUsers.find(u => u.id === v.technicianId);
@@ -1632,24 +1653,41 @@ export default function ServiceCallDetail({ id }: { id: string }) {
             );
           })}
 
-          {/* Visit 1 — synthesized from call (always last) */}
-          <div className="rounded-lg border border-border bg-card p-4" data-testid="visit-1-card">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold bg-[hsl(220_22%_14%)] text-white px-2 py-0.5 rounded">VISIT 1</span>
-              <span className="text-sm text-foreground">{formatDate(call.callDate)}</span>
-              <StatusBadge status={call.status} />
-            </div>
-            <div className="mt-2 space-y-1">
-              {(call.hoursOnJob || call.milesTraveled) && (
-                <p className="text-xs text-muted-foreground">
-                  {call.hoursOnJob && <>Hours: {call.hoursOnJob} hrs</>}
-                  {call.hoursOnJob && call.milesTraveled && <span className="mx-2">|</span>}
-                  {call.milesTraveled && <>Miles: {call.milesTraveled} mi</>}
+          {/* Visit 1 — synthesized from call. Only shown when there are return
+              visits (Visit 2+) so the list reads chronologically. Links back to
+              Overview for editing because that's where the data lives. */}
+          {visits.length > 0 && (
+            <div className="rounded-lg border border-border bg-card p-4" data-testid="visit-1-card">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold bg-[hsl(220_22%_14%)] text-white px-2 py-0.5 rounded">VISIT 1</span>
+                <span className="text-sm text-foreground">{formatDate(call.callDate)}</span>
+                <StatusBadge status={call.status} />
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto h-7 text-xs"
+                    onClick={() => setActiveTab("overview")}
+                    data-testid="button-edit-visit-1"
+                  >
+                    <Edit3 className="w-3 h-3 mr-1" /> Edit on Overview
+                  </Button>
+                )}
+              </div>
+              <div className="mt-2 space-y-1">
+                {(call.hoursOnJob || call.milesTraveled) && (
+                  <p className="text-xs text-muted-foreground">
+                    {call.hoursOnJob && <>Hours: {call.hoursOnJob} hrs</>}
+                    {call.hoursOnJob && call.milesTraveled && <span className="mx-2">|</span>}
+                    {call.milesTraveled && <>Miles: {call.milesTraveled} mi</>}
+                  </p>
+                )}
+                <p className="text-[10px] text-muted-foreground/70">
+                  Visit 1 reflects the initial on-site work — captured on the Overview tab.
                 </p>
-              )}
-
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1946,10 +1984,11 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         <CardContent className="p-0">
           {!appointments || appointments.length === 0 ? (
             <div className="p-5 text-center">
-              <p className="text-sm text-muted-foreground mb-3">No appointments scheduled yet.</p>
+              <p className="text-sm text-muted-foreground mb-1">No appointments scheduled yet.</p>
+              <p className="text-xs text-muted-foreground/70 mb-3">The first scheduled date is the original call — see the Issue Description on the Overview tab for what to address.</p>
               {canEdit && (
                 <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => {
-                  setReschedForm({ date: "", time: "", reason: "Initial scheduling" });
+                  setReschedForm({ date: "", time: "", reason: "" });
                   setShowRescheduleDialog(true);
                 }}>
                   <Plus className="w-3 h-3 mr-1" /> Schedule
@@ -1980,12 +2019,13 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-semibold ${isActive ? "text-base text-foreground" : "text-sm text-muted-foreground line-through"}`}>
+                      <p className={`font-semibold ${isActive ? "text-base text-foreground" : "text-sm text-muted-foreground/70"}`}>
                         {formatDate(appt.scheduledDate)}{appt.scheduledTime && <> &middot; {formatTime(appt.scheduledTime)}</>}
                       </p>
-                      {appt.reason && !isActive && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          <span className="font-medium">Reason:</span> {appt.reason}
+                      {/* Reason describes what THIS appointment is about — shown on whichever row it was saved to */}
+                      {appt.reason && (
+                        <p className={`text-xs mt-1 ${isActive ? "text-foreground/80" : "text-muted-foreground/70 italic"}`}>
+                          {appt.reason}
                         </p>
                       )}
                       <p className="text-[10px] text-muted-foreground/60 mt-1">
@@ -2121,13 +2161,19 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       </Tabs>
 
       {/* ─── Globally-mounted dialogs (work from any tab) ─── */}
-      {/* Reschedule Dialog */}
+      {/* Reschedule Dialog — also handles the very first schedule.
+          If there's no prior active appointment, we treat this as the initial
+          schedule and don't require a reason. */}
       <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reschedule Appointment</DialogTitle>
+            <DialogTitle>
+              {(appointments && appointments.length > 0) ? "Reschedule Appointment" : "Schedule Appointment"}
+            </DialogTitle>
             <DialogDescription>
-              The current appointment will be marked as rescheduled and a new active appointment will be created.
+              {(appointments && appointments.length > 0)
+                ? "The current appointment will be moved to history and a new active appointment will be created. The reason you enter describes the new appointment."
+                : "Set the initial scheduled date for this service call."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -2152,23 +2198,36 @@ export default function ServiceCallDetail({ id }: { id: string }) {
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Reason <span className="text-red-500">*</span></label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {(appointments && appointments.length > 0) ? <>Reason <span className="text-red-500">*</span></> : <>Note <span className="text-muted-foreground/60">(optional)</span></>}
+              </label>
               <Textarea
                 value={reschedForm.reason}
                 onChange={e => setReschedForm(f => ({ ...f, reason: e.target.value }))}
-                placeholder="e.g. Customer requested different day, parts delayed…"
+                placeholder={(appointments && appointments.length > 0)
+                  ? "e.g. Received the blower — scheduling the install…"
+                  : "Leave blank to use the Issue Description…"}
                 className="min-h-[70px] text-sm"
                 data-testid="reschedule-reason"
               />
-              <p className="text-[10px] text-muted-foreground mt-1">Required — helps you remember why the appointment moved.</p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {(appointments && appointments.length > 0)
+                  ? "Required — describes the new appointment (not why the old one moved)."
+                  : "Optional — only needed if different from the original Issue Description."}
+              </p>
             </div>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowRescheduleDialog(false)} disabled={rescheduleMutation.isPending}>Cancel</Button>
             <Button
               onClick={() => {
-                if (!reschedForm.date || !reschedForm.reason.trim()) {
-                  toast({ title: "Missing info", description: "Date and reason are required.", variant: "destructive" });
+                const isFirstSchedule = !appointments || appointments.length === 0;
+                if (!reschedForm.date) {
+                  toast({ title: "Missing date", description: "A scheduled date is required.", variant: "destructive" });
+                  return;
+                }
+                if (!isFirstSchedule && !reschedForm.reason.trim()) {
+                  toast({ title: "Missing reason", description: "Please describe what the new appointment is for.", variant: "destructive" });
                   return;
                 }
                 rescheduleMutation.mutate({
@@ -2180,7 +2239,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
               disabled={rescheduleMutation.isPending}
               data-testid="button-confirm-reschedule"
             >
-              {rescheduleMutation.isPending ? "Saving…" : "Reschedule"}
+              {rescheduleMutation.isPending
+                ? "Saving…"
+                : (appointments && appointments.length > 0) ? "Reschedule" : "Schedule"}
             </Button>
           </div>
         </DialogContent>

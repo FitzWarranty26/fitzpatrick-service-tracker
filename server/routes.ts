@@ -2316,24 +2316,58 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const id = parseInt(req.params.id);
       const { scheduledDate, scheduledTime, reason } = req.body || {};
       if (!scheduledDate) return res.status(400).json({ error: "scheduledDate is required" });
-      if (!reason || !String(reason).trim()) return res.status(400).json({ error: "Reason is required when rescheduling" });
+
+      // Reason is required when there is already an active appointment
+      // (i.e. this is a reschedule). For the very first schedule, reason is
+      // optional — the issue description on the call covers it.
+      const existingActive = sqliteHandle.prepare(
+        `SELECT id FROM scheduled_appointments WHERE call_id = ? AND status = 'active' LIMIT 1`
+      ).get(id) as any;
+      if (existingActive && (!reason || !String(reason).trim())) {
+        return res.status(400).json({ error: "Reason is required when rescheduling" });
+      }
 
       const userId = req.user?.id;
       const userName = req.user?.displayName || req.user?.username || "Unknown";
 
+      // The reason describes what the NEW active appointment is about
+      // (e.g. "Received the blower — scheduling the install"). It goes on the
+      // new row. The old row just gets its status flipped to 'rescheduled' so
+      // it stays as historical context without having its original reason
+      // overwritten.
       const tx = sqliteHandle.transaction(() => {
         sqliteHandle.prepare(`
           UPDATE scheduled_appointments
-          SET status = 'rescheduled', reason = ?
+          SET status = 'rescheduled'
           WHERE call_id = ? AND status = 'active'
-        `).run(String(reason).trim(), id);
+        `).run(id);
+        const reasonValue = reason && String(reason).trim() ? String(reason).trim() : null;
         sqliteHandle.prepare(`
           INSERT INTO scheduled_appointments (call_id, scheduled_date, scheduled_time, status, reason, created_by_id, created_by_name, created_at)
-          VALUES (?, ?, ?, 'active', NULL, ?, ?, CURRENT_TIMESTAMP)
-        `).run(id, scheduledDate, scheduledTime || null, userId || null, userName);
+          VALUES (?, ?, ?, 'active', ?, ?, ?, CURRENT_TIMESTAMP)
+        `).run(id, scheduledDate, scheduledTime || null, reasonValue, userId || null, userName);
         sqliteHandle.prepare(`
           UPDATE service_calls SET scheduled_date = ?, scheduled_time = ? WHERE id = ?
         `).run(scheduledDate, scheduledTime || null, id);
+
+        // Auto-create the corresponding service_call_visits row for this
+        // reschedule. The first appointment corresponds to Visit 1 (synthesized
+        // from the call itself), so the second appointment = Visit 2, etc.
+        // Count existing visit records and assign the next number.
+        // Only auto-create a return-visit row when this is an actual reschedule
+        // (i.e. there was already an active appointment). The first schedule
+        // corresponds to Visit 1 which is synthesized from the call itself.
+        if (existingActive) {
+          const existingCount = (sqliteHandle.prepare(
+            `SELECT COUNT(*) as c FROM service_call_visits WHERE service_call_id = ?`
+          ).get(id) as any).c as number;
+          const visitNumber = existingCount + 2; // +1 for synthesized Visit 1 + 1 for the new one
+          sqliteHandle.prepare(`
+            INSERT INTO service_call_visits
+              (service_call_id, visit_number, visit_date, status, technician_id, notes, hours_on_job, miles_traveled, created_at, updated_at)
+            VALUES (?, ?, ?, 'Scheduled', NULL, NULL, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).run(id, visitNumber, scheduledDate);
+        }
       });
       tx();
       res.json({ ok: true });
