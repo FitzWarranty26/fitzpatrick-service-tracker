@@ -200,7 +200,7 @@ function InvoiceCell({ call }: { call: ServiceCallRow }) {
 
 // ─── Saved Views (preset chips) ─────────────────────────────────────────────
 type ViewKey =
-  | "all-open" | "my-calls" | "today" | "overdue-aging" | "awaiting-parts"
+  | "all-open" | "in-progress" | "my-calls" | "today" | "overdue-aging" | "awaiting-parts"
   | "unbilled" | "scheduled" | "completed-month" | "all";
 
 interface ViewDef {
@@ -211,6 +211,7 @@ interface ViewDef {
 
 const VIEWS: ViewDef[] = [
   { key: "all-open",        label: "All Open",       filter: (c) => c.status !== "Completed" },
+  { key: "in-progress",     label: "In Progress",    filter: (c) => c.status === "In Progress" },
   { key: "my-calls",        label: "My Calls",       filter: (c, { userId }) => userId != null && c.primaryTechnicianId === userId && c.status !== "Completed" },
   { key: "today",           label: "Today",          filter: (c, { today }) => c.scheduledDate === today && c.status !== "Completed" },
   { key: "overdue-aging",   label: "Overdue",        filter: (c) => c.status !== "Completed" && ageDays(c) >= 14 },
@@ -229,7 +230,7 @@ function presetToView(p?: string): ViewKey | null {
   if (!p) return null;
   const map: Record<string, ViewKey> = {
     "open":             "all-open",
-    "in-progress":      "all-open",      // closest match; user can refine
+    "in-progress":      "in-progress",
     "scheduled":        "scheduled",
     "completed":        "completed-month",
     "completed-month":  "completed-month",
@@ -241,11 +242,14 @@ function presetToView(p?: string): ViewKey | null {
 }
 
 // ─── Stat cards ────────────────────────────────────────────────────────────
+// KPI cards — clicking each one filters the table to the matching view.
+// `viewKey` references the saved-views chips below the strip, so the active
+// state is shared (clicking 'Open' here is the same as clicking 'All Open').
 const STAT_CARDS = [
-  { key: "open",        label: "Open",        accent: "border-l-sky-500",       num: "text-sky-600 dark:text-sky-400",       filter: (c: ServiceCallRow) => c.status !== "Completed" },
-  { key: "in-progress", label: "In Progress", accent: "border-l-amber-500",     num: "text-amber-600 dark:text-amber-400",   filter: (c: ServiceCallRow) => c.status === "In Progress" },
-  { key: "scheduled",   label: "Scheduled",   accent: "border-l-cyan-500",      num: "text-cyan-600 dark:text-cyan-400",     filter: (c: ServiceCallRow) => c.status === "Scheduled" },
-  { key: "completed",   label: "Completed",   accent: "border-l-emerald-500",   num: "text-emerald-600 dark:text-emerald-400", filter: (c: ServiceCallRow) => c.status === "Completed" },
+  { key: "open",        viewKey: "all-open" as ViewKey,        label: "Open",        accent: "border-l-sky-500",       hoverAccent: "hover:border-l-sky-400",       num: "text-sky-600 dark:text-sky-400",       filter: (c: ServiceCallRow) => c.status !== "Completed" },
+  { key: "in-progress", viewKey: "in-progress" as ViewKey,     label: "In Progress", accent: "border-l-amber-500",     hoverAccent: "hover:border-l-amber-400",     num: "text-amber-600 dark:text-amber-400",   filter: (c: ServiceCallRow) => c.status === "In Progress" },
+  { key: "scheduled",   viewKey: "scheduled" as ViewKey,       label: "Scheduled",   accent: "border-l-cyan-500",      hoverAccent: "hover:border-l-cyan-400",      num: "text-cyan-600 dark:text-cyan-400",     filter: (c: ServiceCallRow) => c.status === "Scheduled" },
+  { key: "completed",   viewKey: "completed-month" as ViewKey, label: "Completed",   accent: "border-l-emerald-500",   hoverAccent: "hover:border-l-emerald-400",   num: "text-emerald-600 dark:text-emerald-400", filter: (c: ServiceCallRow) => c.status === "Completed" },
 ] as const;
 
 // ─── Sort ───────────────────────────────────────────────────────────────────
@@ -356,7 +360,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
   // View counts
   const viewCounts = useMemo(() => {
     const out: Record<ViewKey, number> = {
-      "all-open": 0, "my-calls": 0, "today": 0, "overdue-aging": 0,
+      "all-open": 0, "in-progress": 0, "my-calls": 0, "today": 0, "overdue-aging": 0,
       "awaiting-parts": 0, "unbilled": 0, "scheduled": 0, "completed-month": 0, "all": 0,
     };
     (calls ?? []).forEach(c => {
@@ -403,19 +407,30 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
         }
       />
 
-      {/* ── KPI Strip ────────────────────────────────────────────────────── */}
+      {/* ── KPI Strip (clickable filters) ────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {STAT_CARDS.map(stat => (
-          <div
-            key={stat.key}
-            className={`rounded-xl border border-border/50 bg-card p-4 border-l-[3px] ${stat.accent}`}
-          >
-            <p className={`text-2xl font-bold tabular-nums leading-none ${stat.num}`} data-testid={`kpi-${stat.key}`}>
-              {counts[stat.key] ?? 0}
-            </p>
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wider mt-2">{stat.label}</p>
-          </div>
-        ))}
+        {STAT_CARDS.map(stat => {
+          const isActive = activeView === stat.viewKey;
+          return (
+            <button
+              key={stat.key}
+              type="button"
+              onClick={() => setActiveView(stat.viewKey)}
+              className={`text-left rounded-xl border bg-card p-4 border-l-[3px] transition-all cursor-pointer hover:shadow-sm ${stat.accent} ${
+                isActive
+                  ? "border-primary/40 ring-2 ring-primary/15 shadow-sm"
+                  : "border-border/50 hover:border-border"
+              }`}
+              data-testid={`kpi-card-${stat.key}`}
+              aria-pressed={isActive}
+            >
+              <p className={`text-2xl font-bold tabular-nums leading-none ${stat.num}`} data-testid={`kpi-${stat.key}`}>
+                {counts[stat.key] ?? 0}
+              </p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wider mt-2">{stat.label}</p>
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Saved Views ─────────────────────────────────────────────────── */}
