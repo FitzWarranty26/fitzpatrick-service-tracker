@@ -58,11 +58,15 @@ export const serviceCalls = sqliteTable("service_calls", {
   parentCallId: integer("parent_call_id"),
   isTest: integer("is_test").default(0),
   createdAt: text("created_at").notNull(),
+  // Set on every update so optimistic concurrency works. Migration 28
+  // backfills it to created_at for pre-existing rows.
+  updatedAt: text("updated_at"),
 });
 
 export const insertServiceCallSchema = createInsertSchema(serviceCalls).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 
 export type InsertServiceCall = z.infer<typeof insertServiceCallSchema>;
