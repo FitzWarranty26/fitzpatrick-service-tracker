@@ -437,18 +437,37 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     enabled: !!callId,
   });
 
+  // Helper: invalidate every surface that shows scheduled dates/times so a
+  // reschedule or edit reflects everywhere immediately. Previously we only
+  // refreshed /dashboard/today and /briefing; this missed /my-calls,
+  // /upcoming-week, /watchlist, /recent, /stats, /trend, /follow-ups,
+  // /activity — causing the tech dashboard to show the stale old time.
+  const invalidateSchedulingSurfaces = () => {
+    queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/appointments`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/visits`] });
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/calendar"] });
+    // Hit every dashboard endpoint that surfaces a scheduled date or time
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/briefing"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/my-calls"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/upcoming-week"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/watchlist"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/trend"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/follow-ups"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/activity"] });
+  };
+
   const rescheduleMutation = useMutation({
     mutationFn: async (data: { scheduledDate: string; scheduledTime: string | null; reason: string }) => {
       const res = await apiRequest("POST", `/api/service-calls/${callId}/appointments/reschedule`, data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/appointments`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/calendar"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/briefing"] });
+      invalidateSchedulingSurfaces();
       setShowRescheduleDialog(false);
       setReschedForm({ date: "", time: "", reason: "" });
       toast({ title: "Rescheduled", description: "New appointment created." });
@@ -464,11 +483,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/appointments`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/calendar"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today"] });
+      invalidateSchedulingSurfaces();
       setShowEditActiveDialog(false);
       toast({ title: "Updated", description: "Active appointment updated." });
     },
