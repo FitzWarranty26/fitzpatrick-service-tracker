@@ -784,10 +784,30 @@ export class SQLiteStorage implements IStorage {
   }
 
   updateServiceCall(id: number, call: Partial<InsertServiceCall>): ServiceCall | undefined {
-    return db.update(serviceCalls).set(call).where(eq(serviceCalls.id, id)).returning().get();
+    const updated = db.update(serviceCalls).set(call).where(eq(serviceCalls.id, id)).returning().get();
+    if (updated && (call.scheduledDate !== undefined || call.scheduledTime !== undefined)) {
+      // Keep the active scheduled_appointments row in lockstep with the call's
+      // scheduled fields. Otherwise an admin editing the Overview's 'Scheduled
+      // Date' would leave the active row stuck at the old date — the same class
+      // of drift bug we just fixed on the dashboard side.
+      const activeApp = sqlite.prepare(
+        `SELECT id FROM scheduled_appointments WHERE call_id = ? AND status = 'active' LIMIT 1`
+      ).get(id) as any;
+      if (activeApp) {
+        sqlite.prepare(
+          `UPDATE scheduled_appointments SET scheduled_date = ?, scheduled_time = ? WHERE id = ?`
+        ).run(updated.scheduledDate, updated.scheduledTime, activeApp.id);
+      }
+    }
+    return updated;
   }
 
   deleteServiceCall(id: number): void {
+    // Clean up all relational rows that reference this call so we don't leave
+    // orphans in the DB (previously: appointments, visits, invoices remained).
+    sqlite.prepare(`DELETE FROM scheduled_appointments WHERE call_id = ?`).run(id);
+    sqlite.prepare(`DELETE FROM service_call_visits WHERE service_call_id = ?`).run(id);
+    sqlite.prepare(`DELETE FROM invoices WHERE service_call_id = ?`).run(id);
     db.delete(photos).where(eq(photos.serviceCallId, id)).run();
     db.delete(partsUsed).where(eq(partsUsed.serviceCallId, id)).run();
     db.delete(activityLog).where(eq(activityLog.serviceCallId, id)).run();

@@ -734,7 +734,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         setIsEmailing(true);
         // Generate the PDF HTML and render to a real PDF via html2canvas + jspdf
         const { generatePDFHtml } = await import("@/lib/pdf");
-        const html = await generatePDFHtml(call);
+        const techNamesById = Object.fromEntries(techUsers.map(u => [u.id, u.displayName || u.username]));
+        const html = await generatePDFHtml(call, { visits, techNamesById });
 
         // Render HTML in a hidden iframe
         const iframe = document.createElement("iframe");
@@ -803,7 +804,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const handlePDF = async () => {
     if (!call) return;
     try {
-      await generatePDF(call);
+      const techNamesById = Object.fromEntries(techUsers.map(u => [u.id, u.displayName || u.username]));
+      await generatePDF(call, { visits, techNamesById });
       toast({ title: "PDF Generated", description: "Check your downloads folder." });
     } catch (e: any) {
       toast({ title: "PDF Error", description: e.message, variant: "destructive" });

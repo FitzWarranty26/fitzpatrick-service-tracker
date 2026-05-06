@@ -1,8 +1,16 @@
-import type { ServiceCall, Photo, Part } from "@shared/schema";
+import type { ServiceCall, Photo, Part, ServiceCallVisit } from "@shared/schema";
 
 interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
   parts: Part[];
+}
+
+// Optional payload — callers that have visits + tech display names pass them
+// in so the PDF includes a per-visit notes/hours section. Older callers that
+// don't pass anything still work (no Visit History section is rendered).
+export interface PdfExtras {
+  visits?: ServiceCallVisit[];
+  techNamesById?: Record<number, string>;
 }
 
 // Escape user-provided strings before injecting into PDF HTML
@@ -32,13 +40,13 @@ function formatTime(timeStr: string | null | undefined): string {
 }
 
 // Generate the PDF HTML string (reusable for share/email)
-export async function generatePDFHtml(call: ServiceCallFull): Promise<string> {
+export async function generatePDFHtml(call: ServiceCallFull, extras: PdfExtras = {}): Promise<string> {
   const { LOGO_DARK_DATA_URL } = await import("./logo-data");
-  return buildPDFHtml(call, LOGO_DARK_DATA_URL);
+  return buildPDFHtml(call, LOGO_DARK_DATA_URL, extras);
 }
 
-export async function generatePDF(call: ServiceCallFull): Promise<void> {
-  const html = await generatePDFHtml(call);
+export async function generatePDF(call: ServiceCallFull, extras: PdfExtras = {}): Promise<void> {
+  const html = await generatePDFHtml(call, extras);
   const win = window.open("", "_blank");
   if (!win) {
     throw new Error("Popup blocked. Please allow popups for this site.");
@@ -48,10 +56,77 @@ export async function generatePDF(call: ServiceCallFull): Promise<void> {
   setTimeout(() => win.print(), 500);
 }
 
-function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string {
+function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string, extras: PdfExtras = {}): string {
   const manufacturerDisplay = call.manufacturer === "Other"
     ? (call.manufacturerOther ?? "Other")
     : call.manufacturer;
+
+  // Build per-visit history: Visit 1 (synthesized from the call itself) plus
+  // every return visit stored in service_call_visits. Sorted ascending by
+  // visit_number so the PDF reads chronologically.
+  const techNamesById = extras.techNamesById ?? {};
+  const returnVisits = [...(extras.visits ?? [])].sort((a, b) => a.visitNumber - b.visitNumber);
+  const hasAnyReturnVisit = returnVisits.length > 0;
+  const visitsHtml = hasAnyReturnVisit
+    ? (() => {
+        const visit1Row = `
+          <tr>
+            <td class="v-num">Visit 1</td>
+            <td class="v-date">${formatDate(call.callDate)}</td>
+            <td class="v-tech">—</td>
+            <td class="v-status">${esc(call.status || "")}</td>
+            <td class="v-hours">${call.hoursOnJob ? esc(String(call.hoursOnJob)) + " hrs" : "—"}</td>
+            <td class="v-miles">${call.milesTraveled ? esc(String(call.milesTraveled)) + " mi" : "—"}</td>
+          </tr>
+          <tr><td colspan="6" class="v-notes-cell">
+            <div class="v-notes-label">Notes</div>
+            <div class="v-notes-body">${
+              call.techNotes
+                ? esc(call.techNotes)
+                : (call.resolution ? esc(call.resolution) : "<em>No notes recorded.</em>")
+            }</div>
+          </td></tr>
+        `;
+        const returnRows = returnVisits.map((v) => {
+          const techName = v.technicianId && techNamesById[v.technicianId] ? techNamesById[v.technicianId] : null;
+          return `
+            <tr>
+              <td class="v-num">Visit ${v.visitNumber}</td>
+              <td class="v-date">${formatDate(v.visitDate)}</td>
+              <td class="v-tech">${techName ? esc(techName) : "Unassigned"}</td>
+              <td class="v-status">${esc(v.status || "")}</td>
+              <td class="v-hours">${v.hoursOnJob ? esc(String(v.hoursOnJob)) + " hrs" : "—"}</td>
+              <td class="v-miles">${v.milesTraveled ? esc(String(v.milesTraveled)) + " mi" : "—"}</td>
+            </tr>
+            <tr><td colspan="6" class="v-notes-cell">
+              <div class="v-notes-label">Notes</div>
+              <div class="v-notes-body">${v.notes ? esc(v.notes) : "<em>No notes recorded.</em>"}</div>
+            </td></tr>
+          `;
+        }).join("");
+        return `
+          <div class="section">
+            <h2>Visit History (${returnVisits.length + 1})</h2>
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th>Visit</th>
+                  <th>Date</th>
+                  <th>Technician</th>
+                  <th>Status</th>
+                  <th>Hours</th>
+                  <th>Miles</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${visit1Row}
+                ${returnRows}
+              </tbody>
+            </table>
+          </div>
+        `;
+      })()
+    : "";
 
   // Group photos into rows of 3, with page breaks between groups
   // Each row is ~200px tall (180px image + 20px label/gap)
@@ -238,6 +313,36 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
     /* Narrative fields */
     .narrative { background: #f8fafc; border-left: 3px solid #e2e8f0; padding: 12px; border-radius: 0 6px 6px 0; margin-top: 8px; }
     .narrative p { font-size: 10pt; white-space: pre-wrap; color: #334155; }
+    /* Visit history table */
+    .v-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5pt; }
+    .v-table thead th {
+      background: #f1f5f9;
+      color: #475569;
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 2px solid #cbd5e1;
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .v-table tbody td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+    .v-table .v-num { font-weight: 700; color: #0f172a; white-space: nowrap; }
+    .v-table .v-date, .v-table .v-tech, .v-table .v-status,
+    .v-table .v-hours, .v-table .v-miles { color: #334155; white-space: nowrap; }
+    .v-table .v-notes-cell { background: #f8fafc; padding: 10px 14px 12px; }
+    .v-table .v-notes-label {
+      font-size: 8.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #64748b;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .v-table .v-notes-body { font-size: 10pt; color: #334155; white-space: pre-wrap; line-height: 1.55; }
     
     /* Table */
     table { width: 100%; border-collapse: collapse; }
@@ -420,12 +525,14 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string): string
   </div>
   ` : ""}
 
-  ${call.techNotes ? `
+  ${call.techNotes && !hasAnyReturnVisit ? `
   <div class="section">
     <h2>Technician Notes</h2>
     <div class="narrative"><p>${esc(call.techNotes)}</p></div>
   </div>
   ` : ""}
+
+  ${visitsHtml}
 
   ${partsHtml}
   ${claimSection}
