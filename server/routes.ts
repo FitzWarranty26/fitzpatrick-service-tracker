@@ -2266,6 +2266,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
           storage.updateServiceCall(callId, updatePayload);
         }
       }
+      // Log a concise audit entry naming which fields changed; surfaces in the
+      // Activity Log so a manager can trace tech edits over time.
+      const changedKeys = Object.keys(data);
+      if (changedKeys.length > 0) {
+        logAudit(req, "updated_visit", "service_call", callId,
+          `Visit ${visit.visitNumber} · updated ${changedKeys.join(", ")}`);
+      }
       res.json(visit);
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
@@ -2357,11 +2364,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
         // Only auto-create a return-visit row when this is an actual reschedule
         // (i.e. there was already an active appointment). The first schedule
         // corresponds to Visit 1 which is synthesized from the call itself.
+        // Use MAX(visit_number) + 1 — NOT count + offset — so the numbering is
+        // monotonic even if a tech deletes a visit row in between.
         if (existingActive) {
-          const existingCount = (sqliteHandle.prepare(
-            `SELECT COUNT(*) as c FROM service_call_visits WHERE service_call_id = ?`
-          ).get(id) as any).c as number;
-          const visitNumber = existingCount + 2; // +1 for synthesized Visit 1 + 1 for the new one
+          const maxRow = sqliteHandle.prepare(
+            `SELECT COALESCE(MAX(visit_number), 1) AS m FROM service_call_visits WHERE service_call_id = ?`
+          ).get(id) as any;
+          const visitNumber = (maxRow.m as number) + 1;
           sqliteHandle.prepare(`
             INSERT INTO service_call_visits
               (service_call_id, visit_number, visit_date, status, technician_id, notes, hours_on_job, miles_traveled, created_at, updated_at)
@@ -2402,6 +2411,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
         `).run(scheduledDate, scheduledTime || null, id);
       });
       tx();
+      logAudit(req, "edited_appointment", "service_call", id,
+        `Active appointment edited to ${scheduledDate}${scheduledTime ? " " + scheduledTime : ""}`);
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
