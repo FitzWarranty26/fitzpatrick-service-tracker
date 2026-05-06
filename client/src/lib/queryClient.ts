@@ -56,7 +56,14 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,
+      // Refetch when the user returns to the tab — important for techs in
+      // the field whose dashboard might have stale schedules after a
+      // dispatcher/manager rescheduled from another device.
+      refetchOnWindowFocus: true,
+      // Refetch when network drops and reconnects (common on job sites).
+      refetchOnReconnect: true,
+      // Allow data to live for ~30s before being considered stale; window
+      // focus refetches give us correctness without thrashing the network.
       staleTime: 30000,
       retry: false,
     },
