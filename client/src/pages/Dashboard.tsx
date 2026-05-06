@@ -264,6 +264,9 @@ function TechnicianDashboard() {
     },
   });
 
+  // Activity feed shows audit-log entries (who changed what) and is now
+  // manager-only on the server. Skip the fetch entirely for non-managers so
+  // we don't generate spurious 403s.
   const { data: activity } = useQuery<ActivityEntry[]>({
     queryKey: ["/api/dashboard/activity"],
     queryFn: async () => {
@@ -271,6 +274,7 @@ function TechnicianDashboard() {
       return res.json();
     },
     staleTime: 0,
+    enabled: isManager,
   });
 
   const { data: invoices } = useQuery<Invoice[]>({
