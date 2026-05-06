@@ -7,6 +7,7 @@ import fs from "fs";
 import { storage, sqlite as sqliteHandle, DB_PATH } from "./storage";
 import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema, getWarrantyStatus } from "@shared/schema";
 import { z } from "zod";
+import { todayLocalISO, parseMoney, safeDivide } from "@shared/datetime";
 
 // Safe error response — never leak internal error details to the client
 function safeError(e: any): string {
@@ -546,7 +547,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // Upcoming Week — calls scheduled in the next 7 days
   app.get("/api/dashboard/upcoming-week", (req: any, res: any) => {
     try {
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayLocalISO();
       const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
       const rows = sqliteHandle.prepare(`
         SELECT * FROM service_calls
@@ -1040,7 +1041,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const collectedByMonthMap = new Map<string, number>();
 
       for (const inv of invoiceRows) {
-        const amt = parseFloat(inv.total) || 0;
+        const amt = parseMoney(inv.total);
         totalBilled += amt;
         const month = inv.issue_date.slice(0, 7);
         billedByMonthMap.set(month, (billedByMonthMap.get(month) || 0) + amt);
@@ -1066,8 +1067,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const milesByMonthMap = new Map<string, number>();
 
       for (const c of calls) {
-        const hrs = c.hoursOnJob ? parseFloat(c.hoursOnJob) || 0 : 0;
-        const mi = c.milesTraveled ? parseFloat(c.milesTraveled) || 0 : 0;
+        const hrs = c.hoursOnJob ? parseMoney(c.hoursOnJob) : 0;
+        const mi = c.milesTraveled ? parseMoney(c.milesTraveled) : 0;
         totalHours += hrs;
         totalMiles += mi;
         const month = c.callDate.slice(0, 7);
@@ -1085,8 +1086,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       `).all(dateFrom, dateTo) as Array<{ hours_on_job: string | null; miles_traveled: string | null; call_date: string }>;
 
       for (const v of visitRows) {
-        const hrs = v.hours_on_job ? parseFloat(v.hours_on_job) || 0 : 0;
-        const mi = v.miles_traveled ? parseFloat(v.miles_traveled) || 0 : 0;
+        const hrs = v.hours_on_job ? parseMoney(v.hours_on_job) : 0;
+        const mi = v.miles_traveled ? parseMoney(v.miles_traveled) : 0;
         totalHours += hrs;
         totalMiles += mi;
         const month = v.call_date.slice(0, 7);
@@ -1129,7 +1130,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const topPartsMap = new Map<string, { totalCost: number; totalQty: number }>();
 
       for (const p of partsRows) {
-        const cost = (p.quantity || 1) * (parseFloat(p.unit_cost) || 0);
+        const cost = (p.quantity || 1) * (parseMoney(p.unit_cost));
         totalPartsCost += cost;
         if (!partsByMfg.has(p.manufacturer)) partsByMfg.set(p.manufacturer, { cost: 0, count: 0 });
         const mfgEntry = partsByMfg.get(p.manufacturer)!;
@@ -1158,7 +1159,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         if (!mfgCallMap.has(c.manufacturer)) mfgCallMap.set(c.manufacturer, { count: 0, totalHours: 0 });
         const entry = mfgCallMap.get(c.manufacturer)!;
         entry.count++;
-        entry.totalHours += c.hoursOnJob ? parseFloat(c.hoursOnJob) || 0 : 0;
+        entry.totalHours += c.hoursOnJob ? parseMoney(c.hoursOnJob) : 0;
       }
 
       const callsByManufacturer = Array.from(mfgCallMap.entries())
@@ -1188,8 +1189,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
         if (!key) continue;
         const existing = contractorMap.get(key) || { callCount: 0, totalHours: 0, totalMiles: 0 };
         existing.callCount++;
-        const hrs = c.hoursOnJob ? parseFloat(c.hoursOnJob) : 0;
-        const mi = c.milesTraveled ? parseFloat(c.milesTraveled) : 0;
+        const hrs = parseMoney(c.hoursOnJob);
+        const mi = parseMoney(c.milesTraveled);
         existing.totalHours += isNaN(hrs) ? 0 : hrs;
         existing.totalMiles += isNaN(mi) ? 0 : mi;
         contractorMap.set(key, existing);
@@ -1322,8 +1323,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
         techProductivity: {
           totalHours: Math.round(totalHours * 100) / 100,
           totalMiles: Math.round(totalMiles * 100) / 100,
-          avgHoursPerCall: Math.round((totalHours / callCount) * 100) / 100,
-          avgMilesPerCall: Math.round((totalMiles / callCount) * 100) / 100,
+          // Guard against zero callCount — otherwise NaN leaks to the UI
+          avgHoursPerCall: Math.round(safeDivide(totalHours, callCount) * 100) / 100,
+          avgMilesPerCall: Math.round(safeDivide(totalMiles, callCount) * 100) / 100,
           hoursByMonth,
           milesByMonth,
         },
@@ -1392,12 +1394,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
         totalByClaimStatus[c.claimStatus] = (totalByClaimStatus[c.claimStatus] || 0) + 1;
         if (c.productModel) models.add(c.productModel);
         if (c.customerName) customers.add(c.customerName);
-        if (c.partsCost) totalPartsCost += parseFloat(c.partsCost) || 0;
-        if (c.laborCost) totalLaborCost += parseFloat(c.laborCost) || 0;
-        if (c.otherCost) totalOtherCost += parseFloat(c.otherCost) || 0;
-        if (c.claimAmount) totalClaimAmount += parseFloat(c.claimAmount) || 0;
-        const hrs = c.hoursOnJob ? parseFloat(c.hoursOnJob) || 0 : 0;
-        const mi = c.milesTraveled ? parseFloat(c.milesTraveled) || 0 : 0;
+        if (c.partsCost) totalPartsCost += parseMoney(c.partsCost);
+        if (c.laborCost) totalLaborCost += parseMoney(c.laborCost);
+        if (c.otherCost) totalOtherCost += parseMoney(c.otherCost);
+        if (c.claimAmount) totalClaimAmount += parseMoney(c.claimAmount);
+        const hrs = c.hoursOnJob ? parseMoney(c.hoursOnJob) : 0;
+        const mi = c.milesTraveled ? parseMoney(c.milesTraveled) : 0;
         totalHours += hrs;
         totalMiles += mi;
         // Group by month
@@ -1794,9 +1796,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
           for (const c of calls) {
             if (c.productModel) models.add(c.productModel);
             if (c.customerName) customers.add(c.customerName);
-            if (c.partsCost) totalPartsCost += parseFloat(c.partsCost) || 0;
-            if (c.laborCost) totalLaborCost += parseFloat(c.laborCost) || 0;
-            if (c.claimAmount) totalClaimAmount += parseFloat(c.claimAmount) || 0;
+            if (c.partsCost) totalPartsCost += parseMoney(c.partsCost);
+            if (c.laborCost) totalLaborCost += parseMoney(c.laborCost);
+            if (c.claimAmount) totalClaimAmount += parseMoney(c.claimAmount);
           }
 
           return res.json({
@@ -1847,12 +1849,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
             if (!monthMap.has(month)) monthMap.set(month, { calls: 0, hours: 0, miles: 0, partsCost: 0, laborCost: 0, otherCost: 0, claimAmount: 0 });
             const entry = monthMap.get(month)!;
             entry.calls++;
-            const hrs = c.hoursOnJob ? parseFloat(c.hoursOnJob) || 0 : 0;
-            const mi = c.milesTraveled ? parseFloat(c.milesTraveled) || 0 : 0;
-            const pc = c.partsCost ? parseFloat(c.partsCost) || 0 : 0;
-            const lc = c.laborCost ? parseFloat(c.laborCost) || 0 : 0;
-            const oc = c.otherCost ? parseFloat(c.otherCost) || 0 : 0;
-            const ca = c.claimAmount ? parseFloat(c.claimAmount) || 0 : 0;
+            const hrs = c.hoursOnJob ? parseMoney(c.hoursOnJob) : 0;
+            const mi = c.milesTraveled ? parseMoney(c.milesTraveled) : 0;
+            const pc = c.partsCost ? parseMoney(c.partsCost) : 0;
+            const lc = c.laborCost ? parseMoney(c.laborCost) : 0;
+            const oc = c.otherCost ? parseMoney(c.otherCost) : 0;
+            const ca = c.claimAmount ? parseMoney(c.claimAmount) : 0;
             entry.hours += hrs; entry.miles += mi;
             entry.partsCost += pc; entry.laborCost += lc; entry.otherCost += oc; entry.claimAmount += ca;
             totalHours += hrs; totalMiles += mi;
@@ -1908,9 +1910,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
           let totalPartsCost = 0, totalLaborCost = 0, totalClaimAmount = 0;
           for (const c of calls) {
-            if (c.partsCost) totalPartsCost += parseFloat(c.partsCost) || 0;
-            if (c.laborCost) totalLaborCost += parseFloat(c.laborCost) || 0;
-            if (c.claimAmount) totalClaimAmount += parseFloat(c.claimAmount) || 0;
+            if (c.partsCost) totalPartsCost += parseMoney(c.partsCost);
+            if (c.laborCost) totalLaborCost += parseMoney(c.laborCost);
+            if (c.claimAmount) totalClaimAmount += parseMoney(c.claimAmount);
           }
 
           // Try to find contact info
@@ -1971,7 +1973,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           const rows = calls.map(c => {
             const callDate = new Date(c.callDate + "T00:00:00");
             const daysPending = Math.ceil((now.getTime() - callDate.getTime()) / (1000 * 60 * 60 * 24));
-            const amt = c.claimAmount ? parseFloat(c.claimAmount) || 0 : 0;
+            const amt = c.claimAmount ? parseMoney(c.claimAmount) : 0;
 
             if (!statusCounts[c.claimStatus]) statusCounts[c.claimStatus] = { count: 0, amount: 0 };
             statusCounts[c.claimStatus].count++;
@@ -2075,7 +2077,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const dueDate = inv.due_date || inv.issue_date;
             const due = new Date(dueDate + "T00:00:00");
             const daysOut = Math.max(0, Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
-            const total = parseFloat(inv.total) || 0;
+            const total = parseMoney(inv.total);
             let bucket: string;
             if (daysOut <= 30) { bucket = "current"; current += total; }
             else if (daysOut <= 60) { bucket = "31-60"; days31to60 += total; }
@@ -2124,7 +2126,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/invoices", (req: any, res: any) => {
     try {
       // Auto-mark overdue: any Sent invoice past its due date becomes Overdue
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayLocalISO();
       storage.markOverdueInvoices(today);
 
       const filters: any = {};
@@ -2184,7 +2186,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
       // Auto-set paid_date when status changes to Paid
       if (data.status === "Paid" && !invoice.paidDate) {
-        storage.updateInvoice(id, { paidDate: new Date().toISOString().split("T")[0] });
+        storage.updateInvoice(id, { paidDate: todayLocalISO() });
       }
       logAudit(req, "edited_invoice", "invoice", id, data.status ? `Status: ${data.status}` : undefined);
       res.json(storage.getInvoiceById(id));

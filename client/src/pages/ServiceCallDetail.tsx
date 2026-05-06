@@ -43,6 +43,7 @@ import {
   arrayMove, SortableContext, rectSortingStrategy, useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { todayLocalISO, localDateISO, shiftDays } from "@shared/datetime";
 
 interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
@@ -576,7 +577,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const [showAddVisit, setShowAddVisit] = useState(false);
   const [editingVisit, setEditingVisit] = useState<ServiceCallVisit | null>(null);
   const [visitForm, setVisitForm] = useState({
-    visitDate: new Date().toISOString().split("T")[0],
+    visitDate: todayLocalISO(),
     status: "Scheduled",
     technicianId: "",
     notes: "",
@@ -587,7 +588,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
   const openAddVisit = () => {
     setVisitForm({
-      visitDate: new Date().toISOString().split("T")[0],
+      visitDate: todayLocalISO(),
       status: "Scheduled",
       technicianId: "",
       notes: "",
@@ -714,9 +715,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const [date, setDate] = useState("");
 
   const setFollowUpPreset = (days: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    const iso = d.toISOString().split("T")[0];
+    // Compute the follow-up date in business timezone, not UTC — so '+7 days'
+    // from May 6 evening doesn't accidentally become May 14 (UTC slip).
+    const iso = shiftDays(days);
     setFollowUpMutation.mutate(iso);
     setShowFollowUpPicker(false);
   };

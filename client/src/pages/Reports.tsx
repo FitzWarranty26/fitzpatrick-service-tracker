@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { MANUFACTURERS, CLAIM_STATUSES } from "@shared/schema";
 import { PageHero } from "@/components/PageHero";
+import { parseMoney, formatMoney } from "@shared/datetime";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -241,7 +242,7 @@ const defaultDateFrom = `${currentYear}-01-01`;
 const defaultDateTo = new Date().toISOString().slice(0, 10);
 
 function fmt$(val: number | string | null | undefined): string {
-  const n = typeof val === "string" ? parseFloat(val) || 0 : (val ?? 0);
+  const n = typeof val === "string" ? parseMoney(val) : (val ?? 0);
   return `$${n.toFixed(2)}`;
 }
 

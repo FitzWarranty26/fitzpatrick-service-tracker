@@ -1,3 +1,4 @@
+import { parseMoney, formatMoney } from "@shared/datetime";
 // PDF generation for reports — uses the same print-to-PDF approach as pdf.ts
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -10,7 +11,7 @@ function formatDate(dateStr: string | null | undefined): string {
 }
 
 function fmt$(val: number | string | null | undefined): string {
-  const n = typeof val === "string" ? parseFloat(val) || 0 : (val ?? 0);
+  const n = typeof val === "string" ? parseMoney(val) : (val ?? 0);
   return `$${n.toFixed(2)}`;
 }
 

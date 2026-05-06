@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { todayLocalISO, parseMoney } from "@shared/datetime";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -858,11 +859,13 @@ export class SQLiteStorage implements IStorage {
   // ─── Dashboard ──────────────────────────────────────────────────────────────
 
   getDashboardStats(): DashboardStats {
-    const now = new Date();
-    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-    const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-31`;
-
-    const today = now.toISOString().split("T")[0];
+    // All dates computed in the business timezone (default America/Denver).
+    // Previously this used server-local (UTC on Render) which caused the
+    // month-start to roll over ~6 hours early.
+    const today = todayLocalISO();
+    const [ty, tm] = today.split("-");
+    const monthStart = `${ty}-${tm}-01`;
+    const monthEnd = `${ty}-${tm}-31`;
 
     const row = sqlite.prepare(`
       SELECT
@@ -938,7 +941,7 @@ export class SQLiteStorage implements IStorage {
   }
 
   getDashboardToday(): DashboardTodayData {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayLocalISO();
 
     // Calls where scheduled_date = today OR (scheduled_date IS NULL AND call_date = today), status Scheduled/In Progress
     const rows = sqlite.prepare(`
@@ -1344,7 +1347,7 @@ export class SQLiteStorage implements IStorage {
   // ─── Follow-ups Due ────────────────────────────────────────────────────────
 
   getFollowUpsDue(): ServiceCallWithCounts[] {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayLocalISO();
     const rows = sqlite.prepare(`
       SELECT sc.*,
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
@@ -1797,16 +1800,23 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Executive Briefing ────────────────────────────────────────────────────
   getExecutiveBriefing(): any {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = now.getMonth();
-    const monthStart = `${yyyy}-${String(mm + 1).padStart(2, "0")}-01`;
-    const monthEnd = `${yyyy}-${String(mm + 1).padStart(2, "0")}-31`;
-    // Previous month range
-    const prevDate = new Date(yyyy, mm - 1, 1);
-    const prevStart = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}-01`;
-    const prevEnd = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}-31`;
-    const today = now.toISOString().split("T")[0];
+    // All dates computed in business timezone, not server-UTC. Previous
+    // implementation used now.getFullYear()/getMonth() which run in the
+    // server's local timezone — UTC on Render — causing the month
+    // boundary to be wrong for the last 6 hours of every month.
+    const now = new Date(); // for relative-day math (week buckets); TZ-agnostic
+    const today = todayLocalISO();
+    const [tyStr, tmStr] = today.split("-");
+    const yyyy = parseInt(tyStr, 10);
+    const mm = parseInt(tmStr, 10) - 1; // 0-indexed for Date math below
+    const monthStart = `${tyStr}-${tmStr}-01`;
+    const monthEnd = `${tyStr}-${tmStr}-31`;
+    // Previous month range — anchor at noon UTC to avoid DST fence-post
+    const prevDate = new Date(Date.UTC(yyyy, mm - 1, 1, 12));
+    const py = prevDate.getUTCFullYear();
+    const pm = String(prevDate.getUTCMonth() + 1).padStart(2, "0");
+    const prevStart = `${py}-${pm}-01`;
+    const prevEnd = `${py}-${pm}-31`;
 
     // Helpers
     const num = (q: any, ...p: any[]) => Number((sqlite.prepare(q).get(...p) as any)?.v ?? 0);
@@ -1974,7 +1984,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Watchlist ──────────────────────────────────────────────────────────
   getDashboardWatchlist(): Array<{ kind: string; severity: string; title: string; subtitle: string; href: string; amount?: number; days?: number }> {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayLocalISO();
     const out: Array<any> = [];
 
     // Overdue invoices
@@ -1989,7 +1999,7 @@ export class SQLiteStorage implements IStorage {
         severity: inv.days_overdue > 30 ? "high" : "medium",
         title: `${inv.invoice_number} — ${inv.bill_to_name || "Unknown"}`,
         subtitle: `${inv.days_overdue} day${inv.days_overdue !== 1 ? "s" : ""} overdue`,
-        amount: Math.round(Number(inv.total) || 0),
+        amount: Math.round(parseMoney(inv.total)),
         days: inv.days_overdue,
         href: `/invoices/${inv.id}`,
       });

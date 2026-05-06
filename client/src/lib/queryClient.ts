@@ -1,9 +1,39 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
-import { getAuthHeaders } from "./auth";
+import { getAuthHeaders, clearToken } from "./auth";
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
+// Module-scope guard — prevents firing the 'session expired' redirect+toast
+// dozens of times when a wave of parallel queries all return 401 at once.
+let expiredHandled = false;
+
+/**
+ * Centralized 401-handling. The session token is invalid or expired. Clear
+ * local auth, set a flag the login page can read so it shows the right
+ * message, then redirect. Form drafts are preserved automatically by the
+ * useFormDraft hook — the user can sign back in and resume.
+ */
+function handleSessionExpired() {
+  if (expiredHandled) return;
+  expiredHandled = true;
+  clearToken();
+  try {
+    sessionStorage.setItem("sessionExpired", "1");
+  } catch {
+    // private mode — no-op
+  }
+  // Skip if we're already on /login (user is already signing in).
+  const currentHash = window.location.hash || "";
+  if (!currentHash.includes("/login") && !window.location.pathname.endsWith("/login")) {
+    window.location.href = "/login";
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
+  if (res.status === 401) {
+    handleSessionExpired();
+    throw new Error("401: session expired");
+  }
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
@@ -43,8 +73,10 @@ export const getQueryFn: <T>(options: {
       headers: getAuthHeaders(),
     });
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+    if (res.status === 401) {
+      if (unauthorizedBehavior === "returnNull") return null;
+      handleSessionExpired();
+      throw new Error("401: session expired");
     }
 
     await throwIfResNotOk(res);

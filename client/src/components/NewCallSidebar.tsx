@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { todayLocalISO, localDateISO } from "@shared/datetime";
 import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
@@ -10,7 +11,7 @@ import {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function todayISO() { return new Date().toISOString().split("T")[0]; }
+function todayISO() { return todayLocalISO(); }
 
 function daysBetween(a: string, b: string): number {
   const ms = new Date(b).getTime() - new Date(a).getTime();

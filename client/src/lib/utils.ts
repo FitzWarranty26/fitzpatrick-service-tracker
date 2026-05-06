@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { todayLocalISO, localDateISO } from "@shared/datetime";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -66,5 +67,5 @@ export function getClaimClass(claimStatus: string): string {
 }
 
 export function todayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return todayLocalISO();
 }

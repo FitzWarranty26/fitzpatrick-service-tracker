@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { MANUFACTURERS, SERVICE_STATUSES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall } from "@shared/schema";
+import { todayLocalISO, localDateISO } from "@shared/datetime";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface ServiceCallRow extends ServiceCall {
@@ -40,7 +41,7 @@ function daysBetween(a: string, b: string): number {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return todayLocalISO();
 }
 
 function ageDays(call: ServiceCallRow): number {

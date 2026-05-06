@@ -12,6 +12,7 @@ import { PageHero, KPICell } from "@/components/PageHero";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { getAuthHeaders } from "@/lib/auth";
 import { PhoneLink } from "@/components/PhoneLink";
+import { todayLocalISO, localDateISO, parseMoney, formatMoney } from "@shared/datetime";
 
 interface InvoiceItem {
   id?: number;
@@ -59,13 +60,13 @@ const ITEM_TYPE_LABELS: Record<string, string> = {
 };
 
 function fmt$(v: string | number | null | undefined): string {
-  const n = parseFloat(String(v || "0"));
+  const n = parseMoney(v);
   return isNaN(n) ? "$0.00" : `$${n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 }
 
 function calcAmount(qty: string, price: string): string {
-  const q = parseFloat(qty) || 0;
-  const p = parseFloat(price) || 0;
+  const q = parseMoney(qty);
+  const p = parseMoney(price);
   return (q * p).toFixed(2);
 }
 
@@ -127,14 +128,14 @@ export default function InvoiceDetail({ id }: { id: string }) {
 
   function setStatus(status: string) {
     const update: any = { status };
-    if (status === "Paid") update.paidDate = new Date().toISOString().split("T")[0];
+    if (status === "Paid") update.paidDate = todayLocalISO();
     saveMutation.mutate(update);
   }
 
   function handleSave() {
     if (!form) return;
     // Recalculate totals
-    const subtotal = items.reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
+    const subtotal = items.reduce((s, i) => s + parseMoney(i.amount), 0);
     saveMutation.mutate({
       ...form,
       subtotal: subtotal.toFixed(2),
@@ -196,7 +197,7 @@ export default function InvoiceDetail({ id }: { id: string }) {
 
   const displayInvoice = isEditing ? form : invoice;
   const displayItems = isEditing ? items : invoice.items;
-  const subtotal = displayItems?.reduce((s, i) => s + parseFloat(i.amount || "0"), 0) || 0;
+  const subtotal = displayItems?.reduce((s, i) => s + parseMoney(i.amount), 0) || 0;
 
   // Visit grouping logic
   const hasVisitGrouping = displayItems?.some(i => i.visitNumber != null) || false;
@@ -430,7 +431,7 @@ export default function InvoiceDetail({ id }: { id: string }) {
           {hasVisitGrouping && displayItems && displayItems.length > 0 ? (
             <>
               {groupItemsByVisit(displayItems).map(group => {
-                const groupSubtotal = group.items.reduce((s, { item }) => s + parseFloat(item.amount || "0"), 0);
+                const groupSubtotal = group.items.reduce((s, { item }) => s + parseMoney(item.amount), 0);
                 return (
                   <div key={group.key ?? "general"}>
                     {/* Section header */}
