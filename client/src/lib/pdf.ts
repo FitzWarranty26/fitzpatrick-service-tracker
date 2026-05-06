@@ -1,4 +1,5 @@
 import type { ServiceCall, Photo, Part, ServiceCallVisit } from "@shared/schema";
+import { parseMoney, formatMoney } from "@shared/datetime";
 
 interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
@@ -209,25 +210,25 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string, extras:
         ${call.partsCost ? `
           <div class="field">
             <label>Parts Cost</label>
-            <span class="value">$${parseFloat(call.partsCost).toFixed(2)}</span>
+            <span class="value">${formatMoney(call.partsCost)}</span>
           </div>
         ` : ""}
         ${call.laborCost ? `
           <div class="field">
             <label>Labor Cost</label>
-            <span class="value">$${parseFloat(call.laborCost).toFixed(2)}</span>
+            <span class="value">${formatMoney(call.laborCost)}</span>
           </div>
         ` : ""}
         ${call.otherCost ? `
           <div class="field">
             <label>Other Cost</label>
-            <span class="value">$${parseFloat(call.otherCost).toFixed(2)}</span>
+            <span class="value">${formatMoney(call.otherCost)}</span>
           </div>
         ` : ""}
         ${call.claimAmount ? `
           <div class="field">
             <label>Claim Amount</label>
-            <span class="value" style="font-weight:700;color:#16a34a;">$${parseFloat(call.claimAmount).toFixed(2)}</span>
+            <span class="value" style="font-weight:700;color:#16a34a;">${formatMoney(call.claimAmount)}</span>
           </div>
         ` : ""}
       </div>

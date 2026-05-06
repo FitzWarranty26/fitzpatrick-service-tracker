@@ -11,6 +11,7 @@ import { todayISO } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { savePendingCall } from "@/lib/offline-queue";
+import { useFormDraft } from "@/hooks/use-form-draft";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -208,6 +209,15 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
     enabled: !!copyFromId && !followUpId,
   });
 
+  // Persist draft to localStorage so a refresh / accidental back / session
+  // expiry mid-form doesn't wipe what the tech typed. Skipped for follow-up
+  // and copy-from flows since those pre-populate from an existing call.
+  const draftKey = followUpId
+    ? `newcall-draft:followup:${followUpId}`
+    : copyFromId
+    ? `newcall-draft:copy:${copyFromId}`
+    : `newcall-draft:fresh`;
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -361,12 +371,21 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent"] });
+      // Successful save — wipe the draft so it doesn't reappear next time.
+      clearDraft();
       toast({ title: "Service call created", description: `Call #${newCall.id} saved.` });
       navigate(`/calls/${newCall.id}`);
     },
     onError: (e: any) => {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     },
+  });
+
+  // Wire up draft persistence after `form` and `createMutation` exist.
+  // Skip restore when this is a follow-up or copy-from flow — those pre-fill
+  // from a known parent call and the draft would clobber that.
+  const { clearDraft } = useFormDraft(form, draftKey, {
+    skipRestore: !!followUpId || !!copyFromId,
   });
 
   const onSubmit = async (values: FormValues) => {
@@ -395,6 +414,9 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
           })),
           savedAt: new Date().toISOString(),
         });
+        // Successfully queued offline — clear the draft so it doesn't show on
+        // the next form open.
+        clearDraft();
         toast({ title: "Saved offline", description: "Will sync when back online." });
         navigate("/");
       } catch (err: any) {

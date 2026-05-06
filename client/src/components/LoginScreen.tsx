@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eye, EyeOff } from "lucide-react";
@@ -15,6 +15,20 @@ export function LoginScreen({ onLogin, onChangePassword }: LoginScreenProps) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Set by lib/queryClient when an authenticated request returns 401 — we
+  // show a friendly notice on the login screen instead of dumping a generic
+  // error toast. Form drafts in localStorage are preserved separately.
+  const [sessionExpired, setSessionExpired] = useState(false);
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("sessionExpired") === "1") {
+        setSessionExpired(true);
+        sessionStorage.removeItem("sessionExpired");
+      }
+    } catch {
+      // private mode — nothing to read
+    }
+  }, []);
 
   // Password change state
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -91,8 +105,15 @@ export function LoginScreen({ onLogin, onChangePassword }: LoginScreenProps) {
             <>
               <div className="text-center space-y-1">
                 <h1 className="text-lg font-bold text-white tracking-[-0.01em]">Warranty Service Tracker</h1>
-                <p className="text-sm text-slate-400">Sign in to continue</p>
+                <p className="text-sm text-slate-400">
+                  {sessionExpired ? "Your session expired — sign in again to continue." : "Sign in to continue"}
+                </p>
               </div>
+              {sessionExpired && (
+                <div className="rounded-md bg-amber-500/15 border border-amber-500/30 px-3 py-2 text-amber-300 text-xs" data-testid="session-expired-notice">
+                  Your draft form data was preserved on this device — just sign back in to keep going.
+                </div>
+              )}
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <Input

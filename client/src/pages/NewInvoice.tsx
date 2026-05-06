@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { PageHero } from "@/components/PageHero";
+import { todayLocalISO, localDateISO, parseMoney, formatMoney } from "@shared/datetime";
 
 interface LineItem {
   type: string;
@@ -37,13 +38,13 @@ const ITEM_TYPE_LABELS: Record<string, string> = {
 };
 
 function calcAmount(qty: string, price: string): string {
-  const q = parseFloat(qty) || 0;
-  const p = parseFloat(price) || 0;
+  const q = parseMoney(qty);
+  const p = parseMoney(price);
   return (q * p).toFixed(2);
 }
 
 function fmt$(v: string | null | undefined): string {
-  const n = parseFloat(String(v || "0"));
+  const n = parseMoney(v);
   return isNaN(n) ? "0.00" : n.toFixed(2);
 }
 
@@ -55,7 +56,7 @@ export default function NewInvoice() {
   const callId = params.get("callId");
 
   // Invoice fields
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [billToType, setBillToType] = useState("contractor");
   const [billToName, setBillToName] = useState("");
   const [billToAddress, setBillToAddress] = useState("");
@@ -128,7 +129,7 @@ export default function NewInvoice() {
     const newItems: LineItem[] = [];
 
     // Visit 1 — from the parent service call itself
-    if (serviceCall.hoursOnJob && parseFloat(serviceCall.hoursOnJob) > 0) {
+    if (serviceCall.hoursOnJob && parseMoney(serviceCall.hoursOnJob) > 0) {
       newItems.push({
         type: "labor",
         description: "Labor — Visit 1",
@@ -139,7 +140,7 @@ export default function NewInvoice() {
       });
     }
 
-    if (serviceCall.milesTraveled && parseFloat(serviceCall.milesTraveled) > 0) {
+    if (serviceCall.milesTraveled && parseMoney(serviceCall.milesTraveled) > 0) {
       newItems.push({
         type: "travel",
         description: "Travel — Visit 1",
@@ -167,7 +168,7 @@ export default function NewInvoice() {
     // Visit 2, 3, ... — from service_call_visits
     const sortedVisits = [...callVisits].sort((a, b) => a.visitNumber - b.visitNumber);
     for (const visit of sortedVisits) {
-      if (visit.hoursOnJob && parseFloat(visit.hoursOnJob) > 0) {
+      if (visit.hoursOnJob && parseMoney(visit.hoursOnJob) > 0) {
         newItems.push({
           type: "labor",
           description: `Labor — Visit ${visit.visitNumber}`,
@@ -177,7 +178,7 @@ export default function NewInvoice() {
           visitNumber: visit.visitNumber,
         });
       }
-      if (visit.milesTraveled && parseFloat(visit.milesTraveled) > 0) {
+      if (visit.milesTraveled && parseMoney(visit.milesTraveled) > 0) {
         newItems.push({
           type: "travel",
           description: `Travel — Visit ${visit.visitNumber}`,
@@ -232,7 +233,7 @@ export default function NewInvoice() {
     : 0;
   const showVisitColumn = !!callId && hasVisits;
 
-  const subtotal = items.reduce((s, i) => s + parseFloat(i.amount || "0"), 0);
+  const subtotal = items.reduce((s, i) => s + parseMoney(i.amount), 0);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

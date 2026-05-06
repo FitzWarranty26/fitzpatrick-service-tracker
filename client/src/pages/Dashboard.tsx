@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { ServiceCall } from "@shared/schema";
 import ManagerDashboard from "./ManagerDashboard";
+import { todayLocalISO, localDateISO } from "@shared/datetime";
 
 interface DashboardStats {
   totalCalls: number;
@@ -295,7 +296,9 @@ function TechnicianDashboard() {
   const todayLabel = new Intl.DateTimeFormat("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   }).format(now);
-  const todayISO = now.toISOString().split("T")[0];
+  // Use the business-timezone date so 'today' rolls over at local midnight,
+  // not 6pm-ish when UTC's day flips.
+  const todayISO = todayLocalISO();
 
   // Overdue invoices (detailed, for Needs Attention)
   const overdueInvoices = (invoices || []).filter(inv => {
