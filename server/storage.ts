@@ -504,6 +504,23 @@ if (!columnExists("service_calls", "updated_at")) {
   console.log("Migration 28: added updated_at column to service_calls (backfilled from created_at)");
 }
 
+// Migration 30: Add completed_date to service_calls. Dashboard "completed
+// this month" and First-Time Fix Rate previously filtered by call_date, which
+// is when the call was logged — a call logged in March but finished in May
+// wouldn't count as completed in May at all. We now track when the row
+// transitioned to Completed. Backfill: rows currently Completed get their
+// updated_at (or created_at) so existing history is approximately correct.
+if (!columnExists("service_calls", "completed_date")) {
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN completed_date TEXT`).run();
+  sqlite.prepare(`
+    UPDATE service_calls
+    SET completed_date = COALESCE(updated_at, created_at)
+    WHERE status = 'Completed' AND completed_date IS NULL
+  `).run();
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_calls_completed_date ON service_calls(completed_date)`);
+  console.log("Migration 30: added completed_date column to service_calls (backfilled from updated_at/created_at)");
+}
+
 // Migration 29: Add covering indexes for queries that scan tables fully.
 // These dramatically speed up the manager dashboard and detail pages once the
 // database has thousands of rows. All idempotent (IF NOT EXISTS).
@@ -786,6 +803,7 @@ export class SQLiteStorage implements IStorage {
       isTest: row.is_test,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      completedDate: row.completed_date ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: row.visit_count ?? 0,
@@ -816,6 +834,22 @@ export class SQLiteStorage implements IStorage {
   updateServiceCall(id: number, call: Partial<InsertServiceCall>): ServiceCall | undefined {
     // Always bump updated_at so optimistic concurrency works.
     const withTs = { ...call, updatedAt: new Date().toISOString() } as any;
+
+    // Stamp completed_date when status transitions TO Completed, and clear it
+    // when it transitions AWAY. Dashboards use completed_date (not call_date)
+    // so "Completed this month" reflects when work finished, not when logged.
+    if (call.status !== undefined) {
+      const prev = sqlite.prepare(
+        `SELECT status, completed_date FROM service_calls WHERE id = ? LIMIT 1`
+      ).get(id) as any;
+      const prevStatus = prev?.status;
+      if (call.status === "Completed" && prevStatus !== "Completed") {
+        withTs.completedDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+      } else if (call.status !== "Completed" && prevStatus === "Completed") {
+        withTs.completedDate = null;
+      }
+    }
+
     const updated = db.update(serviceCalls).set(withTs).where(eq(serviceCalls.id, id)).returning().get();
     if (updated && (call.scheduledDate !== undefined || call.scheduledTime !== undefined)) {
       // Keep the active scheduled_appointments row in lockstep with the call's
@@ -902,7 +936,7 @@ export class SQLiteStorage implements IStorage {
       SELECT
         COUNT(*) AS total_calls,
         SUM(CASE WHEN status != 'Completed' THEN 1 ELSE 0 END) AS open_calls,
-        SUM(CASE WHEN status = 'Completed' AND call_date >= ? AND call_date <= ? THEN 1 ELSE 0 END) AS completed_this_month,
+        SUM(CASE WHEN status = 'Completed' AND COALESCE(completed_date, call_date) >= ? AND COALESCE(completed_date, call_date) <= ? THEN 1 ELSE 0 END) AS completed_this_month,
         SUM(CASE WHEN claim_status IN ('Submitted', 'Pending Review') THEN 1 ELSE 0 END) AS pending_claims,
         SUM(CASE WHEN follow_up_date IS NOT NULL AND follow_up_date <= ? AND status != 'Completed' THEN 1 ELSE 0 END) AS follow_ups_due
       FROM service_calls
@@ -974,23 +1008,33 @@ export class SQLiteStorage implements IStorage {
   getDashboardToday(): DashboardTodayData {
     const today = todayLocalISO();
 
-    // Calls where scheduled_date = today OR (scheduled_date IS NULL AND call_date = today), status Scheduled/In Progress
+    // Pull every call whose schedule lands on today — either via the parent
+    // call's scheduled_date (or call_date as fallback), OR via any return
+    // visit scheduled for today. The DISTINCT ensures a call with both an
+    // active parent date AND a visit date for today only appears once.
+    // Previously this query checked only service_calls.scheduled_date and
+    // missed return-visit-only entries (e.g. Visit 3 scheduled for today on
+    // a call originally logged last month).
     const rows = sqlite.prepare(`
       SELECT sc.*,
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
         (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
       FROM service_calls sc
       WHERE (sc.is_test = 0 OR sc.is_test IS NULL)
-        AND sc.status IN ('Scheduled', 'In Progress')
+        AND sc.status IN ('Scheduled', 'In Progress', 'Needs Return Visit', 'Pending Parts')
         AND (
           sc.scheduled_date = ?
           OR (sc.scheduled_date IS NULL AND sc.call_date = ?)
+          OR sc.id IN (
+            SELECT service_call_id FROM service_call_visits
+            WHERE visit_date = ? AND status IN ('Scheduled', 'In Progress', 'Needs Return Visit')
+          )
         )
       ORDER BY
         CASE WHEN sc.scheduled_time IS NULL THEN 1 ELSE 0 END,
         sc.scheduled_time ASC,
         sc.id ASC
-    `).all(today, today) as any[];
+    `).all(today, today, today) as any[];
 
     const todayScheduled: ServiceCallWithCounts[] = rows.map(row => ({
       id: row.id,
@@ -1041,6 +1085,7 @@ export class SQLiteStorage implements IStorage {
       isTest: row.is_test,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      completedDate: row.completed_date ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: 0,
@@ -1154,6 +1199,7 @@ export class SQLiteStorage implements IStorage {
       isTest: row.is_test,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      completedDate: row.completed_date ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: 0,
@@ -1257,6 +1303,7 @@ export class SQLiteStorage implements IStorage {
       isTest: row.is_test,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      completedDate: row.completed_date ?? null,
     }));
   }
 
@@ -1440,6 +1487,7 @@ export class SQLiteStorage implements IStorage {
       isTest: row.is_test,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      completedDate: row.completed_date ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: 0,
@@ -1890,11 +1938,11 @@ export class SQLiteStorage implements IStorage {
 
     // Calls completed this month vs last month
     const completedThis = num(
-      `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND call_date >= ? AND call_date <= ? AND (is_test = 0 OR is_test IS NULL)`,
+      `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND COALESCE(completed_date, call_date) >= ? AND COALESCE(completed_date, call_date) <= ? AND (is_test = 0 OR is_test IS NULL)`,
       monthStart, monthEnd
     );
     const completedPrev = num(
-      `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND call_date >= ? AND call_date <= ? AND (is_test = 0 OR is_test IS NULL)`,
+      `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND COALESCE(completed_date, call_date) >= ? AND COALESCE(completed_date, call_date) <= ? AND (is_test = 0 OR is_test IS NULL)`,
       prevStart, prevEnd
     );
     const completedDelta = completedPrev > 0 ? Math.round(((completedThis - completedPrev) / completedPrev) * 100) : (completedThis > 0 ? 100 : 0);
@@ -1907,7 +1955,7 @@ export class SQLiteStorage implements IStorage {
       sevenDaysAgo
     );
     const completedThisWeek = num(
-      `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND call_date >= ? AND (is_test = 0 OR is_test IS NULL)`,
+      `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND COALESCE(completed_date, call_date) >= ? AND (is_test = 0 OR is_test IS NULL)`,
       sevenDaysAgo
     );
     // Net change in open calls this week (positive = improving / shrinking backlog)
@@ -1917,12 +1965,12 @@ export class SQLiteStorage implements IStorage {
     const ftfThis = sqlite.prepare(`
       SELECT COUNT(*) AS total,
              SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM service_calls c WHERE c.parent_call_id = sc.id) THEN 1 ELSE 0 END) AS first_time
-      FROM service_calls sc WHERE sc.status = 'Completed' AND sc.call_date >= ? AND sc.call_date <= ? AND (sc.is_test = 0 OR sc.is_test IS NULL)
+      FROM service_calls sc WHERE sc.status = 'Completed' AND COALESCE(sc.completed_date, sc.call_date) >= ? AND COALESCE(sc.completed_date, sc.call_date) <= ? AND (sc.is_test = 0 OR sc.is_test IS NULL)
     `).get(monthStart, monthEnd) as any;
     const ftfPrev = sqlite.prepare(`
       SELECT COUNT(*) AS total,
              SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM service_calls c WHERE c.parent_call_id = sc.id) THEN 1 ELSE 0 END) AS first_time
-      FROM service_calls sc WHERE sc.status = 'Completed' AND sc.call_date >= ? AND sc.call_date <= ? AND (sc.is_test = 0 OR sc.is_test IS NULL)
+      FROM service_calls sc WHERE sc.status = 'Completed' AND COALESCE(sc.completed_date, sc.call_date) >= ? AND COALESCE(sc.completed_date, sc.call_date) <= ? AND (sc.is_test = 0 OR sc.is_test IS NULL)
     `).get(prevStart, prevEnd) as any;
     const ftfThisRate = (ftfThis?.total ?? 0) > 0 ? Math.round((ftfThis.first_time / ftfThis.total) * 100) : 0;
     const ftfPrevRate = (ftfPrev?.total ?? 0) > 0 ? Math.round((ftfPrev.first_time / ftfPrev.total) * 100) : 0;
@@ -1954,7 +2002,7 @@ export class SQLiteStorage implements IStorage {
       const ws = wkStart.toISOString().split("T")[0];
       const we = wkEnd.toISOString().split("T")[0];
       sparkCompleted.push(num(
-        `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND call_date >= ? AND call_date <= ? AND (is_test = 0 OR is_test IS NULL)`,
+        `SELECT COUNT(*) AS v FROM service_calls WHERE status = 'Completed' AND COALESCE(completed_date, call_date) >= ? AND COALESCE(completed_date, call_date) <= ? AND (is_test = 0 OR is_test IS NULL)`,
         ws, we
       ));
     }

@@ -61,12 +61,18 @@ export const serviceCalls = sqliteTable("service_calls", {
   // Set on every update so optimistic concurrency works. Migration 28
   // backfills it to created_at for pre-existing rows.
   updatedAt: text("updated_at"),
+  // Set when status transitions to Completed; cleared when it leaves
+  // Completed. Used by the manager dashboard for "Completed this month" and
+  // First-Time Fix Rate so a call that was logged in March but finished in
+  // May counts in May, not March. Migration 30 backfills from updated_at.
+  completedDate: text("completed_date"),
 });
 
 export const insertServiceCallSchema = createInsertSchema(serviceCalls).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+  completedDate: true,
 });
 
 export type InsertServiceCall = z.infer<typeof insertServiceCallSchema>;
