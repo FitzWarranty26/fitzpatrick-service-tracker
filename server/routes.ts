@@ -513,7 +513,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/dashboard/activity", (_req, res) => {
+  // Manager-only: this returns recent audit-log entries (logins, deletes,
+  // edits, with usernames). The full /api/audit-log is already manager-gated;
+  // this was an accidental side door that exposed the same data to any
+  // authenticated user.
+  app.get("/api/dashboard/activity", requireManager, (_req, res) => {
     try {
       const activity = storage.getDashboardActivity(10);
       res.json(activity);
@@ -1068,7 +1072,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Activity Log ──────────────────────────────────────────────────────────
 
-  app.post("/api/service-calls/:id/activities", (req, res) => {
+  app.post("/api/service-calls/:id/activities", requireEditor, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
