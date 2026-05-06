@@ -380,16 +380,37 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   };
 
   const handlePhotoAddForEdit = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { compressImage } = await import("@/lib/image-utils");
+    const { compressImage, UnsupportedImageError } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
+    let added = 0;
+    let skipped = 0;
+    let lastError: string | null = null;
     for (const file of files) {
       try {
         const dataUrl = await compressImage(file);
         setNewPhotoFiles(prev => [...prev, { photoUrl: dataUrl, caption: "", photoType: "Other" }]);
-      } catch (err) {
-        console.error("Failed to compress image:", err);
+        added++;
+      } catch (err: any) {
+        skipped++;
+        // Show the friendly UnsupportedImageError message; otherwise fall back
+        // to a generic note. Either way, never silently drop the photo.
+        lastError = err instanceof UnsupportedImageError
+          ? err.message
+          : `Couldn't add ${file.name}: ${err?.message ?? "unknown error"}`;
+        console.error("Failed to add photo:", err);
       }
     }
+    if (skipped > 0) {
+      toast({
+        title: skipped === 1 ? "Photo skipped" : `${skipped} photos skipped`,
+        description: lastError ?? "Some photos couldn't be added.",
+        variant: "destructive",
+      });
+    } else if (added > 0) {
+      toast({ title: `${added} photo${added !== 1 ? "s" : ""} ready` });
+    }
+    // Reset the input so picking the same file again still triggers onChange
+    if (e.target) e.target.value = "";
   };
 
   const [isUploading, setIsUploading] = useState(false);
@@ -677,24 +698,38 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
   const handleDirectPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!call) return;
-    const { compressImage } = await import("@/lib/image-utils");
+    const { compressImage, UnsupportedImageError } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
     setIsUploading(true);
     let uploaded = 0;
+    let skipped = 0;
+    let lastError: string | null = null;
     for (const file of files) {
       try {
         const dataUrl = await compressImage(file);
         await apiRequest("POST", `/api/service-calls/${call.id}/photos`, { photoUrl: dataUrl, caption: "", photoType: "Other" });
         uploaded++;
-      } catch (err) {
+      } catch (err: any) {
+        skipped++;
+        lastError = err instanceof UnsupportedImageError
+          ? err.message
+          : `Couldn't upload ${file.name}: ${err?.message ?? "unknown error"}`;
         console.error("Failed to upload photo:", err);
       }
     }
     setIsUploading(false);
     if (directPhotoInputRef.current) directPhotoInputRef.current.value = "";
     queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
-    toast({ title: "Photos added", description: `${uploaded} photo${uploaded !== 1 ? "s" : ""} uploaded.` });
+    if (skipped > 0) {
+      toast({
+        title: `${uploaded} uploaded, ${skipped} skipped`,
+        description: lastError ?? "Some photos couldn't be uploaded.",
+        variant: "destructive",
+      });
+    } else if (uploaded > 0) {
+      toast({ title: "Photos added", description: `${uploaded} photo${uploaded !== 1 ? "s" : ""} uploaded.` });
+    }
   };
 
   // Follow-up reminder quick-set

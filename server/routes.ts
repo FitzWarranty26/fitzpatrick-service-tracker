@@ -138,19 +138,56 @@ setInterval(() => {
   });
 }, 60 * 60 * 1000);
 
+// Audit log retention. The audit_log_system table grows unbounded otherwise
+// (every save, edit, login, etc. logs a row). On a busy account that's
+// hundreds of MB inside a year, and Render Starter only ships 1GB of
+// persistent disk. We keep 180 days; a manager can still see everything
+// recent in the Activity Log UI and historical data is kept via /api/backup.
+// Configurable via AUDIT_RETENTION_DAYS env var.
+const AUDIT_RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS || "180", 10);
+function pruneAuditLog() {
+  try {
+    const cutoffMs = Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const cutoff = new Date(cutoffMs).toISOString();
+    const result = sqliteHandle.prepare(
+      `DELETE FROM audit_log_system WHERE created_at < ?`
+    ).run(cutoff);
+    if (result.changes > 0) {
+      console.log(`[retention] Pruned ${result.changes} audit_log_system rows older than ${AUDIT_RETENTION_DAYS} days`);
+    }
+  } catch (e) {
+    console.error("[retention] audit_log_system prune failed:", e);
+  }
+}
+// Once on boot, then daily.
+pruneAuditLog();
+setInterval(pruneAuditLog, 24 * 60 * 60 * 1000);
+
 // ─── Geocoding Helper ─────────────────────────────────────────────────────
+// Thin wrapper around Nominatim. Every failure path (network error, timeout,
+// non-200, malformed JSON, empty results) returns null so the caller can save
+// the service call without coordinates. Capped at 5 seconds via AbortController
+// so a hanging Nominatim request never blocks a save.
 async function geocodeAddress(address: string, city: string, state: string): Promise<{lat: string, lng: string} | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
     const query = encodeURIComponent(`${address}, ${city}, ${state}`);
     const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`, {
-      headers: { "User-Agent": "FitzpatrickServiceTracker/1.0" }
+      headers: { "User-Agent": "FitzpatrickServiceTracker/1.0" },
+      signal: controller.signal,
     });
+    if (!res.ok) return null;
     const data = await res.json();
-    if (data && data.length > 0) {
-      return { lat: data[0].lat, lng: data[0].lon };
+    if (Array.isArray(data) && data.length > 0 && data[0].lat && data[0].lon) {
+      return { lat: String(data[0].lat), lng: String(data[0].lon) };
     }
     return null;
-  } catch { return null; }
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export function registerRoutes(httpServer: Server, app: Express) {
@@ -2344,6 +2381,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
       // new row. The old row just gets its status flipped to 'rescheduled' so
       // it stays as historical context without having its original reason
       // overwritten.
+      // Look up the current call status so we know whether to flip it back
+      // out of Completed when a reschedule reopens it.
+      const callRow = sqliteHandle.prepare(
+        `SELECT status FROM service_calls WHERE id = ? LIMIT 1`
+      ).get(id) as any;
+      const wasCompleted = callRow?.status === "Completed";
+
       const tx = sqliteHandle.transaction(() => {
         sqliteHandle.prepare(`
           UPDATE scheduled_appointments
@@ -2355,9 +2399,18 @@ export function registerRoutes(httpServer: Server, app: Express) {
           INSERT INTO scheduled_appointments (call_id, scheduled_date, scheduled_time, status, reason, created_by_id, created_by_name, created_at)
           VALUES (?, ?, ?, 'active', ?, ?, ?, CURRENT_TIMESTAMP)
         `).run(id, scheduledDate, scheduledTime || null, reasonValue, userId || null, userName);
-        sqliteHandle.prepare(`
-          UPDATE service_calls SET scheduled_date = ?, scheduled_time = ? WHERE id = ?
-        `).run(scheduledDate, scheduledTime || null, id);
+        // If the call was Completed, reopen it as Scheduled so KPIs/the
+        // dashboard reflect that there's an upcoming visit. Otherwise leave
+        // status alone (could be In Progress, Pending Parts, etc.).
+        if (wasCompleted) {
+          sqliteHandle.prepare(`
+            UPDATE service_calls SET scheduled_date = ?, scheduled_time = ?, status = 'Scheduled' WHERE id = ?
+          `).run(scheduledDate, scheduledTime || null, id);
+        } else {
+          sqliteHandle.prepare(`
+            UPDATE service_calls SET scheduled_date = ?, scheduled_time = ? WHERE id = ?
+          `).run(scheduledDate, scheduledTime || null, id);
+        }
 
         // Auto-create the corresponding service_call_visits row for this
         // reschedule. The first appointment corresponds to Visit 1 (synthesized
@@ -2530,6 +2583,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const name = ((req.query.name as string) || "").trim();
       if (name.length < 2) return res.json([]);
+      // Match by customer / job-site / contact-company with case-insensitive
+      // substring matching. Previously was exact equality, so 'Davis School'
+      // wouldn't find 'Davis School District' — confusing for techs typing
+      // partial names. Wrap with %...% for LIKE.
+      const like = `%${name.toLowerCase()}%`;
       const rows = sqliteHandle.prepare(`
         SELECT id, call_date, scheduled_date, scheduled_time,
                manufacturer, customer_name, job_site_name,
@@ -2537,13 +2595,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
         FROM service_calls
         WHERE (is_test = 0 OR is_test IS NULL)
           AND (
-            customer_name = ? OR
-            job_site_name = ? OR
-            contact_company = ?
+            LOWER(COALESCE(customer_name, '')) LIKE ? OR
+            LOWER(COALESCE(job_site_name, '')) LIKE ? OR
+            LOWER(COALESCE(contact_company, '')) LIKE ?
           )
         ORDER BY COALESCE(scheduled_date, call_date) DESC
         LIMIT 10
-      `).all(name, name, name) as any[];
+      `).all(like, like, like) as any[];
       res.json(rows.map((r: any) => ({
         id: r.id, callDate: r.call_date, scheduledDate: r.scheduled_date, scheduledTime: r.scheduled_time,
         manufacturer: r.manufacturer, customerName: r.customer_name, jobSiteName: r.job_site_name,
@@ -2559,13 +2617,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const serial = ((req.query.serial as string) || "").trim();
       if (serial.length < 3) return res.json([]);
+      // Serial numbers are often typed in different cases or with trailing
+      // whitespace — match case-insensitively against the trimmed column.
       const rows = sqliteHandle.prepare(`
         SELECT id, call_date, scheduled_date, manufacturer, customer_name,
                job_site_name, status, product_model, product_serial,
                installation_date, product_type, issue_description
         FROM service_calls
         WHERE (is_test = 0 OR is_test IS NULL)
-          AND product_serial = ?
+          AND UPPER(TRIM(product_serial)) = UPPER(?)
         ORDER BY call_date DESC
         LIMIT 10
       `).all(serial) as any[];

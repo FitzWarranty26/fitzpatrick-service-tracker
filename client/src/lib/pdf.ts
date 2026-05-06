@@ -363,7 +363,17 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string, extras:
     }
     .photo-label { font-size: 7pt; color: #64748b; margin-top: 3px; }
     .page-break { page-break-before: always; break-before: page; height: 0; margin: 0; padding: 0; }
-    
+
+    /* Page-break guards — keep semantically related blocks together when
+       printing so a visit row + its notes don't split across pages, and a
+       table row doesn't break mid-cell. */
+    .section { page-break-inside: avoid; break-inside: avoid; }
+    .v-table tr { page-break-inside: avoid; break-inside: avoid; }
+    .v-table .v-notes-cell { page-break-inside: avoid; break-inside: avoid; }
+    .photo-item { page-break-inside: avoid; break-inside: avoid; }
+    .narrative { page-break-inside: avoid; break-inside: avoid; }
+    h2 { page-break-after: avoid; break-after: avoid; }
+
     /* Footer */
     .footer {
       margin-top: 32px; padding-top: 16px;

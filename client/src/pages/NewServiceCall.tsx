@@ -428,17 +428,30 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { compressImage } = await import("@/lib/image-utils");
+    const { compressImage, UnsupportedImageError } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
+    let skipped = 0;
+    let lastError: string | null = null;
     for (const file of files) {
       try {
         const dataUrl = await compressImage(file);
         setPhotos((prev) => [...prev, { photoUrl: dataUrl, caption: "", photoType: "Other", name: file.name }]);
-      } catch (err) {
-        console.error("Failed to compress image:", err);
+      } catch (err: any) {
+        skipped++;
+        lastError = err instanceof UnsupportedImageError
+          ? err.message
+          : `Couldn't add ${file.name}: ${err?.message ?? "unknown error"}`;
+        console.error("Failed to add photo:", err);
       }
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (skipped > 0) {
+      toast({
+        title: skipped === 1 ? "Photo skipped" : `${skipped} photos skipped`,
+        description: lastError ?? "Some photos couldn't be added.",
+        variant: "destructive",
+      });
+    }
   };
 
   const addPart = () => setParts((p) => [...p, { partNumber: "", partDescription: "", quantity: 1, source: "" }]);
