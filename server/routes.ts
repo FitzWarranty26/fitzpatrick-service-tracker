@@ -711,6 +711,26 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      // Optimistic concurrency: if the client sends If-Unmodified-Since with
+      // the updated_at they last fetched, reject when the row has changed in
+      // between (two editors saving the same record). The header is optional
+      // so older clients still work.
+      const ifUnmodified = req.header("If-Unmodified-Since");
+      if (ifUnmodified) {
+        const existing = storage.getServiceCallById(id);
+        if (!existing) return res.status(404).json({ error: "Not found" });
+        const currentTs = (existing as any).updatedAt || (existing as any).createdAt;
+        // Both timestamps are ISO strings produced by Date.toISOString(); a
+        // direct string compare is correct.
+        if (currentTs && currentTs !== ifUnmodified) {
+          return res.status(409).json({
+            error: "This service call was modified by someone else. Please refresh and try again.",
+            currentUpdatedAt: currentTs,
+          });
+        }
+      }
+
       const data = insertServiceCallSchema.partial().parse(req.body);
       const call = storage.updateServiceCall(id, data);
       if (!call) return res.status(404).json({ error: "Not found" });
@@ -783,9 +803,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const contactsList = storage.getAllContacts(Object.keys(filters).length ? filters : undefined);
 
       const headers = ["Type", "Company Name", "Contact Name", "Phone", "Email", "Address", "City", "State", "Notes"];
+      // CSV-injection safe escaper: prefix any cell that starts with =, +, -, @,
+      // tab, or CR with a leading apostrophe so Excel/Sheets won't evaluate it
+      // as a formula. RFC-4180 escaping for quotes/commas/newlines applies
+      // afterward.
+      const CSV_INJECTION_RE = /^[=+\-@\t\r]/;
       const escapeCSV = (val: string | null | undefined): string => {
         if (val == null) return "";
-        const s = String(val);
+        let s = String(val);
+        if (CSV_INJECTION_RE.test(s)) s = "'" + s;
         if (s.includes('"') || s.includes(',') || s.includes('\n')) {
           return '"' + s.replace(/"/g, '""') + '"';
         }
@@ -1670,9 +1696,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
         "Issue", "Diagnosis", "Resolution", "Parts Used", "Tech Notes"
       ];
 
+      // CSV-injection safe escaper: prefix any cell that starts with =, +, -, @,
+      // tab, or CR with a leading apostrophe so Excel/Sheets won't evaluate it
+      // as a formula. RFC-4180 escaping for quotes/commas/newlines applies
+      // afterward.
+      const CSV_INJECTION_RE = /^[=+\-@\t\r]/;
       const escapeCSV = (val: string | null | undefined): string => {
         if (val == null) return "";
-        const s = String(val);
+        let s = String(val);
+        if (CSV_INJECTION_RE.test(s)) s = "'" + s;
         if (s.includes('"') || s.includes(',') || s.includes('\n')) {
           return '"' + s.replace(/"/g, '""') + '"';
         }
@@ -2198,11 +2230,36 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (!data.billToName || !data.issueDate) {
         return res.status(400).json({ error: "Bill To Name and Issue Date are required" });
       }
-      data.invoiceNumber = data.invoiceNumber || storage.generateInvoiceNumber();
       data.createdBy = req.user?.id || null;
       const items = data.items || [];
       delete data.items;
-      const invoice = storage.createInvoice(data);
+
+      // Create the invoice with up to 5 retries on UNIQUE-constraint collisions.
+      // Two near-simultaneous POSTs could both pre-fetch the same next number.
+      // The DB's UNIQUE(invoice_number) index will reject the loser; we just
+      // regenerate and try again.
+      let invoice: any = null;
+      let lastErr: any = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          data.invoiceNumber = data.invoiceNumber || storage.generateInvoiceNumber();
+          invoice = storage.createInvoice(data);
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          const msg = String(err?.message || err);
+          if (msg.includes("UNIQUE") && msg.includes("invoice_number")) {
+            // Clear so we generate a fresh number next iteration
+            delete data.invoiceNumber;
+            continue;
+          }
+          throw err;
+        }
+      }
+      if (!invoice) {
+        throw lastErr || new Error("Could not allocate invoice number after 5 attempts");
+      }
+
       if (items.length) {
         storage.replaceInvoiceItems(invoice.id, items.map((item: any) => ({ ...item, invoiceId: invoice.id })));
       }

@@ -315,7 +315,12 @@ export default function ServiceCallDetail({ id }: { id: string }) {
 
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<ServiceCallFull>) => {
-      const res = await apiRequest("PATCH", `/api/service-calls/${callId}`, data);
+      // Optimistic concurrency: send If-Unmodified-Since with the timestamp we
+      // last fetched. The server returns 409 if another editor has saved in
+      // the meantime; we surface that with a clear toast and refresh the data.
+      const lastKnown = (call as any)?.updatedAt || (call as any)?.createdAt;
+      const extraHeaders = lastKnown ? { "If-Unmodified-Since": String(lastKnown) } : undefined;
+      const res = await apiRequest("PATCH", `/api/service-calls/${callId}`, data, extraHeaders);
       return res.json();
     },
     onSuccess: async () => {
@@ -330,7 +335,21 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       setIsEditing(false);
       toast({ title: "Saved", description: "Service call updated." });
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) => {
+      // 409 means someone else saved this call in parallel. Refresh the
+      // local view so the user sees the latest data instead of their stale copy.
+      const msg = String(e?.message ?? "");
+      if (msg.startsWith("409:")) {
+        queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+        toast({
+          title: "Someone else saved first",
+          description: "This call was updated by another user. We've refreshed it — please review and save again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
   });
 
   const deletePhotoMutation = useMutation({

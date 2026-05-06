@@ -493,6 +493,34 @@ if (!hasSchedAppts) {
   console.log(`Migration 27: created scheduled_appointments table, backfilled ${existing.length} active appointments`);
 }
 
+// Migration 28: Add updated_at to service_calls for optimistic concurrency
+// control. Two editors (e.g. manager on desktop + tech on phone) could
+// previously silently overwrite each other's changes. PATCH now accepts an
+// If-Unmodified-Since header and rejects with 409 if the row has changed.
+if (!columnExists("service_calls", "updated_at")) {
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN updated_at TEXT`).run();
+  // Backfill to created_at so existing rows have a baseline.
+  sqlite.prepare(`UPDATE service_calls SET updated_at = created_at WHERE updated_at IS NULL`).run();
+  console.log("Migration 28: added updated_at column to service_calls (backfilled from created_at)");
+}
+
+// Migration 29: Add covering indexes for queries that scan tables fully.
+// These dramatically speed up the manager dashboard and detail pages once the
+// database has thousands of rows. All idempotent (IF NOT EXISTS).
+sqlite.exec(`
+  CREATE INDEX IF NOT EXISTS idx_invoices_service_call_id ON invoices(service_call_id);
+  CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+  CREATE INDEX IF NOT EXISTS idx_invoices_issue_date ON invoices(issue_date);
+  CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
+  CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
+  CREATE INDEX IF NOT EXISTS idx_service_calls_parent_call_id ON service_calls(parent_call_id);
+  CREATE INDEX IF NOT EXISTS idx_service_calls_scheduled_date ON service_calls(scheduled_date);
+  CREATE INDEX IF NOT EXISTS idx_service_calls_created_by ON service_calls(created_by);
+  CREATE INDEX IF NOT EXISTS idx_visits_visit_date ON service_call_visits(visit_date);
+  CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log_system(entity_type, entity_id);
+`);
+console.log("Migration 29: ensured query indexes (invoices, visits, audit, service_calls)");
+
 // Seed default admin user if users table is empty
 const userCount = (sqlite.prepare(`SELECT COUNT(*) as count FROM users`).get() as any).count;
 if (userCount === 0) {
@@ -757,6 +785,7 @@ export class SQLiteStorage implements IStorage {
       parentCallId: row.parent_call_id,
       isTest: row.is_test,
       createdAt: row.created_at,
+      updatedAt: row.updated_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: row.visit_count ?? 0,
@@ -785,7 +814,9 @@ export class SQLiteStorage implements IStorage {
   }
 
   updateServiceCall(id: number, call: Partial<InsertServiceCall>): ServiceCall | undefined {
-    const updated = db.update(serviceCalls).set(call).where(eq(serviceCalls.id, id)).returning().get();
+    // Always bump updated_at so optimistic concurrency works.
+    const withTs = { ...call, updatedAt: new Date().toISOString() } as any;
+    const updated = db.update(serviceCalls).set(withTs).where(eq(serviceCalls.id, id)).returning().get();
     if (updated && (call.scheduledDate !== undefined || call.scheduledTime !== undefined)) {
       // Keep the active scheduled_appointments row in lockstep with the call's
       // scheduled fields. Otherwise an admin editing the Overview's 'Scheduled
@@ -1009,6 +1040,7 @@ export class SQLiteStorage implements IStorage {
       parentCallId: row.parent_call_id,
       isTest: row.is_test,
       createdAt: row.created_at,
+      updatedAt: row.updated_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: 0,
@@ -1121,6 +1153,7 @@ export class SQLiteStorage implements IStorage {
       parentCallId: row.parent_call_id,
       isTest: row.is_test,
       createdAt: row.created_at,
+      updatedAt: row.updated_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: 0,
@@ -1223,6 +1256,7 @@ export class SQLiteStorage implements IStorage {
       parentCallId: row.parent_call_id,
       isTest: row.is_test,
       createdAt: row.created_at,
+      updatedAt: row.updated_at,
     }));
   }
 
@@ -1405,6 +1439,7 @@ export class SQLiteStorage implements IStorage {
       parentCallId: row.parent_call_id,
       isTest: row.is_test,
       createdAt: row.created_at,
+      updatedAt: row.updated_at,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: 0,
@@ -1565,10 +1600,31 @@ export class SQLiteStorage implements IStorage {
   // ─── Invoices ───────────────────────────────────────────────────────────
 
   generateInvoiceNumber(): string {
+    // Collision-safe: use MAX of the existing sequence numbers (not COUNT)
+    // and never return a number that already exists. COUNT can collide if
+    // an invoice was deleted, two requests arrive concurrently, or the
+    // sequence is non-contiguous. We pick max+1, then walk forward until
+    // we find a free slot.
     const year = new Date().getFullYear();
-    const row = sqlite.prepare(`SELECT COUNT(*) as count FROM invoices WHERE invoice_number LIKE ?`).get(`INV-${year}-%`) as any;
-    const seq = String((row.count || 0) + 1).padStart(3, "0");
-    return `INV-${year}-${seq}`;
+    const prefix = `INV-${year}-`;
+    const rows = sqlite.prepare(
+      `SELECT invoice_number FROM invoices WHERE invoice_number LIKE ?`
+    ).all(`${prefix}%`) as any[];
+    let maxSeq = 0;
+    const taken = new Set<number>();
+    for (const r of rows) {
+      const m = String(r.invoice_number).match(/-(\d+)$/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (!isNaN(n)) {
+          taken.add(n);
+          if (n > maxSeq) maxSeq = n;
+        }
+      }
+    }
+    let next = maxSeq + 1;
+    while (taken.has(next)) next++;
+    return `${prefix}${String(next).padStart(3, "0")}`;
   }
 
   private mapInvoiceRow(r: any): Invoice {
