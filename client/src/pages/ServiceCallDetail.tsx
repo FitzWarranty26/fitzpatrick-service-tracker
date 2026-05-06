@@ -662,7 +662,11 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     onSuccess: () => {
       setShowAddVisit(false);
       refetchVisits();
-      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+      // A new visit can move the parent's scheduled date and status, so we
+      // refresh every dashboard/calendar surface that reads scheduling data.
+      // Without this, dashboard/today, /upcoming-week, /briefing, and /calendar
+      // could keep showing stale dates until the next page reload.
+      invalidateSchedulingSurfaces();
       toast({ title: "Return visit added" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -677,7 +681,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       setShowAddVisit(false);
       setEditingVisit(null);
       refetchVisits();
-      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+      // Editing the latest visit's date/status propagates to the parent call,
+      // so refresh every scheduling-aware surface.
+      invalidateSchedulingSurfaces();
       toast({ title: "Visit updated" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -690,6 +696,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     },
     onSuccess: () => {
       refetchVisits();
+      // Deleting a visit can change which visit is "latest" — refresh schedule
+      // surfaces so the calendar/dashboard can reflect it.
+      invalidateSchedulingSurfaces();
       toast({ title: "Visit deleted" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),

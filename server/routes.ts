@@ -657,10 +657,28 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/service-calls", requireEditor, (req, res) => {
+  app.post("/api/service-calls", requireEditor, (req: any, res) => {
     try {
       const data = insertServiceCallSchema.parse(req.body);
       const call = storage.createServiceCall(data);
+
+      // If the call was created with an initial scheduled date, seed the
+      // Schedule History with an active appointment row. Without this, the
+      // Schedule History tab would show "No appointments scheduled yet" even
+      // though the call IS scheduled — and the first reschedule would only
+      // have one prior entry instead of two.
+      if (data.scheduledDate) {
+        try {
+          const userId = req.user?.id || null;
+          const userName = req.user?.displayName || req.user?.username || "System";
+          sqliteHandle.prepare(`
+            INSERT INTO scheduled_appointments (call_id, scheduled_date, scheduled_time, status, reason, created_by_id, created_by_name, created_at)
+            VALUES (?, ?, ?, 'active', NULL, ?, ?, CURRENT_TIMESTAMP)
+          `).run(call.id, data.scheduledDate, data.scheduledTime || null, userId, userName);
+        } catch (e) {
+          console.error("Seed initial appointment failed:", e);
+        }
+      }
 
       // Auto-save contacts to directory (won't duplicate existing ones)
       try {
@@ -2328,9 +2346,43 @@ export function registerRoutes(httpServer: Server, app: Express) {
         milesTraveled: milesTraveled || null,
       };
       const visit = storage.createVisit(visitData);
-      // Propagate visit status + date to parent service call so it surfaces on dashboard/scheduled/calendar
+
+      // Propagate visit status + date to parent service call so it surfaces on
+      // dashboard/scheduled/calendar — BUT only when this visit's date is on
+      // or after the parent's current scheduled_date. We never drag the
+      // parent's schedule backwards when a tech logs a retroactive visit.
+      // Note we look at visit_date, not visit_number, because new visits
+      // always get max+1 and would always look "latest" by number.
       const statusesToPropagate = ['Scheduled', 'In Progress', 'Needs Return Visit'];
-      if (statusesToPropagate.includes(visitData.status)) {
+      const parent = sqliteHandle.prepare(
+        `SELECT scheduled_date, call_date FROM service_calls WHERE id = ? LIMIT 1`
+      ).get(callId) as any;
+      const parentSchedDate = parent?.scheduled_date || parent?.call_date || "";
+      const dragsForward = !parentSchedDate || visitData.visitDate >= parentSchedDate;
+      if (statusesToPropagate.includes(visitData.status) && dragsForward) {
+        // Mirror the schedule into scheduled_appointments FIRST so the previous
+        // active row preserves its original date (otherwise updateServiceCall
+        // below would sync it forward to the new date before we flip it to
+        // 'rescheduled', losing the schedule history).
+        try {
+          const userId = req.user?.id || null;
+          const userName = req.user?.displayName || req.user?.username || "System";
+          const tx = sqliteHandle.transaction(() => {
+            sqliteHandle.prepare(
+              `UPDATE scheduled_appointments SET status = 'rescheduled' WHERE call_id = ? AND status = 'active'`
+            ).run(callId);
+            sqliteHandle.prepare(`
+              INSERT INTO scheduled_appointments (call_id, scheduled_date, scheduled_time, status, reason, created_by_id, created_by_name, created_at)
+              VALUES (?, ?, NULL, 'active', ?, ?, ?, CURRENT_TIMESTAMP)
+            `).run(callId, visitData.visitDate, `Visit ${visit.visitNumber} added`, userId, userName);
+          });
+          tx();
+        } catch (e) {
+          console.error("Mirror visit to appointments failed:", e);
+        }
+        // Now sync the parent. updateServiceCall will also try to sync the
+        // active appointment, but since we just created the new active row
+        // with the same date, that's a no-op.
         storage.updateServiceCall(callId, { status: visitData.status, scheduledDate: visitData.visitDate });
       }
       logAudit(req, "create_visit", "service_call", callId, `Visit ${visit.visitNumber} added to call #${callId}`);
@@ -2353,10 +2405,19 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (milesTraveled !== undefined) data.milesTraveled = milesTraveled;
       const visit = storage.updateVisit(vid, data);
       if (!visit) return res.status(404).json({ error: "Visit not found" });
-      // Propagate visit status + date to parent service call
+
+      // Propagate visit status + date to parent service call — BUT only when
+      // this visit's date is on or after the parent's current scheduled_date.
+      // Editing an older visit shouldn't silently rewind the parent.
       if (status !== undefined && !isNaN(callId)) {
         const statusesToPropagate = ['Scheduled', 'In Progress', 'Needs Return Visit'];
-        if (statusesToPropagate.includes(status)) {
+        const parent = sqliteHandle.prepare(
+          `SELECT scheduled_date, call_date FROM service_calls WHERE id = ? LIMIT 1`
+        ).get(callId) as any;
+        const parentSchedDate = parent?.scheduled_date || parent?.call_date || "";
+        const newDate = (visitDate !== undefined ? visitDate : visit.visitDate) || "";
+        const dragsForward = !parentSchedDate || newDate >= parentSchedDate;
+        if (statusesToPropagate.includes(status) && dragsForward) {
           const updatePayload: any = { status };
           if (visitDate !== undefined) updatePayload.scheduledDate = visitDate;
           storage.updateServiceCall(callId, updatePayload);
@@ -2536,8 +2597,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const from = req.query.from as string;
       const to = req.query.to as string;
 
-      // Get all service calls in the date range — always use call_date for calendar placement
-      // (return visits handle their own dates as separate events below)
+      // Get all service calls whose scheduled_date (or call_date as fallback)
+      // falls in the window. Previously this filtered on call_date only, so a
+      // call logged in January but scheduled for May wouldn't show up on May's
+      // calendar — and multi-visit calls were pinned back to call_date rather
+      // than their active scheduled date, hiding them from the date they were
+      // really on. Return visits (#2+) are still returned as separate events
+      // below with their own visit_date.
       const calls = sqliteHandle
         .prepare(`
           SELECT
@@ -2549,18 +2615,20 @@ export function registerRoutes(httpServer: Server, app: Express) {
           FROM service_calls sc
           LEFT JOIN users u ON sc.created_by = u.id
           WHERE
-            sc.call_date >= ? AND sc.call_date <= ?
+            COALESCE(sc.scheduled_date, sc.call_date) >= ?
+            AND COALESCE(sc.scheduled_date, sc.call_date) <= ?
             AND (sc.is_test = 0 OR sc.is_test IS NULL)
-          ORDER BY sc.call_date ASC, sc.scheduled_time ASC
+          ORDER BY COALESCE(sc.scheduled_date, sc.call_date) ASC, sc.scheduled_time ASC
         `)
         .all(from || "1900-01-01", to || "2999-12-31") as any[];
 
       const result = calls.map(c => ({
         id: c.id,
         callDate: c.call_date,
-        // For calendar placement: use call_date if call has return visits (so Visit 1 stays on its original date)
-        // Otherwise use scheduled_date if set (for single-visit calls scheduled ahead of time)
-        scheduledDate: (c.visit_count > 0) ? c.call_date : c.scheduled_date,
+        // Always use the scheduled_date when set; fall back to call_date only
+        // when unscheduled. Previously multi-visit calls pinned back to
+        // call_date, hiding the parent call from the date it was really on.
+        scheduledDate: c.scheduled_date || c.call_date,
         scheduledTime: c.scheduled_time,
         customerName: c.customer_name,
         jobSiteName: c.job_site_name,
