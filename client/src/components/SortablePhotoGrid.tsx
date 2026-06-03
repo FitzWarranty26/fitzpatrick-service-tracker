@@ -18,7 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { X, GripVertical } from "lucide-react";
-import { PHOTO_TYPES } from "@shared/schema";
+import { PhotoTypePicker } from "@/components/PhotoTypePicker";
 
 interface PhotoEntry {
   photoUrl: string;
@@ -96,16 +96,12 @@ function SortablePhotoItem({
       </div>
       {/* Controls */}
       <div className="p-2 space-y-1.5 bg-background">
-        <select
+        {/* Label picker: built-in + saved custom labels + custom-entry option */}
+        <PhotoTypePicker
           value={photo.photoType}
-          onChange={(e) => onUpdate("photoType", e.target.value)}
-          className="w-full text-xs border border-input rounded px-2 py-1 bg-background text-foreground"
-          data-testid={`select-photo-type-${index}`}
-        >
-          {PHOTO_TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
+          onChange={(v) => onUpdate("photoType", v)}
+          testIdSuffix={`-${index}`}
+        />
         <input
           type="text"
           value={photo.caption}

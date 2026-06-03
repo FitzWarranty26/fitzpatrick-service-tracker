@@ -13,6 +13,9 @@ import {
   auditLog,
   invoices,
   invoiceItems,
+  photoLabelPresets,
+  PHOTO_TYPES,
+  type PhotoLabelPreset,
   type ServiceCall,
   type InsertServiceCall,
   type Photo,
@@ -521,6 +524,21 @@ if (!columnExists("service_calls", "completed_date")) {
   console.log("Migration 30: added completed_date column to service_calls (backfilled from updated_at/created_at)");
 }
 
+// Migration 32: Photo label presets. The tech can save a custom photo label
+// (e.g. "Cracked Heat Exchanger") and reuse it on future uploads. Built-in
+// labels (Before / After / Product Label / Serial Number / Damage / Other)
+// live in shared/schema.ts and are merged with these saved presets in the
+// picker UI. Unique on label so duplicates are prevented at the DB layer.
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS photo_label_presets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL UNIQUE,
+    created_by_user_id INTEGER,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_photo_label_presets_label ON photo_label_presets(label);
+`);
+
 // Migration 31: Internal-only flag. Lets the tech (or manager) mark a
 // service call for follow-up review even after it's been Completed. The flag
 // is plain boolean (0/1); an optional reason note explains why it was
@@ -631,6 +649,12 @@ export interface IStorage {
   getPhotosByServiceCallId(serviceCallId: number): Photo[];
   createPhoto(photo: InsertPhoto): Photo;
   deletePhoto(id: number): void;
+
+  // Photo label presets (custom labels users save for reuse)
+  getPhotoLabelPresets(): PhotoLabelPreset[];
+  getMergedPhotoLabels(): string[];
+  createPhotoLabelPreset(label: string, userId: number | null): PhotoLabelPreset | null;
+  deletePhotoLabelPreset(id: number): void;
 
   // Parts
   getPartsByServiceCallId(serviceCallId: number): Part[];
@@ -931,6 +955,67 @@ export class SQLiteStorage implements IStorage {
 
   updatePhotoSortOrder(photoId: number, sortOrder: number): void {
     sqlite.prepare("UPDATE photos SET sort_order = ? WHERE id = ?").run(sortOrder, photoId);
+  }
+
+  // ─── Photo Label Presets ──────────────────────────────────────────
+  //
+  // The picker shows built-in PHOTO_TYPES merged with user-saved custom
+  // labels. We expose the merged list so the client doesn't have to know
+  // about the split.
+
+  getPhotoLabelPresets(): PhotoLabelPreset[] {
+    return sqlite
+      .prepare(`SELECT id, label, created_by_user_id, created_at FROM photo_label_presets ORDER BY label ASC`)
+      .all()
+      .map((r: any) => ({
+        id: r.id,
+        label: r.label,
+        createdByUserId: r.created_by_user_id ?? null,
+        createdAt: r.created_at,
+      }));
+  }
+
+  /** Get the full list of labels the picker should show — built-in first, then saved. */
+  getMergedPhotoLabels(): string[] {
+    const saved = this.getPhotoLabelPresets().map(p => p.label);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const l of [...PHOTO_TYPES, ...saved]) {
+      if (!seen.has(l)) { seen.add(l); out.push(l); }
+    }
+    return out;
+  }
+
+  /** Save a custom label. Idempotent — if the label already exists (built-in
+   *  or saved), just returns the existing row (or null for built-ins). */
+  createPhotoLabelPreset(label: string, userId: number | null): PhotoLabelPreset | null {
+    const trimmed = label.trim();
+    if (!trimmed) return null;
+    // Don't re-save built-ins.
+    if ((PHOTO_TYPES as readonly string[]).includes(trimmed)) return null;
+    const existing = sqlite.prepare(`SELECT * FROM photo_label_presets WHERE label = ?`).get(trimmed) as any;
+    if (existing) {
+      return {
+        id: existing.id,
+        label: existing.label,
+        createdByUserId: existing.created_by_user_id ?? null,
+        createdAt: existing.created_at,
+      };
+    }
+    const now = new Date().toISOString();
+    const result = sqlite
+      .prepare(`INSERT INTO photo_label_presets (label, created_by_user_id, created_at) VALUES (?, ?, ?)`)
+      .run(trimmed, userId, now);
+    return {
+      id: Number(result.lastInsertRowid),
+      label: trimmed,
+      createdByUserId: userId,
+      createdAt: now,
+    };
+  }
+
+  deletePhotoLabelPreset(id: number): void {
+    sqlite.prepare(`DELETE FROM photo_label_presets WHERE id = ?`).run(id);
   }
 
   // ─── Parts ──────────────────────────────────────────────────────────────────

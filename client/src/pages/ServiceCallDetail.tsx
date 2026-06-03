@@ -35,6 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { generatePDF } from "@/lib/pdf";
 import { PhoneLink } from "@/components/PhoneLink";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
+import { PhotoReviewModal, type PhotoDraft } from "@/components/PhotoReviewModal";
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -572,6 +573,12 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   const [isUploading, setIsUploading] = useState(false);
   const directPhotoInputRef = useRef<HTMLInputElement>(null);
 
+  // Review-before-upload state for the direct "Add Photos" button. We hold
+  // drafts client-side until the tech confirms; nothing is written to the
+  // server until then.
+  const [showPhotoReview, setShowPhotoReview] = useState(false);
+  const [reviewDrafts, setReviewDrafts] = useState<PhotoDraft[]>([]);
+
   // Activity log
   const [newNote, setNewNote] = useState("");
   const addActivityMutation = useMutation({
@@ -861,34 +868,76 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     }
   };
 
+  // Direct upload now opens a review modal first — the tech picks a label
+  // (and optional caption) per photo before they hit the server. Without
+  // this step, every photo defaulted to "Other" and the categorization
+  // feature was effectively unused.
   const handleDirectPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!call) return;
     const { compressImage, UnsupportedImageError } = await import("@/lib/image-utils");
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
-    setIsUploading(true);
-    let uploaded = 0;
+
+    // Compress to data URLs in parallel before showing the modal so the
+    // review thumbnails are ready instantly.
+    const drafts: PhotoDraft[] = [];
     let skipped = 0;
-    let lastError: string | null = null;
+    let firstError: string | null = null;
     for (const file of files) {
       try {
         const dataUrl = await compressImage(file);
-        await apiRequest("POST", `/api/service-calls/${call.id}/photos`, { photoUrl: dataUrl, caption: "", photoType: "Other" });
-        uploaded++;
+        drafts.push({ photoUrl: dataUrl, fileName: file.name, photoType: "Other", caption: "" });
       } catch (err: any) {
         skipped++;
-        lastError = err instanceof UnsupportedImageError
+        firstError ??= err instanceof UnsupportedImageError
           ? err.message
-          : `Couldn't upload ${file.name}: ${err?.message ?? "unknown error"}`;
+          : `Couldn't process ${file.name}: ${err?.message ?? "unknown error"}`;
+        console.error("Failed to process photo:", err);
+      }
+    }
+    if (directPhotoInputRef.current) directPhotoInputRef.current.value = "";
+    if (skipped > 0) {
+      toast({
+        title: skipped === 1 ? "Photo skipped" : `${skipped} photos skipped`,
+        description: firstError ?? "Some photos couldn't be added.",
+        variant: "destructive",
+      });
+    }
+    if (drafts.length > 0) {
+      setReviewDrafts(drafts);
+      setShowPhotoReview(true);
+    }
+  };
+
+  // Commit reviewed photos to the server. Each upload runs in series so we
+  // can report partial-failure counts cleanly.
+  const confirmReviewedPhotos = async () => {
+    if (!call || reviewDrafts.length === 0) return;
+    setIsUploading(true);
+    let uploaded = 0;
+    let failed = 0;
+    let lastError: string | null = null;
+    for (const d of reviewDrafts) {
+      try {
+        await apiRequest("POST", `/api/service-calls/${call.id}/photos`, {
+          photoUrl: d.photoUrl,
+          caption: d.caption,
+          photoType: d.photoType || "Other",
+        });
+        uploaded++;
+      } catch (err: any) {
+        failed++;
+        lastError = `Couldn't upload ${d.fileName}: ${err?.message ?? "unknown error"}`;
         console.error("Failed to upload photo:", err);
       }
     }
     setIsUploading(false);
-    if (directPhotoInputRef.current) directPhotoInputRef.current.value = "";
+    setShowPhotoReview(false);
+    setReviewDrafts([]);
     queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
-    if (skipped > 0) {
+    if (failed > 0) {
       toast({
-        title: `${uploaded} uploaded, ${skipped} skipped`,
+        title: `${uploaded} uploaded, ${failed} failed`,
         description: lastError ?? "Some photos couldn't be uploaded.",
         variant: "destructive",
       });
@@ -2741,6 +2790,21 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           onClose={() => setLightboxPhoto(null)}
         />
       )}
+
+      {/* Review modal: catches direct "Add Photos" uploads and lets the tech
+          assign a label to each before sending them up. */}
+      <PhotoReviewModal
+        open={showPhotoReview}
+        drafts={reviewDrafts}
+        onChange={setReviewDrafts}
+        onCancel={() => {
+          if (isUploading) return;
+          setShowPhotoReview(false);
+          setReviewDrafts([]);
+        }}
+        onConfirm={confirmReviewedPhotos}
+        isUploading={isUploading}
+      />
     </div>
   );
 }

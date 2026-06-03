@@ -283,13 +283,31 @@ export const CLAIM_STATUSES = [
   "Pending Review",
 ] as const;
 
+// Built-in photo labels. The photo_type column is plain TEXT so users can
+// also enter a custom label — these are just the always-available defaults.
+// Custom labels users opt to save are stored in the photo_label_presets table
+// (Migration 32) and surface in the picker alongside these built-ins.
 export const PHOTO_TYPES = [
   "Before",
   "After",
   "Product Label",
+  "Serial Number",
   "Damage",
   "Other",
 ] as const;
+
+export const photoLabelPresets = sqliteTable("photo_label_presets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  label: text("label").notNull().unique(),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: text("created_at").notNull(),
+});
+export const insertPhotoLabelPresetSchema = createInsertSchema(photoLabelPresets).omit({
+  id: true,
+  createdAt: true,
+});
+export type PhotoLabelPreset = typeof photoLabelPresets.$inferSelect;
+export type InsertPhotoLabelPreset = z.infer<typeof insertPhotoLabelPresetSchema>;
 
 export const JOB_STATES = ["UT", "ID"] as const;
 
