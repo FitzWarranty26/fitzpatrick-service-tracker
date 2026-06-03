@@ -1033,6 +1033,59 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  // ─── Photo Label Presets ────────────────────────────────────────
+  //
+  // GET returns the merged list — built-in PHOTO_TYPES + user-saved — so the
+  // picker doesn't need to know about the split. POST saves a custom label
+  // for reuse. DELETE removes a saved preset (built-ins can't be deleted).
+
+  app.get("/api/photo-label-presets", (_req, res) => {
+    try {
+      // Return merged labels + raw saved presets so the client can render
+      // them differently if it wants (e.g. show a delete icon next to saved
+      // ones).
+      res.json({
+        labels: storage.getMergedPhotoLabels(),
+        saved: storage.getPhotoLabelPresets(),
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.post("/api/photo-label-presets", requireEditor, (req: any, res) => {
+    try {
+      const { label } = req.body || {};
+      if (typeof label !== "string" || !label.trim()) {
+        return res.status(400).json({ error: "label is required" });
+      }
+      if (label.length > 64) {
+        return res.status(400).json({ error: "label too long (max 64 chars)" });
+      }
+      const preset = storage.createPhotoLabelPreset(label, req.user?.id ?? null);
+      if (!preset) {
+        // built-in or empty — not an error, just nothing to save
+        return res.json({ success: true, preset: null });
+      }
+      logAudit(req, "saved_photo_label", "photo_label_preset", preset.id, preset.label);
+      res.status(201).json({ success: true, preset });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.delete("/api/photo-label-presets/:id", requireEditor, (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      storage.deletePhotoLabelPreset(id);
+      logAudit(req, "deleted_photo_label", "photo_label_preset", id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
   // ─── Parts ──────────────────────────────────────────────────────────────────
 
   app.get("/api/service-calls/:id/parts", (req, res) => {
