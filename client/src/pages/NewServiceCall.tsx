@@ -953,9 +953,14 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                 )} />
               </div>
 
-              {/* On-Site Contact — Commercial only */}
-              {form.watch("callType") === "commercial" && <><div className="flex items-center justify-between pt-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">On-Site Contact</p>
+              {/* On-Site Contact — shown for both residential and commercial.
+                 Label adapts: "Homeowner Contact" for residential, "On-Site
+                 Contact" for commercial. The tech needs a place to capture a
+                 phone number for a homeowner without leaving the new-call form. */}
+              <><div className="flex items-center justify-between pt-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  {form.watch("callType") === "residential" ? "Homeowner Contact" : "On-Site Contact"}
+                </p>
                 {form.watch("siteContactName") && (
                   <button
                     type="button"
@@ -974,7 +979,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                     <div className="relative">
                       <FormControl>
                         <Input
-                          placeholder="Homeowner / facility contact"
+                          placeholder={form.watch("callType") === "residential" ? "Homeowner name" : "Facility contact"}
                           {...field}
                           value={field.value ?? ""}
                           onFocus={() => setShowSiteContactSuggest(true)}
@@ -1010,7 +1015,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                   </FormItem>
                 )} />
               </div>
-              </>}
+              </>
             </CardContent>
           </Card>
 

@@ -628,7 +628,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   app.get("/api/service-calls", (req, res) => {
     try {
-      const filters = {
+      const filters: any = {
         manufacturer: req.query.manufacturer as string | undefined,
         status: req.query.status as string | undefined,
         claimStatus: req.query.claimStatus as string | undefined,
@@ -640,8 +640,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
       };
       // Remove undefined filters
       Object.keys(filters).forEach(key => {
-        if (!filters[key as keyof typeof filters]) delete filters[key as keyof typeof filters];
+        if (!filters[key]) delete filters[key];
       });
+      // "flagged" is a boolean filter passed as ?flagged=1 from the list page's
+      // Flagged chip. Handled separately because false != undefined here.
+      if (req.query.flagged === "1" || req.query.flagged === "true") {
+        filters.flaggedOnly = true;
+      }
       const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
       res.json(calls);
     } catch (e: any) {
@@ -754,9 +759,20 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
 
       const data = insertServiceCallSchema.partial().parse(req.body);
+
+      // If this PATCH is just toggling the internal flag, capture a dedicated
+      // audit entry so a manager can later see who flagged what when.
+      const isFlagOnlyChange = Object.keys(data).every(k => k === "flaggedInternal" || k === "flaggedReason");
+      const flagChange = data.flaggedInternal !== undefined ? (data.flaggedInternal ? "flagged_call" : "unflagged_call") : null;
+
       const call = storage.updateServiceCall(id, data);
       if (!call) return res.status(404).json({ error: "Not found" });
-      logAudit(req, "edited_call", "service_call", id);
+      if (flagChange) {
+        logAudit(req, flagChange, "service_call", id, data.flaggedReason || undefined);
+      }
+      if (!isFlagOnlyChange) {
+        logAudit(req, "edited_call", "service_call", id);
+      }
       res.json(call);
     } catch (e: any) {
       if (e instanceof z.ZodError) {

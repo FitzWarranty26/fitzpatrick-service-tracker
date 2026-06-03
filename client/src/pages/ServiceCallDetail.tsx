@@ -24,10 +24,10 @@ import {
 } from "@/components/ui/dialog";
 import { getUser } from "@/lib/auth";
 import {
-  ChevronLeft, Edit3, Save, X, Trash2, FileText, Camera, Plus, Receipt,
+  ChevronLeft, ChevronRight, Edit3, Save, X, Trash2, FileText, Camera, Plus, Receipt,
   MapPin, Phone, User, Building, AlertCircle, CheckCircle2,
   Mail, Loader2, Clock, Car, DollarSign, CornerDownRight, Shield, ShieldAlert, ShieldQuestion, Send, MessageSquare, GripVertical, Bell, CalendarDays, FilePlus, Video, PhoneCall, UserCheck,
-  Image as ImageIcon, Wrench, ListChecks, MapPin as MapPinIcon,
+  Image as ImageIcon, Wrench, ListChecks, MapPin as MapPinIcon, Flag,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -186,6 +186,131 @@ function WarrantyBadge({ installationDate, manufacturer, productType }: { instal
       <ShieldAlert className="w-3 h-3" /> Out of Warranty
       {expDate && <span className="text-red-600 dark:text-red-500">(expired {expDate})</span>}
     </span>
+  );
+}
+
+// ─── Photo Lightbox with swipe + arrow navigation ─────────────────────────
+//
+// Tap a photo to open. From there you can:
+//   • swipe left/right (touch devices)
+//   • tap the on-screen arrows
+//   • press ←/→ on a keyboard
+//   • Escape to close, or tap outside the image
+// Wraps around at the ends so a long photo set stays one fluid review.
+
+function PhotoLightbox({ photos, startId, onClose }: {
+  photos: Photo[];
+  startId: number;
+  onClose: () => void;
+}) {
+  const initialIndex = Math.max(0, photos.findIndex(p => p.id === startId));
+  const [index, setIndex] = useState(initialIndex);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+
+  const photo = photos[index];
+  const total = photos.length;
+
+  const goPrev = () => setIndex(i => (i - 1 + total) % total);
+  const goNext = () => setIndex(i => (i + 1) % total);
+
+  // Keyboard nav (desktop): ←, →, Escape
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); goNext(); }
+      else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [total]);
+
+  // Touch swipe — horizontal only, ignore vertical scrolls. Threshold of 50px
+  // so a small finger jiggle doesn't trigger a navigation.
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current == null || touchStartY.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    // Only treat as a swipe if horizontal travel dominates and is over 50px
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx > 0) goPrev(); else goNext();
+    }
+  };
+
+  if (!photo) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 select-none"
+      onClick={onClose}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      data-testid="photo-lightbox"
+    >
+      {/* Photo + caption */}
+      <div className="max-w-3xl w-full" onClick={e => e.stopPropagation()}>
+        <img
+          src={photo.photoUrl}
+          alt={photo.caption || "Photo"}
+          className="w-full max-h-[80vh] object-contain rounded-lg"
+          draggable={false}
+        />
+        {photo.caption && (
+          <p className="text-center text-white mt-3 text-sm">{photo.caption}</p>
+        )}
+        <p className="text-center text-white/60 text-xs mt-1">{photo.photoType}</p>
+      </div>
+
+      {/* Counter */}
+      {total > 1 && (
+        <div
+          className="absolute top-4 left-1/2 -translate-x-1/2 text-white/80 text-xs font-medium tabular-nums bg-black/40 px-3 py-1 rounded-full"
+          data-testid="lightbox-counter"
+        >
+          {index + 1} / {total}
+        </div>
+      )}
+
+      {/* Prev / Next buttons */}
+      {total > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); goPrev(); }}
+            className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-black/40 hover:bg-black/60 rounded-full p-2 sm:p-3 transition"
+            aria-label="Previous photo"
+            data-testid="lightbox-prev"
+          >
+            <ChevronLeft className="w-6 h-6 sm:w-7 sm:h-7" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); goNext(); }}
+            className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-black/40 hover:bg-black/60 rounded-full p-2 sm:p-3 transition"
+            aria-label="Next photo"
+            data-testid="lightbox-next"
+          >
+            <ChevronRight className="w-6 h-6 sm:w-7 sm:h-7" />
+          </button>
+        </>
+      )}
+
+      {/* Close */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 text-white/80 hover:text-white bg-black/40 hover:bg-black/60 rounded-full p-2"
+        aria-label="Close"
+      >
+        <X className="w-5 h-5" />
+      </button>
+    </div>
   );
 }
 
@@ -368,6 +493,18 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       toast({ title: "Deleted", description: "Service call deleted." });
       navigate("/calls");
     },
+  });
+
+  // Toggle the internal-only follow-up flag. Server records who/what/when in
+  // the audit log so a manager can later see who flagged what.
+  const flagMutation = useMutation({
+    mutationFn: (data: { flaggedInternal: boolean; flaggedReason: string | null }) =>
+      apiRequest("PATCH", `/api/service-calls/${callId}`, data).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
+    },
+    onError: (e: any) => toast({ title: "Could not update flag", description: e.message, variant: "destructive" }),
   });
 
   const startEdit = () => {
@@ -936,7 +1073,39 @@ export default function ServiceCallDetail({ id }: { id: string }) {
             {call.isTest === 1 && (
               <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5" data-testid="badge-test">TEST</Badge>
             )}
+            {/* Internal-only flag. Tap toggles the flag; the prompt is
+                deliberately optional so a quick mark takes one tap.
+                Only editors (manager/tech/sales) can toggle. */}
+            {currentUser?.role !== "staff" && (
+              <button
+                type="button"
+                onClick={() => {
+                  const isFlagged = (call as any).flaggedInternal;
+                  if (isFlagged) {
+                    flagMutation.mutate({ flaggedInternal: false, flaggedReason: null });
+                  } else {
+                    const reason = window.prompt("Why are you flagging this call? (optional)") || "";
+                    flagMutation.mutate({ flaggedInternal: true, flaggedReason: reason || null });
+                  }
+                }}
+                className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full transition ${
+                  (call as any).flaggedInternal
+                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
+                    : "bg-muted text-muted-foreground/70 hover:text-foreground hover:bg-muted/80"
+                }`}
+                title={(call as any).flaggedInternal ? "Click to clear flag" : "Flag for follow-up"}
+                data-testid="button-flag-internal"
+              >
+                <Flag className={`w-3 h-3 ${(call as any).flaggedInternal ? "fill-current" : ""}`} />
+                {(call as any).flaggedInternal ? "Flagged" : "Flag"}
+              </button>
+            )}
           </div>
+          {(call as any).flaggedInternal && (call as any).flaggedReason && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mb-2 italic" data-testid="text-flag-reason">
+              Flagged: {(call as any).flaggedReason}
+            </p>
+          )}
           {subtitleParts.length > 0 && (
             <p className="text-sm text-muted-foreground flex items-center gap-1.5 flex-wrap">
               {subtitleParts.map((p, i) => (
@@ -1839,27 +2008,57 @@ export default function ServiceCallDetail({ id }: { id: string }) {
               )}
             </>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {call.photos.map((photo) => (
-                <div
-                  key={photo.id}
-                  className="relative rounded-lg overflow-hidden border border-border cursor-pointer group"
-                  onClick={() => setLightboxPhoto(photo)}
-                  data-testid={`photo-${photo.id}`}
-                >
-                  <img src={photo.photoUrl} alt={photo.caption || "Photo"} className="w-full aspect-square object-cover group-hover:opacity-90 transition-opacity" />
-                  {visits.length > 0 && (
-                    <span className="absolute bottom-8 left-1 text-[9px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded">
-                      VISIT {(photo as any).visitNumber || 1}
-                    </span>
-                  )}
-                  <div className="p-1.5 bg-background/90">
-                    <p className="text-[10px] font-medium text-muted-foreground">{photo.photoType}</p>
-                    {photo.caption && <p className="text-xs text-foreground truncate">{photo.caption}</p>}
-                  </div>
+            // Group photos by visit number so Visit 1 photos sit above Visit 2,
+            // etc. Each group gets its own divider — makes it obvious to a tech
+            // (or a customer reviewing on screen) which photos came from which
+            // appointment. The server already orders them visit ASC, sort_order ASC.
+            (() => {
+              const groups = new Map<number, Photo[]>();
+              for (const p of call.photos) {
+                const v = (p as any).visitNumber || 1;
+                if (!groups.has(v)) groups.set(v, []);
+                groups.get(v)!.push(p);
+              }
+              const visitNumbers = Array.from(groups.keys()).sort((a, b) => a - b);
+              const showDividers = visitNumbers.length > 1;
+              return (
+                <div className="space-y-5">
+                  {visitNumbers.map((vNum) => {
+                    const visitMeta = visits.find(v => v.visitNumber === vNum);
+                    const visitDate = visitMeta?.visitDate ? formatDate(visitMeta.visitDate) : null;
+                    return (
+                      <div key={vNum}>
+                        {showDividers && (
+                          <div className="flex items-center gap-3 mb-2.5" data-testid={`visit-divider-${vNum}`}>
+                            <span className="text-[10px] font-bold tracking-[0.12em] uppercase text-muted-foreground">
+                              Visit {vNum}
+                            </span>
+                            {visitDate && <span className="text-[10px] text-muted-foreground/70">· {visitDate}</span>}
+                            <div className="flex-1 h-px bg-border" />
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {groups.get(vNum)!.map((photo) => (
+                            <div
+                              key={photo.id}
+                              className="relative rounded-lg overflow-hidden border border-border cursor-pointer group"
+                              onClick={() => setLightboxPhoto(photo)}
+                              data-testid={`photo-${photo.id}`}
+                            >
+                              <img src={photo.photoUrl} alt={photo.caption || "Photo"} className="w-full aspect-square object-cover group-hover:opacity-90 transition-opacity" />
+                              <div className="p-1.5 bg-background/90">
+                                <p className="text-[10px] font-medium text-muted-foreground">{photo.photoType}</p>
+                                {photo.caption && <p className="text-xs text-foreground truncate">{photo.caption}</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              );
+            })()
           )}
         </CardContent>
       </Card>
@@ -2536,25 +2735,11 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       </Dialog>
 
       {lightboxPhoto && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setLightboxPhoto(null)}
-          data-testid="photo-lightbox"
-        >
-          <div className="max-w-3xl w-full" onClick={e => e.stopPropagation()}>
-            <img src={lightboxPhoto.photoUrl} alt={lightboxPhoto.caption || "Photo"} className="w-full max-h-[80vh] object-contain rounded-lg" />
-            {lightboxPhoto.caption && (
-              <p className="text-center text-white mt-3 text-sm">{lightboxPhoto.caption}</p>
-            )}
-            <p className="text-center text-white/60 text-xs mt-1">{lightboxPhoto.photoType}</p>
-          </div>
-          <button
-            onClick={() => setLightboxPhoto(null)}
-            className="absolute top-4 right-4 text-white/70 hover:text-white"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
+        <PhotoLightbox
+          photos={call.photos}
+          startId={lightboxPhoto.id}
+          onClose={() => setLightboxPhoto(null)}
+        />
       )}
     </div>
   );

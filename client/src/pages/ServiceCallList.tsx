@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   PlusCircle, Search, SlidersHorizontal, X, ChevronRight, ClipboardList,
   MapPin, ArrowRight, Calendar as CalendarIcon, ChevronUp, ChevronDown,
-  Clock, Wrench, Package as PackageIcon, AlertTriangle, FileText, DollarSign,
+  Clock, Wrench, Package as PackageIcon, AlertTriangle, FileText, DollarSign, Flag,
 } from "lucide-react";
 import { MANUFACTURERS, SERVICE_STATUSES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall } from "@shared/schema";
@@ -202,7 +202,7 @@ function InvoiceCell({ call }: { call: ServiceCallRow }) {
 // ─── Saved Views (preset chips) ─────────────────────────────────────────────
 type ViewKey =
   | "all-open" | "in-progress" | "my-calls" | "today" | "overdue-aging" | "awaiting-parts"
-  | "unbilled" | "scheduled" | "completed-month" | "all";
+  | "unbilled" | "scheduled" | "completed-month" | "flagged" | "all";
 
 interface ViewDef {
   key: ViewKey;
@@ -223,6 +223,10 @@ const VIEWS: ViewDef[] = [
     if (c.status !== "Completed") return false;
     return c.callDate.slice(0, 7) === today.slice(0, 7);
   } },
+  // Internal flag chip — surfaces calls the tech or manager wants to circle
+  // back on regardless of status. Includes Completed calls (that's the
+  // common case: "check on this in 30 days").
+  { key: "flagged",         label: "Flagged",        filter: (c) => !!(c as any).flaggedInternal },
   { key: "all",             label: "All",            filter: () => true },
 ];
 
@@ -362,7 +366,7 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
   const viewCounts = useMemo(() => {
     const out: Record<ViewKey, number> = {
       "all-open": 0, "in-progress": 0, "my-calls": 0, "today": 0, "overdue-aging": 0,
-      "awaiting-parts": 0, "unbilled": 0, "scheduled": 0, "completed-month": 0, "all": 0,
+      "awaiting-parts": 0, "unbilled": 0, "scheduled": 0, "completed-month": 0, "flagged": 0, "all": 0,
     };
     (calls ?? []).forEach(c => {
       VIEWS.forEach(v => { if (v.filter(c, { userId, today })) out[v.key] += 1; });
@@ -602,8 +606,11 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
 
                 {/* Customer / Site */}
                 <div className="min-w-0">
-                  <p className="font-semibold text-[14px] text-foreground leading-tight truncate">
-                    {call.customerName || "Unnamed"}
+                  <p className="font-semibold text-[14px] text-foreground leading-tight truncate flex items-center gap-1.5">
+                    {(call as any).flaggedInternal && (
+                      <Flag className="w-3 h-3 fill-amber-500 text-amber-500 flex-shrink-0" data-testid={`row-flag-${call.id}`} />
+                    )}
+                    <span className="truncate">{call.customerName || "Unnamed"}</span>
                   </p>
                   <div className="flex items-center gap-1 mt-1 text-[11.5px] text-muted-foreground truncate">
                     <MapPin className="w-3 h-3 flex-shrink-0" />
@@ -668,6 +675,9 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[11.5px] text-muted-foreground font-mono tabular-nums">#{call.id}</span>
                       <StatusChip status={call.status} />
+                      {(call as any).flaggedInternal && (
+                        <Flag className="w-3 h-3 fill-amber-500 text-amber-500" />
+                      )}
                     </div>
                     <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
                   </div>
