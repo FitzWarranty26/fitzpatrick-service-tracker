@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { todayLocalISO, parseMoney } from "@shared/datetime";
 import Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   serviceCalls,
@@ -521,6 +521,18 @@ if (!columnExists("service_calls", "completed_date")) {
   console.log("Migration 30: added completed_date column to service_calls (backfilled from updated_at/created_at)");
 }
 
+// Migration 31: Internal-only flag. Lets the tech (or manager) mark a
+// service call for follow-up review even after it's been Completed. The flag
+// is plain boolean (0/1); an optional reason note explains why it was
+// flagged. Surfaces as a star icon on the detail page and a filter chip on
+// the call list.
+if (!columnExists("service_calls", "flagged_internal")) {
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN flagged_internal INTEGER NOT NULL DEFAULT 0`).run();
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN flagged_reason TEXT`).run();
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_calls_flagged_internal ON service_calls(flagged_internal) WHERE flagged_internal = 1`);
+  console.log("Migration 31: added flagged_internal + flagged_reason columns to service_calls");
+}
+
 // Migration 29: Add covering indexes for queries that scan tables fully.
 // These dramatically speed up the manager dashboard and detail pages once the
 // database has thousands of rows. All idempotent (IF NOT EXISTS).
@@ -608,6 +620,7 @@ export interface IStorage {
     search?: string;
     dateFrom?: string;
     dateTo?: string;
+    flaggedOnly?: boolean;
   }): ServiceCallWithCounts[];
   getServiceCallById(id: number): ServiceCallFull | undefined;
   createServiceCall(call: InsertServiceCall): ServiceCall;
@@ -661,6 +674,7 @@ export class SQLiteStorage implements IStorage {
     search?: string;
     dateFrom?: string;
     dateTo?: string;
+    flaggedOnly?: boolean;
   }): ServiceCallWithCounts[] {
     // Build WHERE conditions to push filtering into SQL
     const conditions: any[] = [];
@@ -698,6 +712,9 @@ export class SQLiteStorage implements IStorage {
     if (filters?.dateTo) {
       conditions.push(`sc.call_date <= ?`);
       params.push(filters.dateTo);
+    }
+    if (filters?.flaggedOnly) {
+      conditions.push(`sc.flagged_internal = 1`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -804,6 +821,8 @@ export class SQLiteStorage implements IStorage {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       completedDate: row.completed_date ?? null,
+      flaggedInternal: !!row.flagged_internal,
+      flaggedReason: row.flagged_reason ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: row.visit_count ?? 0,
@@ -820,7 +839,10 @@ export class SQLiteStorage implements IStorage {
   getServiceCallById(id: number): ServiceCallFull | undefined {
     const call = db.select().from(serviceCalls).where(eq(serviceCalls.id, id)).get();
     if (!call) return undefined;
-    const callPhotos = db.select().from(photos).where(eq(photos.serviceCallId, id)).orderBy(photos.sortOrder).all();
+    // Photos grouped chronologically by visit (Visit 1 first, then Visit 2,
+    // etc.). Routes through getPhotosByServiceCallId so the sort lives in one
+    // place.
+    const callPhotos = this.getPhotosByServiceCallId(id);
     const callParts = db.select().from(partsUsed).where(eq(partsUsed.serviceCallId, id)).all();
     const callActivities = db.select().from(activityLog).where(eq(activityLog.serviceCallId, id)).all();
     return { ...call, photos: callPhotos, parts: callParts, activities: callActivities };
@@ -883,7 +905,15 @@ export class SQLiteStorage implements IStorage {
   // ─── Photos ─────────────────────────────────────────────────────────────────
 
   getPhotosByServiceCallId(serviceCallId: number): Photo[] {
-    return db.select().from(photos).where(eq(photos.serviceCallId, serviceCallId)).all();
+    // Group by visit chronologically: Visit 1 photos first, then Visit 2,
+    // etc., with each visit's photos in the order the tech arranged them.
+    // Tie-break on id so new uploads always land at the end of their visit.
+    return db
+      .select()
+      .from(photos)
+      .where(eq(photos.serviceCallId, serviceCallId))
+      .orderBy(sql`COALESCE(visit_number, 1) ASC, sort_order ASC, id ASC`)
+      .all();
   }
 
   createPhoto(photo: InsertPhoto): Photo {
@@ -1086,6 +1116,8 @@ export class SQLiteStorage implements IStorage {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       completedDate: row.completed_date ?? null,
+      flaggedInternal: !!row.flagged_internal,
+      flaggedReason: row.flagged_reason ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: 0,
@@ -1200,6 +1232,8 @@ export class SQLiteStorage implements IStorage {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       completedDate: row.completed_date ?? null,
+      flaggedInternal: !!row.flagged_internal,
+      flaggedReason: row.flagged_reason ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: 0,
@@ -1304,6 +1338,8 @@ export class SQLiteStorage implements IStorage {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       completedDate: row.completed_date ?? null,
+      flaggedInternal: !!row.flagged_internal,
+      flaggedReason: row.flagged_reason ?? null,
     }));
   }
 
@@ -1488,6 +1524,8 @@ export class SQLiteStorage implements IStorage {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       completedDate: row.completed_date ?? null,
+      flaggedInternal: !!row.flagged_internal,
+      flaggedReason: row.flagged_reason ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
       visitCount: 0,

@@ -66,6 +66,11 @@ export const serviceCalls = sqliteTable("service_calls", {
   // First-Time Fix Rate so a call that was logged in March but finished in
   // May counts in May, not March. Migration 30 backfills from updated_at.
   completedDate: text("completed_date"),
+  // Internal-only follow-up flag (Migration 31). Lets a tech or manager mark
+  // a call for personal review without changing its public status. Optional
+  // reason note travels with it.
+  flaggedInternal: integer("flagged_internal", { mode: "boolean" }).notNull().default(false),
+  flaggedReason: text("flagged_reason"),
 });
 
 export const insertServiceCallSchema = createInsertSchema(serviceCalls).omit({
