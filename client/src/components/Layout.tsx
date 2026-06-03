@@ -13,27 +13,69 @@ import { OfflineIndicatorDesktop, OfflineIndicatorMobile } from "@/components/Of
 import logoWhite from "@assets/logo-white.jpg";
 import logoDark from "@assets/logo-dark.jpg";
 
-const baseNavItems = [
-  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/calendar", icon: Calendar, label: "Calendar" },
-  { href: "/scheduled", icon: CalendarClock, label: "Scheduled" },
-  { href: "/calls", icon: ClipboardList, label: "Service Calls" },
-  { href: "/new", icon: PlusCircle, label: "New Service Call" },
-  { href: "/map", icon: MapPin, label: "Map" },
-  { href: "/analytics", icon: BarChart3, label: "Analytics" },
-  { href: "/reports", icon: FileBarChart, label: "Reports" },
-  { href: "/contacts", icon: Users, label: "Contacts" },
-  { href: "/equipment", icon: Package, label: "Equipment" },
-  { href: "/invoices", icon: Receipt, label: "Invoices" },
+// Sidebar nav is grouped into 4 sections so frequently-used items sit
+// together at the top and reference data / insights / admin tools sit
+// further down. "New Service Call" is broken out as a primary CTA above the
+// nav, since it's the most-tapped action.
+//
+// Section headers render as small uppercase muted text. The ADMIN group
+// only renders for managers.
+
+interface NavItem {
+  href: string;
+  icon: typeof LayoutDashboard;
+  label: string;
+}
+
+interface NavGroup {
+  label: string;
+  managerOnly?: boolean;
+  items: NavItem[];
+}
+
+const PRIMARY_NAV_ITEM: NavItem = {
+  href: "/new", icon: PlusCircle, label: "New Service Call",
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Work",
+    items: [
+      { href: "/", icon: LayoutDashboard, label: "Dashboard" },
+      { href: "/calendar", icon: Calendar, label: "Calendar" },
+      { href: "/scheduled", icon: CalendarClock, label: "Scheduled" },
+      { href: "/calls", icon: ClipboardList, label: "Service Calls" },
+      { href: "/map", icon: MapPin, label: "Map" },
+    ],
+  },
+  {
+    label: "Records",
+    items: [
+      { href: "/contacts", icon: Users, label: "Contacts" },
+      { href: "/equipment", icon: Package, label: "Equipment" },
+      { href: "/invoices", icon: Receipt, label: "Invoices" },
+    ],
+  },
+  {
+    label: "Insights",
+    items: [
+      { href: "/analytics", icon: BarChart3, label: "Analytics" },
+      { href: "/reports", icon: FileBarChart, label: "Reports" },
+    ],
+  },
+  {
+    label: "Admin",
+    managerOnly: true,
+    items: [
+      { href: "/audit-log", icon: ScrollText, label: "Activity Log" },
+      { href: "/team", icon: Shield, label: "Team" },
+    ],
+  },
 ];
 
-const managerNavItems = [
-  { href: "/audit-log", icon: ScrollText, label: "Activity Log" },
-  { href: "/team", icon: Shield, label: "Team" },
-];
-
-function getNavItems() {
-  return isManager() ? [...baseNavItems, ...managerNavItems] : baseNavItems;
+function getNavGroups(): NavGroup[] {
+  const manager = isManager();
+  return NAV_GROUPS.filter(g => !g.managerOnly || manager);
 }
 
 // Export logo paths for use in other components (e.g. PDF reports)
@@ -308,26 +350,50 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <GlobalSearch />
 
         {/* Nav */}
-        <nav className="flex-1 p-3 space-y-1" aria-label="Main navigation">
-          {getNavItems().map(({ href, icon: Icon, label }) => {
-            const isActive = href === "/" ? location === "/" : location.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                data-testid={`nav-${label.toLowerCase().replace(" ", "-")}`}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-[hsl(220,22%,20%)] text-white"
-                    : "text-slate-300 hover:bg-[hsl(220,22%,20%)] hover:text-white"
-                )}
-              >
-                <Icon className="w-4.5 h-4.5" size={18} />
-                {label}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-3 pb-3 space-y-1 overflow-y-auto" aria-label="Main navigation">
+          {/* Primary action: New Service Call. Distinct visual treatment so
+              it doesn't blend into the rest of the nav. */}
+          <Link
+            href={PRIMARY_NAV_ITEM.href}
+            data-testid="nav-new-service-call"
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors mb-3",
+              location.startsWith(PRIMARY_NAV_ITEM.href)
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-primary/90 text-primary-foreground hover:bg-primary shadow-sm"
+            )}
+          >
+            <PRIMARY_NAV_ITEM.icon size={18} />
+            {PRIMARY_NAV_ITEM.label}
+          </Link>
+
+          {/* Grouped sections with subtle uppercase headers */}
+          {getNavGroups().map((group, groupIdx) => (
+            <div key={group.label} className={groupIdx > 0 ? "pt-3" : undefined}>
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.12em] px-3 mb-1">
+                {group.label}
+              </p>
+              {group.items.map(({ href, icon: Icon, label }) => {
+                const isActive = href === "/" ? location === "/" : location.startsWith(href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    data-testid={`nav-${label.toLowerCase().replace(/\s+/g, "-")}`}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-[hsl(220,22%,20%)] text-white"
+                        : "text-slate-300 hover:bg-[hsl(220,22%,20%)] hover:text-white"
+                    )}
+                  >
+                    <Icon className="w-4.5 h-4.5" size={18} />
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* Bottom */}
@@ -386,26 +452,48 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           onClick={() => setMobileMenuOpen(false)}
         >
           <div
-            className="absolute top-14 left-0 right-0 bg-[hsl(220,22%,14%)] text-white border-b border-[hsl(220,22%,18%)] p-3 space-y-1"
+            className="absolute top-14 left-0 right-0 bg-[hsl(220,22%,14%)] text-white border-b border-[hsl(220,22%,18%)] p-3 space-y-1 max-h-[calc(100vh-3.5rem)] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
-            {getNavItems().map(({ href, icon: Icon, label }) => {
-              const isActive = href === "/" ? location === "/" : location.startsWith(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
-                    isActive ? "bg-[hsl(220,22%,20%)] text-white" : "text-slate-300 hover:bg-[hsl(220,22%,20%)] hover:text-white"
-                  )}
-                >
-                  <Icon size={18} />
-                  {label}
-                </Link>
-              );
-            })}
+            {/* Primary action mirrors the desktop sidebar */}
+            <Link
+              href={PRIMARY_NAV_ITEM.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-colors mb-2",
+                location.startsWith(PRIMARY_NAV_ITEM.href)
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-primary/90 text-primary-foreground hover:bg-primary shadow-sm"
+              )}
+            >
+              <PRIMARY_NAV_ITEM.icon size={18} />
+              {PRIMARY_NAV_ITEM.label}
+            </Link>
+
+            {getNavGroups().map((group, groupIdx) => (
+              <div key={group.label} className={groupIdx > 0 ? "pt-2" : undefined}>
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.12em] px-4 mb-1">
+                  {group.label}
+                </p>
+                {group.items.map(({ href, icon: Icon, label }) => {
+                  const isActive = href === "/" ? location === "/" : location.startsWith(href);
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
+                        isActive ? "bg-[hsl(220,22%,20%)] text-white" : "text-slate-300 hover:bg-[hsl(220,22%,20%)] hover:text-white"
+                      )}
+                    >
+                      <Icon size={18} />
+                      {label}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
       )}
