@@ -72,3 +72,44 @@ To reconstruct project state, follow these steps **in order**:
 3. **Perplexity UI last — only if restored.** If (and only if) the Perplexity
    Projects / task UI is functioning and trustworthy again, use it to fill in
    remaining gaps. Never rely on it as the primary source.
+
+## Future Work Protocol
+
+Any future change to this business-critical app — by a person or an automated
+agent — must follow this protocol:
+
+1. **Start at the CRM recovery hub.** Read `BUSINESS-APP-RECOVERY-HUB.md` in the
+   CRM repository **first** for cross-app context and the current source of
+   truth before touching this project.
+
+2. **Read this recovery index.** Re-read this `RECOVERY-INDEX.md` to confirm the
+   repository is authoritative and to load the latest recovery context.
+
+3. **Check the current state.** Review git history, open GitHub issues, and open
+   PRs before starting, so work builds on the real current state rather than a
+   stale plan or task board.
+
+4. **Branch for significant changes.** Create a dedicated branch for any
+   non-trivial change. Reserve direct commits to `master` for small, low-risk
+   documentation or safety updates.
+
+5. **Run checks before deploy.** Run `npm run check` (TypeScript) and
+   `npm run build` (and a smoke test where possible) before deploying. Do not
+   deploy code that fails these checks.
+
+6. **Update the logs after meaningful work.** After any meaningful change,
+   update `CHANGELOG.md`, `DEPLOYMENT-LOG.md`, and this `RECOVERY-INDEX.md` so
+   the record stays accurate.
+
+7. **Tag and record rollback points for major releases.** For major releases,
+   create a git tag and record the rollback point in `DEPLOYMENT-LOG.md` so a
+   safe restore target always exists (see `ROLLBACK.md`).
+
+## Operational Safety Documents
+
+| Document             | Purpose                                                     |
+| -------------------- | ----------------------------------------------------------- |
+| `CHANGELOG.md`       | Notable changes over time (Keep a Changelog format)         |
+| `DEPLOYMENT-LOG.md`  | Per-deployment record and rollback points                   |
+| `ROLLBACK.md`        | Step-by-step rollback via GitHub and the deploy provider    |
+| `.github/ISSUE_TEMPLATE/` | Standardized bug report and feature request templates  |
