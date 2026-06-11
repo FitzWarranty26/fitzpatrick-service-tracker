@@ -44,6 +44,25 @@ Copy this block for each new deployment:
 
 <!-- Newest entries first. -->
 
+### 2026-06-11 — Installation Review Notes feature (NO PRODUCTION DEPLOY)
+
+- **Date:**            2026-06-11 (MDT)
+- **Commit:**          on feature branch `feature/installation-review-notes` (not merged)
+- **Environment:**     none — **no production deploy was performed**
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/ (unchanged; not redeployed)
+- **Deploy action:**   **None.** Feature implemented on a branch only. Not merged to
+                       `master`, so the Render auto-deploy-on-commit was NOT triggered.
+- **Checks run:**      `npm run check` (tsc) — PASS; `npm run build` — PASS.
+- **Rollback point:**  N/A (no deploy). Pre-existing known-good remains
+                       `44e91ce` / current production `8a6f7ac`.
+- **Notes:**           Adds an additive nullable `installation_review_notes` column
+                       (Migration 32, idempotent `columnExists` guard). On the next
+                       deploy the migration runs at startup; existing rows are
+                       unaffected. Installation Review Notes are excluded from
+                       printed/emailed reports by default with an opt-in toggle.
+                       **Awaiting Kevin review before any merge/deploy.** No secrets
+                       or customer data recorded here.
+
 ### 2026-06-11 — First confirmed production deployment (PR #1 / commercial-readiness)
 
 - **Date:**            2026-06-11 08:50 (MDT)

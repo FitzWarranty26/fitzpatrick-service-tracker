@@ -76,6 +76,7 @@ const formSchema = z.object({
   otherCost: z.string().optional().nullable(),
   claimAmount: z.string().optional().nullable(),
   techNotes: z.string().optional().nullable(),
+  installationReviewNotes: z.string().optional().nullable(),
   hoursOnJob: z.string().optional().nullable(),
   milesTraveled: z.string().optional().nullable(),
   scheduledDate: z.string().optional().nullable(),
@@ -254,6 +255,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       otherCost: "",
       claimAmount: "",
       techNotes: "",
+      installationReviewNotes: "",
       hoursOnJob: "",
       milesTraveled: "",
       scheduledDate: "",
@@ -1127,6 +1129,15 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                   <FormLabel>Tech Notes</FormLabel>
                   <FormControl>
                     <Textarea rows={2} placeholder="Additional notes…" {...field} value={field.value ?? ""} data-testid="textarea-tech-notes" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="installationReviewNotes" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Installation Review Notes</FormLabel>
+                  <FormControl>
+                    <Textarea rows={3} placeholder="Installation issues, code issues, workmanship, or other site conditions noticed…" {...field} value={field.value ?? ""} data-testid="textarea-installation-review-notes" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

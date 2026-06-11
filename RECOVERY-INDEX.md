@@ -61,6 +61,17 @@ historical references only.
 | `2251645a` | PO (purchase order) module planning            |
 | `e57aa4b9` | WarrVault / FieldSeal naming                   |
 
+## In-Flight Work (not yet deployed)
+
+| Date       | Branch                              | Summary                                                                                                                            | State                                                  |
+| ---------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 2026-06-11 | `feature/installation-review-notes` | Adds internal "Installation Review Notes" field (Migration 32). Excluded from printed/emailed reports by default with opt-in toggle. Residential + commercial. | Branch only — **NOT deployed**, awaiting Kevin review |
+
+> No production deploy was performed for this work. `master` and the live Render
+> service are unchanged. The additive nullable `installation_review_notes`
+> column migration runs at startup on the next deploy and does not affect
+> existing rows. See `CHANGELOG.md` and `DEPLOYMENT-LOG.md` for details.
+
 ## Recovery Procedure
 
 To reconstruct project state, follow these steps **in order**:

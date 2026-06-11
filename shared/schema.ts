@@ -46,6 +46,11 @@ export const serviceCalls = sqliteTable("service_calls", {
   otherCost: text("other_cost"),         // mileage reimbursement, misc
   claimAmount: text("claim_amount"),     // total claim amount submitted/approved
   techNotes: text("tech_notes"),
+  // Internal narrative field (Migration 32). Lets a tech document installation
+  // issues, code issues, workmanship observations, or other installation/site
+  // conditions noticed during a service call. Excluded from printed/emailed
+  // reports by default; the report dialog has an opt-in toggle to include it.
+  installationReviewNotes: text("installation_review_notes"),
   // Job logistics
   hoursOnJob: text("hours_on_job"),    // decimal as text, e.g. "2.5"
   milesTraveled: text("miles_traveled"), // decimal as text, e.g. "45"

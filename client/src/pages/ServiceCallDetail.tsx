@@ -971,9 +971,31 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     setShowFollowUpPicker(false);
   };
 
+  // Report options dialog. Installation Review Notes are internal-only and are
+  // excluded from printed/emailed reports unless the user opts in here. The
+  // dialog is shown for both PDF and Email; `reportAction` records which one to
+  // run after the user confirms.
+  const [showReportOptions, setShowReportOptions] = useState(false);
+  const [reportAction, setReportAction] = useState<"pdf" | "email" | null>(null);
+  const [includeInstallNotes, setIncludeInstallNotes] = useState(false);
+
+  const openReportOptions = (action: "pdf" | "email") => {
+    setReportAction(action);
+    setIncludeInstallNotes(false); // always default to excluded
+    setShowReportOptions(true);
+  };
+
+  const runReportAction = () => {
+    const action = reportAction;
+    const include = includeInstallNotes;
+    setShowReportOptions(false);
+    if (action === "pdf") handlePDF(include);
+    else if (action === "email") handleEmail(include);
+  };
+
   // Email / Share handler
   const [isEmailing, setIsEmailing] = useState(false);
-  const handleEmail = async () => {
+  const handleEmail = async (includeInstallationReviewNotes = false) => {
     if (!call) return;
     const subject = `Service Call #${call.id} \u2014 ${call.customerName || ""} \u2014 ${call.manufacturer}`;
     const bodyText = `Service Call #${call.id}\nDate: ${call.callDate}\nCustomer: ${call.customerName || ""}\nSite: ${call.jobSiteName || ""}\nManufacturer: ${call.manufacturer}\nModel: ${call.productModel || ""}\nStatus: ${call.status}\nClaim: ${call.claimStatus}\n\nIssue: ${(call.issueDescription || "").slice(0, 500)}`;
@@ -985,7 +1007,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         // Generate the PDF HTML and render to a real PDF via html2canvas + jspdf
         const { generatePDFHtml } = await import("@/lib/pdf");
         const techNamesById = Object.fromEntries(techUsers.map(u => [u.id, u.displayName || u.username]));
-        const html = await generatePDFHtml(call, { visits, techNamesById });
+        const html = await generatePDFHtml(call, { visits, techNamesById, includeInstallationReviewNotes });
 
         // Render HTML in a hidden iframe
         const iframe = document.createElement("iframe");
@@ -1051,11 +1073,11 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText + "\n\nFull PDF report attached separately.")}`);
   };
 
-  const handlePDF = async () => {
+  const handlePDF = async (includeInstallationReviewNotes = false) => {
     if (!call) return;
     try {
       const techNamesById = Object.fromEntries(techUsers.map(u => [u.id, u.displayName || u.username]));
-      await generatePDF(call, { visits, techNamesById });
+      await generatePDF(call, { visits, techNamesById, includeInstallationReviewNotes });
       toast({ title: "PDF Generated", description: "Check your downloads folder." });
     } catch (e: any) {
       toast({ title: "PDF Error", description: e.message, variant: "destructive" });
@@ -1195,12 +1217,12 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                 <FilePlus className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">New Issue</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={handleEmail} disabled={isEmailing} data-testid="button-email">
+              <Button variant="outline" size="sm" onClick={() => openReportOptions("email")} disabled={isEmailing} data-testid="button-email">
                 {isEmailing ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Mail className="w-4 h-4 mr-1.5" />}
                 <span className="hidden sm:inline">{isEmailing ? "Preparing…" : "Email"}</span>
               </Button>
 
-              <Button variant="outline" size="sm" onClick={handlePDF} data-testid="button-generate-pdf">
+              <Button variant="outline" size="sm" onClick={() => openReportOptions("pdf")} data-testid="button-generate-pdf">
                 <FileText className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">PDF</span>
               </Button>
@@ -1818,12 +1840,13 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       )}
 
       {/* Issue / Diagnosis / Resolution */}
-      {(["issueDescription", "diagnosis", "resolution", "techNotes"] as const).map((field) => {
+      {(["issueDescription", "diagnosis", "resolution", "techNotes", "installationReviewNotes"] as const).map((field) => {
         const labels: Record<string, string> = {
           issueDescription: "Issue Description",
           diagnosis: "Diagnosis",
           resolution: "Resolution",
           techNotes: "Tech Notes",
+          installationReviewNotes: "Installation Review Notes",
         };
         const value = call[field];
         if (!isEditing && !value) return null;
@@ -2779,6 +2802,43 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowCompletePrompt(false)}>Fill In First</Button>
             <Button onClick={() => { setShowCompletePrompt(false); saveEdit(true); }}>Mark Complete Anyway</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Report options: choose what to include before generating/sending the
+          report. Installation Review Notes are internal and excluded by default;
+          the user must opt in here. Applies to both PDF and Email, residential
+          and commercial. */}
+      <Dialog open={showReportOptions} onOpenChange={setShowReportOptions}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{reportAction === "email" ? "Email Report Options" : "PDF Report Options"}</DialogTitle>
+            <DialogDescription>
+              Choose what to include in the report. Installation Review Notes are internal and are excluded by default.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-start gap-3 py-2">
+            <Checkbox
+              id="include-install-notes"
+              checked={includeInstallNotes}
+              onCheckedChange={(checked) => setIncludeInstallNotes(checked === true)}
+              data-testid="checkbox-include-installation-review-notes"
+            />
+            <label htmlFor="include-install-notes" className="text-sm leading-snug cursor-pointer">
+              Include <strong>Installation Review Notes</strong> in the report
+              {!call.installationReviewNotes && (
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  This call has no Installation Review Notes — nothing will be added.
+                </span>
+              )}
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowReportOptions(false)} data-testid="button-report-options-cancel">Cancel</Button>
+            <Button onClick={runReportAction} data-testid="button-report-options-continue">
+              {reportAction === "email" ? "Continue to Email" : "Generate PDF"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

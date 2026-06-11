@@ -551,6 +551,16 @@ if (!columnExists("service_calls", "flagged_internal")) {
   console.log("Migration 31: added flagged_internal + flagged_reason columns to service_calls");
 }
 
+// Migration 32: Add installation_review_notes to service_calls. A narrative
+// field for techs to document installation issues, code issues, workmanship
+// observations, or other site conditions noticed during a service call.
+// Additive nullable column — existing rows are unaffected. Excluded from
+// printed/emailed reports by default (opt-in toggle in the report dialog).
+if (!columnExists("service_calls", "installation_review_notes")) {
+  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN installation_review_notes TEXT`).run();
+  console.log("Migration 32: added installation_review_notes column to service_calls");
+}
+
 // Migration 29: Add covering indexes for queries that scan tables fully.
 // These dramatically speed up the manager dashboard and detail pages once the
 // database has thousands of rows. All idempotent (IF NOT EXISTS).
@@ -833,6 +843,7 @@ export class SQLiteStorage implements IStorage {
       otherCost: row.other_cost,
       claimAmount: row.claim_amount,
       techNotes: row.tech_notes,
+      installationReviewNotes: row.installation_review_notes ?? null,
       hoursOnJob: row.hours_on_job,
       milesTraveled: row.miles_traveled,
       scheduledDate: row.scheduled_date,
@@ -1189,6 +1200,7 @@ export class SQLiteStorage implements IStorage {
       otherCost: row.other_cost,
       claimAmount: row.claim_amount,
       techNotes: row.tech_notes,
+      installationReviewNotes: row.installation_review_notes ?? null,
       hoursOnJob: row.hours_on_job,
       milesTraveled: row.miles_traveled,
       scheduledDate: row.scheduled_date,
@@ -1305,6 +1317,7 @@ export class SQLiteStorage implements IStorage {
       otherCost: row.other_cost,
       claimAmount: row.claim_amount,
       techNotes: row.tech_notes,
+      installationReviewNotes: row.installation_review_notes ?? null,
       hoursOnJob: row.hours_on_job,
       milesTraveled: row.miles_traveled,
       scheduledDate: row.scheduled_date,
@@ -1411,6 +1424,7 @@ export class SQLiteStorage implements IStorage {
       otherCost: row.other_cost,
       claimAmount: row.claim_amount,
       techNotes: row.tech_notes,
+      installationReviewNotes: row.installation_review_notes ?? null,
       hoursOnJob: row.hours_on_job,
       milesTraveled: row.miles_traveled,
       scheduledDate: row.scheduled_date,
@@ -1597,6 +1611,7 @@ export class SQLiteStorage implements IStorage {
       otherCost: row.other_cost,
       claimAmount: row.claim_amount,
       techNotes: row.tech_notes,
+      installationReviewNotes: row.installation_review_notes ?? null,
       hoursOnJob: row.hours_on_job,
       milesTraveled: row.miles_traveled,
       scheduledDate: row.scheduled_date,

@@ -12,6 +12,9 @@ interface ServiceCallFull extends ServiceCall {
 export interface PdfExtras {
   visits?: ServiceCallVisit[];
   techNamesById?: Record<number, string>;
+  // Installation Review Notes are internal-only and excluded from printed/
+  // emailed reports by default. The report dialog sets this to true to opt in.
+  includeInstallationReviewNotes?: boolean;
 }
 
 // Escape user-provided strings before injecting into PDF HTML
@@ -540,6 +543,13 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string, extras:
   <div class="section">
     <h2>Technician Notes</h2>
     <div class="narrative"><p>${esc(call.techNotes)}</p></div>
+  </div>
+  ` : ""}
+
+  ${extras.includeInstallationReviewNotes && call.installationReviewNotes ? `
+  <div class="section">
+    <h2>Installation Review Notes</h2>
+    <div class="narrative"><p>${esc(call.installationReviewNotes)}</p></div>
   </div>
   ` : ""}
 
