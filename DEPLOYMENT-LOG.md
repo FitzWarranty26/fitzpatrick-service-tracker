@@ -34,11 +34,44 @@ Copy this block for each new deployment:
 | Build command     | `npm install && npm run build`                                 |
 | Start command     | `NODE_ENV=production node dist/index.cjs`                      |
 | Default branch    | `master`                                                       |
-| Production URL    | unknown — record here once confirmed                           |
+| Production URL    | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11) |
+| Auto-Deploy       | On Commit (confirmed by Kevin 2026-06-11)                      |
+| Plan              | Starter (confirmed by Kevin 2026-06-11; `render.yaml` still says `free`) |
+| Persistent disk   | Confirmed: `/var/data`, 1 GB, snapshots visible (2026-06-11)   |
+| Internal address  | `fitzpatrick-service-tracker:10000`                            |
 
 ## Deployment History
 
-<!-- Newest entries first. No production deployments have been logged yet. -->
+<!-- Newest entries first. -->
+
+### 2026-06-11 — First confirmed production deployment (PR #1 / commercial-readiness)
+
+- **Date:**            2026-06-11 08:50 (MDT)
+- **Commit:**          8a6f7ac7782e0c00270b1f4b0b490b80094f90f5 (merge of PR #1)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/ (confirmed reachable)
+- **Deploy action:**   Manual Render deployment, confirmed by Kevin via authenticated
+                       Render dashboard. **Result: succeeded.**
+- **Auto-Deploy:**     On Commit (enabled) — pushes/merges to `master` will trigger
+                       a Render deploy automatically.
+- **Plan:**            Starter (note: `render.yaml` still declares `plan: free`; the
+                       live service is on Starter per Kevin — reconcile separately).
+- **Checks run:**      Docs-only record. No build/check run for this log entry.
+                       Application code was deployed as merged in PR #1.
+- **Rollback point:**  known-good-2026-06-05 → 44e91ce6b267c119290a5998455877e426a33008
+- **Source PR:**       https://github.com/FitzWarranty26/fitzpatrick-service-tracker/pull/1
+- **Persistent disk:** Confirmed via Render screenshot (2026-06-11): a persistent
+                       disk is attached to web service `fitzpatrick-service-tracker`,
+                       mount path `/var/data`, size 1 GB (usage 1 GB), with a
+                       snapshot visible dated 2026-06-10 18:16. Service shown as
+                       Node Starter, repo FitzWarranty26/fitzpatrick-service-tracker
+                       on `master`, domain warranty.fitzpatricksalescrm.com, internal
+                       address `fitzpatrick-service-tracker:10000`.
+- **Notes:**           **Remaining risk:** a disk being attached does not guarantee
+                       SQLite is using it — verify the application database file is
+                       actually stored under `/var/data` (not on the ephemeral
+                       filesystem). See `COMMERCIAL-READINESS-CHECKLIST.md` §3. No
+                       secrets or customer data recorded here.
 
 ### YYYY-MM-DD — (template — replace with first logged deployment)
 

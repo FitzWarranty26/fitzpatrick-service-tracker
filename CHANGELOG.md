@@ -27,3 +27,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Expanded `RECOVERY-INDEX.md` with the Future Work Protocol while preserving
   existing recovery content.
+- Recorded the first confirmed production deployment (2026-06-11, PR #1 merge
+  `8a6f7ac`) in `DEPLOYMENT-LOG.md`, and added confirmed production wiring
+  (production URL, current deploy, Auto-Deploy = On Commit, rollback anchor) to
+  `RECOVERY-INDEX.md`. Confirmed a Render persistent disk is attached
+  (`/var/data`, 1 GB, snapshots visible). Remaining risk: verify the SQLite
+  database file is actually stored under `/var/data`.
