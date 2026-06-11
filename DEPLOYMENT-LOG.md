@@ -37,7 +37,8 @@ Copy this block for each new deployment:
 | Production URL    | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11) |
 | Auto-Deploy       | On Commit (confirmed by Kevin 2026-06-11)                      |
 | Plan              | Starter (confirmed by Kevin 2026-06-11; `render.yaml` still says `free`) |
-| Persistent disk   | Unconfirmed — Kevin unsure where to check (see open risks)     |
+| Persistent disk   | Confirmed: `/var/data`, 1 GB, snapshots visible (2026-06-11)   |
+| Internal address  | `fitzpatrick-service-tracker:10000`                            |
 
 ## Deployment History
 
@@ -59,11 +60,18 @@ Copy this block for each new deployment:
                        Application code was deployed as merged in PR #1.
 - **Rollback point:**  known-good-2026-06-05 → 44e91ce6b267c119290a5998455877e426a33008
 - **Source PR:**       https://github.com/FitzWarranty26/fitzpatrick-service-tracker/pull/1
-- **Notes:**           Persistent disk status **unconfirmed** — Kevin was unsure where
-                       to check in Render. Until confirmed, treat SQLite data as at
-                       risk of loss on restart/redeploy (see
-                       `COMMERCIAL-READINESS-CHECKLIST.md` §3). No secrets or customer
-                       data recorded here.
+- **Persistent disk:** Confirmed via Render screenshot (2026-06-11): a persistent
+                       disk is attached to web service `fitzpatrick-service-tracker`,
+                       mount path `/var/data`, size 1 GB (usage 1 GB), with a
+                       snapshot visible dated 2026-06-10 18:16. Service shown as
+                       Node Starter, repo FitzWarranty26/fitzpatrick-service-tracker
+                       on `master`, domain warranty.fitzpatricksalescrm.com, internal
+                       address `fitzpatrick-service-tracker:10000`.
+- **Notes:**           **Remaining risk:** a disk being attached does not guarantee
+                       SQLite is using it — verify the application database file is
+                       actually stored under `/var/data` (not on the ephemeral
+                       filesystem). See `COMMERCIAL-READINESS-CHECKLIST.md` §3. No
+                       secrets or customer data recorded here.
 
 ### YYYY-MM-DD — (template — replace with first logged deployment)
 

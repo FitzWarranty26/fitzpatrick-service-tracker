@@ -28,8 +28,9 @@ What is known-good and confirmed as of this review.
 - [x] Open issues / open PRs at review time: **0**.
 - [x] Public app URL reachable: `https://warranty.fitzpatricksalescrm.com/`
       serves the Warranty Service Tracker sign-in page.
-- [x] Render service name (from `render.yaml` / docs):
-      `fitzpatrick-service-tracker` (plan: `free`).
+- [x] Render service name: `fitzpatrick-service-tracker`. Plan confirmed
+      **Starter** via Render screenshot (2026-06-11); note `render.yaml` still
+      declares `plan: free` — reconcile separately.
 - [x] Build / type-check commands defined: `npm run check`, `npm run build`.
 - [ ] Confirm the public URL above is served by the **same** Render service and
       commit recorded here. **(needs Kevin / authenticated Render access)**
@@ -43,21 +44,23 @@ saw only the **Sign In to Render** page, and a local browser bridge was
 unavailable. **All items in this section require an authenticated Render
 session.**
 
-- [ ] Confirm the live service name matches `fitzpatrick-service-tracker`.
-      **(needs Kevin / authenticated Render access)**
+- [x] Confirm the live service name matches `fitzpatrick-service-tracker`.
+      Confirmed via Render screenshot (2026-06-11).
 - [ ] Confirm the current deployed commit hash matches the intended baseline.
       **(needs Kevin / authenticated Render access)**
-- [ ] Confirm the production URL bound to the service and that
-      `https://warranty.fitzpatricksalescrm.com/` resolves to it (custom domain
-      mapping + TLS certificate status). **(needs Kevin / authenticated Render access)**
-- [ ] Confirm service plan and whether free-tier sleep / cold-start applies.
-      **(needs Kevin / authenticated Render access)**
-- [ ] Confirm whether **auto-deploy on push to `master`** is enabled.
-      **(needs Kevin / authenticated Render access)**
+- [x] Confirm the production URL bound to the service and that
+      `https://warranty.fitzpatricksalescrm.com/` resolves to it. Screenshot
+      shows domain `warranty.fitzpatricksalescrm.com` bound to the service
+      (2026-06-11). TLS certificate status not separately captured.
+- [x] Confirm service plan and whether free-tier sleep / cold-start applies.
+      Plan confirmed **Starter** via screenshot (2026-06-11); Starter is a paid
+      plan, so free-tier sleep does not apply.
+- [x] Confirm whether **auto-deploy on push to `master`** is enabled. Confirmed
+      by Kevin (2026-06-11): Auto-Deploy = **On Commit**.
 - [ ] Capture environment variables configured in Render (names only — **no
       secret values** in this repo). **(needs Kevin / authenticated Render access)**
-- [ ] Record the confirmed production URL in `DEPLOYMENT-LOG.md`
-      (currently listed as `unknown`).
+- [x] Record the confirmed production URL in `DEPLOYMENT-LOG.md`
+      (recorded 2026-06-11: `https://warranty.fitzpatricksalescrm.com/#/`).
 
 ---
 
@@ -68,12 +71,16 @@ persistent disk, the local filesystem is ephemeral** — data written to a local
 SQLite file can be lost on restart, redeploy, or instance recycle. This is the
 single highest commercial risk.
 
-- [ ] Confirm where the SQLite database file is stored at runtime.
-      **(needs Kevin / authenticated Render access)**
-- [ ] Confirm whether a Render **persistent disk** is attached and mounted at
-      the database path. **(needs Kevin / authenticated Render access)**
+- [~] Confirm where the SQLite database file is stored at runtime. A persistent
+      disk is mounted at `/var/data` (see below); **still must verify the SQLite
+      file actually lives under `/var/data`** and not on the ephemeral filesystem.
+- [x] Confirm whether a Render **persistent disk** is attached and mounted at
+      the database path. Confirmed via Render screenshot (2026-06-11): persistent
+      disk attached to `fitzpatrick-service-tracker`, mount path `/var/data`,
+      size 1 GB, with a snapshot visible dated 2026-06-10 18:16.
 - [ ] If no persistent disk: treat all production data as **at risk of loss**
       until remediated. Do not onboard paying customers before this is resolved.
+      (Disk now confirmed attached; residual risk is whether SQLite uses it.)
 - [ ] Decide on the durable storage path:
       - attach a persistent disk and point SQLite at it, **or**
       - migrate to a managed database (e.g. hosted Postgres) — note the project
@@ -86,8 +93,9 @@ single highest commercial risk.
 
 ## 4. Deployment controls
 
-- [ ] Confirm the deploy trigger (auto-deploy on `master` vs. manual).
-      **(needs Kevin / authenticated Render access)**
+- [x] Confirm the deploy trigger (auto-deploy on `master` vs. manual). Confirmed
+      (2026-06-11): Auto-Deploy = **On Commit** — merges to `master` deploy
+      automatically.
 - [ ] Document the intended release flow (e.g. work on a branch → PR → review →
       merge to `master` → deploy) in line with the Future Work Protocol in
       `RECOVERY-INDEX.md`.
@@ -137,7 +145,8 @@ single highest commercial risk.
 - [x] `DEPLOYMENT-LOG.md` exists with a per-deploy template.
 - [x] `ROLLBACK.md` exists with a rollback procedure.
 - [x] `RECOVERY-INDEX.md` exists with the Future Work Protocol.
-- [ ] Record the confirmed production URL in `DEPLOYMENT-LOG.md` once verified.
+- [x] Record the confirmed production URL in `DEPLOYMENT-LOG.md` once verified.
+      Recorded 2026-06-11: `https://warranty.fitzpatricksalescrm.com/#/`.
 - [ ] Add a short operator runbook (how to deploy, roll back, back up, restore).
 - [ ] Keep this checklist updated as items are verified, with date and owner.
 
@@ -178,15 +187,23 @@ For handing operational ownership to Kevin (or the responsible operator).
 
 ## Open risks summary
 
-1. **Data durability (highest):** SQLite on Render free tier without a confirmed
-   persistent disk risks data loss on restart/redeploy. Unverified.
-2. **Unconfirmed production wiring:** Render service ↔ public URL ↔ deployed
-   commit not yet confirmed via authenticated access.
+1. **Data durability (highest):** A Render persistent disk is now confirmed
+   attached at `/var/data` (1 GB, snapshots visible, 2026-06-11). **Residual
+   risk:** it is not yet verified that the SQLite database file is actually
+   stored under `/var/data` — a disk being attached does not guarantee SQLite is
+   using it. Until that is confirmed, data could still be on the ephemeral
+   filesystem and at risk on restart/redeploy.
+2. **Production wiring (mostly confirmed):** service `fitzpatrick-service-tracker`,
+   domain `warranty.fitzpatricksalescrm.com`, and Starter plan confirmed via
+   screenshot (2026-06-11). **Still unconfirmed:** that the deployed commit hash
+   matches the intended baseline, and the env-var inventory.
 3. **No automated tests or lint:** regressions can ship undetected.
-4. **Free-tier limits:** possible sleep/cold-start and resource constraints for
-   a daily-use commercial app.
-5. **Possible auto-deploy on `master`:** a push could deploy unintentionally;
-   trigger must be confirmed.
+4. **Plan is Starter (paid), not free:** free-tier sleep/cold-start does not
+   apply; note `render.yaml` still declares `plan: free` and should be reconciled.
+5. **Auto-deploy on `master` (On Commit):** confirmed enabled — any push/merge to
+   `master` deploys automatically, so merges must be treated as deploys.
 
-_Last reviewed: 2026-06-11. Items marked **(needs Kevin / authenticated Render
-access)** are blocked pending an authenticated Render session._
+_Last reviewed: 2026-06-11. Persistent disk, service name, domain, plan, and
+auto-deploy trigger confirmed via Render screenshot. Remaining
+**(needs Kevin / authenticated Render access)** items (deployed-commit match,
+env-var inventory) are still blocked pending an authenticated Render session._
