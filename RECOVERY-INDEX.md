@@ -23,6 +23,10 @@ repository, trust the repository.
 | Default branch  | `master`                                                               |
 | Visibility      | Public                                                                 |
 | Description     | Warranty service tracking app for Fitzpatrick Warranty Service, LLC    |
+| Production URL  | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11)     |
+| Current deploy  | `8a6f7ac` (PR #1 merge) — manual Render deploy, succeeded 2026-06-11    |
+| Auto-Deploy     | On Commit — merges to `master` trigger a Render deploy automatically    |
+| Rollback anchor | `known-good-2026-06-05` → `44e91ce` (pre-readiness baseline)            |
 
 ## Key Recent Commits
 
