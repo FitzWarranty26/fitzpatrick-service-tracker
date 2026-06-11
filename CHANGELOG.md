@@ -19,6 +19,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
     `.github/ISSUE_TEMPLATE/feature_request.md` to standardize issue reporting.
   - **Future Work Protocol** in `RECOVERY-INDEX.md` defining the required
     process for all future changes to this business-critical app.
+  - `COMMERCIAL-READINESS-CHECKLIST.md` capturing the verified baseline, Render
+    verification still pending authenticated confirmation, data durability and
+    deployment risks, QA/security gaps, and commercial launch decision gates.
 
 ### Changed
 
