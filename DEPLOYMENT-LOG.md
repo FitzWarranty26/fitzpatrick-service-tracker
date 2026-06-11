@@ -44,6 +44,30 @@ Copy this block for each new deployment:
 
 <!-- Newest entries first. -->
 
+### 2026-06-11 — Installation Review Notes — PRODUCTION DEPLOY (approved & merged to master)
+
+- **Date:**            2026-06-11 11:09 (MDT)
+- **Commit:**          merge of `feature/installation-review-notes` into `master`
+                       (fast-forward; see master tip after this entry is committed)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   **Approved by Kevin ("Merge and deploy", 2026-06-11 11:09 MDT).**
+                       Fast-forward merge of `feature/installation-review-notes` into
+                       `master` and push to origin. Render Auto-Deploy = On Commit, so
+                       the push to `master` triggers an automatic production deploy.
+- **Checks run:**      `npm run check` (tsc) — PASS; `npm run build` — PASS
+                       (re-run on the deploy branch immediately before merge).
+- **Rollback point:**  `8a6f7ac` (previous production / PR #1 merge). Deeper baseline
+                       `known-good-2026-06-05` → `44e91ce`. See `ROLLBACK.md`.
+- **Notes:**           Supersedes the NO-DEPLOY entry below. Adds the additive nullable
+                       `installation_review_notes` column (Migration 32, idempotent
+                       `columnExists` guard); the migration runs at startup on deploy
+                       and does not affect existing rows. Installation Review Notes are
+                       excluded from printed/emailed reports by default (opt-in toggle).
+                       No env-var changes. No secrets or customer data recorded here.
+                       Post-deploy: confirm Render build succeeded and run the manual
+                       smoke test in the handoff checklist.
+
 ### 2026-06-11 — Installation Review Notes feature (NO PRODUCTION DEPLOY)
 
 - **Date:**            2026-06-11 (MDT)

@@ -24,7 +24,7 @@ repository, trust the repository.
 | Visibility      | Public                                                                 |
 | Description     | Warranty service tracking app for Fitzpatrick Warranty Service, LLC    |
 | Production URL  | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11)     |
-| Current deploy  | `8a6f7ac` (PR #1 merge) — manual Render deploy, succeeded 2026-06-11    |
+| Current deploy  | Installation Review Notes merged to `master` 2026-06-11 (Render auto-deploy on commit); prior production `8a6f7ac` (PR #1) |
 | Auto-Deploy     | On Commit — merges to `master` trigger a Render deploy automatically    |
 | Persistent disk | Confirmed: `/var/data`, 1 GB, snapshots visible (2026-06-11)            |
 | Rollback anchor | `known-good-2026-06-05` → `44e91ce` (pre-readiness baseline)            |
@@ -61,16 +61,18 @@ historical references only.
 | `2251645a` | PO (purchase order) module planning            |
 | `e57aa4b9` | WarrVault / FieldSeal naming                   |
 
-## In-Flight Work (not yet deployed)
+## Recently Deployed
 
 | Date       | Branch                              | Summary                                                                                                                            | State                                                  |
 | ---------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| 2026-06-11 | `feature/installation-review-notes` | Adds internal "Installation Review Notes" field (Migration 32). Excluded from printed/emailed reports by default with opt-in toggle. Residential + commercial. | Branch only — **NOT deployed**, awaiting Kevin review |
+| 2026-06-11 | `feature/installation-review-notes` | Adds internal "Installation Review Notes" field (Migration 32). Excluded from printed/emailed reports by default with opt-in toggle. Residential + commercial. | **Approved by Kevin & merged to `master` 2026-06-11** — Render auto-deploy triggered on commit |
 
-> No production deploy was performed for this work. `master` and the live Render
-> service are unchanged. The additive nullable `installation_review_notes`
-> column migration runs at startup on the next deploy and does not affect
-> existing rows. See `CHANGELOG.md` and `DEPLOYMENT-LOG.md` for details.
+> Deploy approved by Kevin ("Merge and deploy", 2026-06-11 11:09 MDT) and merged
+> to `master` (fast-forward). Render Auto-Deploy = On Commit, so the push to
+> `master` triggers an automatic production deploy. The additive nullable
+> `installation_review_notes` column migration (Migration 32) runs at startup on
+> deploy and does not affect existing rows. See `CHANGELOG.md` and
+> `DEPLOYMENT-LOG.md` for the full deploy record and rollback point.
 
 ## Recovery Procedure
 

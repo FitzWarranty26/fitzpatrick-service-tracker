@@ -8,6 +8,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026-06-11] — Installation Review Notes
+
+Released to production on 2026-06-11 (approved by Kevin, "Merge and deploy", 11:09
+MDT). Merged `feature/installation-review-notes` into `master`; Render
+auto-deploy on commit triggered the production deploy. See `DEPLOYMENT-LOG.md`
+for the deploy record and rollback point (`8a6f7ac`).
+
 ### Added
 
 - **Installation Review Notes** — a new internal narrative field on service
