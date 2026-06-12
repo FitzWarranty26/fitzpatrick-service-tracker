@@ -24,7 +24,7 @@ repository, trust the repository.
 | Visibility      | Public                                                                 |
 | Description     | Warranty service tracking app for Fitzpatrick Warranty Service, LLC    |
 | Production URL  | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11)     |
-| Current deploy  | Installation Review Notes merged to `master` 2026-06-11 (Render auto-deploy on commit); prior production `8a6f7ac` (PR #1) |
+| Current deploy  | `0d1f89b` — render.yaml reconcile (PR #37) deployed to production 2026-06-12 (Render auto-deploy). Prior production `0f67980` (rollback target) |
 | Auto-Deploy     | On Commit — merges to `master` trigger a Render deploy automatically    |
 | Persistent disk | Verified live 2026-06-12: `DB_PATH=/var/data/warranty_tracker.db`, DB file on the `/var/data` 1 GB disk (~48% used), 7 daily snapshots (Jun 5–11). `render.yaml` reconciled to declare plan/disk/DB_PATH (Issue #3). |
 | Rollback anchor | `known-good-2026-06-05` → `44e91ce` (pre-readiness baseline)            |

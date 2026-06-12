@@ -92,11 +92,13 @@ single highest commercial risk.
       and Render takes 7 daily disk snapshots. Still to do: confirm the backup
       cron is scheduled and exercise it end-to-end (tracked by Issue #4).
 - [ ] Document and test a **restore-from-backup** procedure (Issue #4).
-- [~] Verify data survives a redeploy and a manual instance restart. Strong
-      evidence: the DB on the persistent disk and the 7 daily snapshots persisted
-      across recent redeploys (incl. the 2026-06-11 deploy). A deliberate
-      restart/redeploy survival test with a fake placeholder record is still
-      recommended to fully close this item.
+- [x] Verify data survives a redeploy and a manual instance restart. Confirmed
+      2026-06-12: after the PR #37 production **redeploy**, the DB file was
+      byte-identical to baseline (size `479436800`, md5
+      `72f8c2be507a850c8caff0cf0a5c3065`, not recreated). A subsequent approved
+      **manual instance restart** (09:14 MDT) left the disk attached, usage
+      unchanged (48%), `DB_PATH` unchanged, and the app healthy. Data survives
+      both redeploy and restart. See `DEPLOYMENT-LOG.md` (2026-06-12 entries).
 
 ---
 

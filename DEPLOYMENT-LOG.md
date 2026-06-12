@@ -45,6 +45,59 @@ Copy this block for each new deployment:
 
 <!-- Newest entries first. -->
 
+### 2026-06-12 — render.yaml reconcile (PR #37) — PRODUCTION DEPLOY (approved & merged)
+
+- **Date:**            2026-06-12 08:39 (MDT) — deploy live 08:40 MDT
+- **Commit:**          `0d1f89b` (merge of PR #37 `fix/render-yaml-reconcile` into `master`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   **Approved by Kevin (2026-06-12).** Merged PR #37 to `master`;
+                       Render Auto-Deploy (On Commit) built and went live in ~1m29s.
+- **Checks run:**      `npm run check` (tsc) — PASS; `npm run build` — PASS;
+                       `render.yaml` valid YAML. Post-deploy disk/DB integrity verified.
+- **Rollback point:**  `0f67980` (previous production). Deeper baseline
+                       `known-good-2026-06-05` → `44e91ce`.
+- **What changed:**    `render.yaml` only (config-as-code) + docs. Blueprint now
+                       declares `plan: starter`, the `/var/data` 1 GB persistent
+                       disk, `DB_PATH=/var/data/warranty_tracker.db`, and
+                       `BACKUP_SECRET` (`sync: false`). No application code changed.
+- **Disk/DB integrity (read-only Render shell, immediately post-deploy):**
+  - Disk still attached, `/var/data`, 1 GB, 48% used; 7 daily snapshots intact.
+  - DB file `warranty_tracker.db` **byte-identical** to the pre-deploy baseline:
+    size `479436800`, md5 `72f8c2be507a850c8caff0cf0a5c3065`, inode 13, Birth
+    2026-03-25 (i.e. NOT recreated). Confirms the blueprint disk change was a
+    no-op for storage and **no data was lost**.
+- **Notes:**           No secrets or customer data recorded here.
+
+### 2026-06-12 — Restart-survival test (Issue #3 acceptance criterion) — APPROVED MANUAL RESTART
+
+- **Date:**            2026-06-12 09:14 (MDT)
+- **Commit:**          `0d1f89b` (no code change; instance restart only)
+- **Environment:**     production
+- **Deploy action:**   **Approved by Kevin (2026-06-12).** One manual instance
+                       **restart** via Render ("Service restarted by you", 09:14 MDT).
+                       No redeploy, no config change.
+- **Result:**          App returned healthy (HTTP 200; `/api/backup/status` 401 =
+                       up + auth-protected). Persistent disk still attached at
+                       `/var/data`, usage unchanged at 48% (458 MB), `DB_PATH`
+                       unchanged, DB file present. Conclusion: **production data
+                       survives an instance restart.** (Pre-restart redeploy in the
+                       entry above was independently confirmed byte-identical by
+                       md5.)
+- **Post-restart confirmation (2026-06-12, Render Shell, fresh instance `925w6`):**
+                       `stat -c %s /var/data/warranty_tracker.db` →
+                       `479440896`; `md5sum` → `6cb84246f39c1f7d908e326acc224d9a`.
+                       Versus the pre-deploy baseline (size `479436800`, md5
+                       `72f8c2be507a850c8caff0cf0a5c3065`), the file is **+4096
+                       bytes — exactly one SQLite page — larger**, with a changed
+                       md5. This is normal active-write growth on a daily-use app,
+                       **not data loss**: the DB persisted on the durable `/var/data`
+                       disk across the restart onto a NEW instance and is
+                       accumulating live records. Persistence confirmed healthy.
+- **Rollback point:**  N/A (no code/config change).
+- **Notes:**           No secrets or customer data recorded here. No fake records
+                       were written to production.
+
 ### 2026-06-12 — Issue #3 persistence verification + render.yaml reconcile (NO PRODUCTION DEPLOY)
 
 - **Date:**            2026-06-12 08:18 (MDT)
