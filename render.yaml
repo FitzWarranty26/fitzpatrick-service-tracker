@@ -11,12 +11,18 @@ services:
     startCommand: NODE_ENV=production node dist/index.cjs
     # Persistent disk holds the production SQLite database and on-disk backups.
     # WITHOUT THIS DISK, the filesystem is ephemeral and all data is lost on
-    # every restart/redeploy. Verified live 2026-06-12: disk mounted at
-    # /var/data (1 GB), holding warranty_tracker.db.
+    # every restart/redeploy.
+    #
+    # Sizing (Issue #4): the backup endpoint keeps the live DB plus up to 9
+    # on-disk backup copies (backup-am, backup-pm, backup-{mon..sun}). At the
+    # 2026-06-12 DB size (~464 MB) that is ~4.6 GB of backups; the original
+    # 1 GB disk was 97% full and a full backup pair failed to write (HTTP 500).
+    # Grown to 10 GB on 2026-06-12 to fit the full retention set with headroom
+    # for DB growth. NOTE: Render disks can be grown but NEVER shrunk.
     disk:
       name: data
       mountPath: /var/data
-      sizeGB: 1
+      sizeGB: 10
     envVars:
       - key: NODE_ENV
         value: production
