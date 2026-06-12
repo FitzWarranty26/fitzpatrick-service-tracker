@@ -10,6 +10,24 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 _Nothing yet._
 
+## [2026-06-12] — Commercial hosting platform decision (Issue #27)
+
+Phase 0 / Issue #27 (Review commercial hosting platform decision before
+launch). Documentation/decision only — no application code or production change.
+
+### Added
+
+- **ADR `docs/adr/0001-commercial-hosting-platform.md`** — records the decision
+  to launch DROVE's commercial SaaS on **Render (Express app) + Supabase
+  (managed Postgres, RLS tenant isolation, Storage, Auth, mobile SDKs)**, with
+  **AWS documented as the future scale-up target**. Compares Render, Railway,
+  Fly.io, AWS, and Supabase across managed Postgres, PITR, object storage,
+  multi-tenancy, mobile, compliance, uptime, pricing, and ops burden.
+  Architecture boundary: **all business logic stays in Express on Render;
+  Supabase is managed infrastructure only.** Notes that GitHub remains the
+  source of truth (CI gate, branch protection, rollback tags unchanged) and
+  ties the rollout to Issue #7 (SQLite → Postgres migration).
+
 ## [2026-06-12] — Rollback rehearsal + new known-good tag (Issue #6)
 
 Phase 0 / Issue #6 (Rehearse rollback and create a current production rollback
