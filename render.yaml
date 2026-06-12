@@ -2,9 +2,31 @@ services:
   - type: web
     runtime: node
     name: fitzpatrick-service-tracker
-    plan: free
+    # Live service is on the Starter plan (verified 2026-06-12). Starter is
+    # required because the persistent disk below is not available on the free
+    # plan. Do not downgrade to free without first migrating off local SQLite.
+    plan: starter
+    region: oregon
     buildCommand: npm install && npm run build
     startCommand: NODE_ENV=production node dist/index.cjs
+    # Persistent disk holds the production SQLite database and on-disk backups.
+    # WITHOUT THIS DISK, the filesystem is ephemeral and all data is lost on
+    # every restart/redeploy. Verified live 2026-06-12: disk mounted at
+    # /var/data (1 GB), holding warranty_tracker.db.
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
+      # Points better-sqlite3 at the persistent disk (server/storage.ts falls
+      # back to an EPHEMERAL local file if DB_PATH is unset). Verified live
+      # 2026-06-12: DB_PATH=/var/data/warranty_tracker.db.
+      - key: DB_PATH
+        value: /var/data/warranty_tracker.db
+      # Shared secret for the authenticated /api/backup endpoints (cron jobs
+      # send it via the x-backup-secret header). Set in the Render dashboard;
+      # never committed. sync: false keeps it out of this file.
+      - key: BACKUP_SECRET
+        sync: false
