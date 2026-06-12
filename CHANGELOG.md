@@ -10,6 +10,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 _Nothing yet._
 
+## [2026-06-12] — CI gate for check + build (Issue #5)
+
+Phase 0 / Issue #5 (Add CI gate before production deploys). No application code
+or production change — adds automated validation in GitHub.
+
+### Added
+
+- **CI workflow** `.github/workflows/ci.yml` (job `check-and-build`): runs
+  `npm run check` (tsc) and `npm run build` on every **pull request to
+  `master`** and on **pushes to `master`** (backstop). Node 20, `npm ci` with
+  npm caching, 15-min timeout, concurrency cancellation.
+- **Documented the CI/deploy relationship** in `RECOVERY-INDEX.md`: Render
+  auto-deploys `master`, so the safety gate lives in GitHub — branch, PR, merge
+  only after CI is green. Includes the one-time branch-protection step to make
+  `check-and-build` a *required* status check that blocks merge.
+
 ## [2026-06-12] — Automated backups + disk sizing fix (Issue #4)
 
 Phase 0 / Issue #4 (Define and test backup & restore procedure). Approved by
