@@ -156,3 +156,4 @@ safety gate lives in GitHub.
 | `ROLLBACK.md`        | Step-by-step rollback via GitHub and the deploy provider    |
 | `.github/workflows/ci.yml` | CI gate: runs `check` + `build` on PRs/pushes to `master` |
 | `.github/ISSUE_TEMPLATE/` | Standardized bug report and feature request templates  |
+| `docs/adr/`          | Architecture Decision Records (e.g. ADR 0001 — commercial hosting: Render + Supabase, AWS as scale-up target; Issue #27) |

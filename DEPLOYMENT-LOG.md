@@ -43,6 +43,17 @@ Copy this block for each new deployment:
 
 ## Deployment History
 
+### 2026-06-12 — Issue #27: commercial hosting decision (ADR 0001) (NO PRODUCTION DEPLOY)
+
+- **Date:**            2026-06-12 (America/Denver)
+- **Commit:**          n/a — docs/decision only
+- **Environment:**     n/a — no deploy
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   None. Recorded the commercial hosting platform decision.
+- **Checks run:**      Documentation review only (per Issue #27).
+- **Rollback point:**  Unchanged — `known-good-2026-06-12` → `e28492b`.
+- **Notes:**           Decision: launch commercial DROVE on **Render (Express app) + Supabase (managed Postgres, RLS, Storage, Auth, mobile SDKs)**; **AWS = documented future scale-up target**. All business logic stays in Express; Supabase is managed infrastructure only. GitHub remains source of truth (CI gate / branch protection / rollback tags unchanged). Ties into Issue #7 (SQLite → Postgres). Full rationale + 5-platform comparison in `docs/adr/0001-commercial-hosting-platform.md`. Re-verify Render/Supabase pricing before committing spend.
+
 ### 2026-06-12 — Issue #6: rollback rehearsal + new known-good tag (NO PRODUCTION DEPLOY)
 
 - **Date:**            2026-06-12 (America/Denver)
