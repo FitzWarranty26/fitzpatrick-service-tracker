@@ -83,8 +83,17 @@ Copy this block for each new deployment:
                        unchanged, DB file present. Conclusion: **production data
                        survives an instance restart.** (Pre-restart redeploy in the
                        entry above was independently confirmed byte-identical by
-                       md5; the post-restart exact-hash re-capture was blocked only
-                       by a flaky web-terminal UI, not a data issue.)
+                       md5.)
+- **Post-restart confirmation (2026-06-12, Render Shell, fresh instance `925w6`):**
+                       `stat -c %s /var/data/warranty_tracker.db` →
+                       `479440896`; `md5sum` → `6cb84246f39c1f7d908e326acc224d9a`.
+                       Versus the pre-deploy baseline (size `479436800`, md5
+                       `72f8c2be507a850c8caff0cf0a5c3065`), the file is **+4096
+                       bytes — exactly one SQLite page — larger**, with a changed
+                       md5. This is normal active-write growth on a daily-use app,
+                       **not data loss**: the DB persisted on the durable `/var/data`
+                       disk across the restart onto a NEW instance and is
+                       accumulating live records. Persistence confirmed healthy.
 - **Rollback point:**  N/A (no code/config change).
 - **Notes:**           No secrets or customer data recorded here. No fake records
                        were written to production.
