@@ -24,11 +24,11 @@ repository, trust the repository.
 | Visibility      | Public                                                                 |
 | Description     | Warranty service tracking app for Fitzpatrick Warranty Service, LLC    |
 | Production URL  | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11)     |
-| Current deploy  | `32d7f0b` — Issue #4 (PR #40 disk grow; PR #39 backup cron) on production 2026-06-12. Prior `0d1f89b` (Issue #3 render.yaml reconcile), `0f67980` (rollback target). |
+| Current deploy  | `e28492b` — Issue #5 CI gate (PR #42) on production 2026-06-12. Prior `32d7f0b` (Issue #4 disk grow + backup cron), `0d1f89b` (Issue #3 render.yaml reconcile). |
 | Auto-Deploy     | On Commit — merges to `master` trigger a Render deploy automatically    |
 | Persistent disk | `DB_PATH=/var/data/warranty_tracker.db` on the `/var/data` persistent disk, **10 GB** (grown from 1 GB on 2026-06-12, Issue #4; ~14% used). Holds the live DB + on-disk backups. `render.yaml` declares plan/disk/DB_PATH. |
 | Backups         | Render Cron Job `fitzpatrick-service-tracker-backup` (`crn-d8m2sn28qa3s73b0uqm0`), every 12h (`0 6,18 * * *` UTC), POSTs `/api/backup`. Files: `backup-am/pm.db` + `backup-{mon..sun}.db` on `/var/data`. Verified working + restorable 2026-06-12. Procedure: `ROLLBACK.md` §6. |
-| Rollback anchor | `known-good-2026-06-05` → `44e91ce` (pre-readiness baseline)            |
+| Rollback anchor | **`known-good-2026-06-12` → `e28492b`** (current recommended; post-CI-gate). Baseline `known-good-2026-06-05` → `44e91ce`. Both re-verified deployable 2026-06-12 (Issue #6). See `ROLLBACK.md` §0. |
 
 ## Key Recent Commits
 
@@ -123,8 +123,11 @@ agent — must follow this protocol:
    the record stays accurate.
 
 7. **Tag and record rollback points for major releases.** For major releases,
-   create a git tag and record the rollback point in `DEPLOYMENT-LOG.md` so a
-   safe restore target always exists (see `ROLLBACK.md`).
+   create a `known-good-YYYY-MM-DD` git tag, add a row to the **§0 targets
+   table** in `ROLLBACK.md`, and record the rollback point in
+   `DEPLOYMENT-LOG.md` so a safe restore target always exists. Periodically
+   rehearse the rollback (non-destructive: checkout the tag, run
+   `npm run check` + `npm run build`) and log it in `ROLLBACK.md` §5a.
 
 ## CI Gate & Deploy Relationship (Issue #5)
 

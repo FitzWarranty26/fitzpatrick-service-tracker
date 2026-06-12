@@ -43,6 +43,17 @@ Copy this block for each new deployment:
 
 ## Deployment History
 
+### 2026-06-12 — Issue #6: rollback rehearsal + new known-good tag (NO PRODUCTION DEPLOY)
+
+- **Date:**            2026-06-12 (America/Denver)
+- **Commit:**          `e28492b` (current `master`, Merge PR #42)
+- **Environment:**     n/a — Git + local sandbox only; production untouched
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   None. Created rollback tag + rehearsed code rollback (Issue #6, option A).
+- **Checks run:**      `npm run check` (tsc) ✅ and `npm run build` ✅ on rollback target `known-good-2026-06-05` (`44e91ce`); both exit 0.
+- **Rollback point:**  **`known-good-2026-06-12` → `e28492b`** (new, recommended). Prior baseline `known-good-2026-06-05` → `44e91ce` re-verified deployable.
+- **Notes:**           Created + pushed annotated tag `known-good-2026-06-12` on `e28492b`. Rehearsed Method 2 (Git tag redeploy) non-destructively: detached-HEAD checkout of `44e91ce`, clean `npm ci`, check + build pass, returned cleanly to `master`. Method 1 (Render native "Rollback to this deploy") documented in `ROLLBACK.md` §3; live Render drill deferred to avoid redeploying production. No database operations — live DB and backups untouched. See `ROLLBACK.md` §0 (targets) and §5a (rehearsal log).
+
 <!-- Newest entries first. -->
 
 ### 2026-06-12 — Issue #4: automated backups + disk grow 1→10 GB — PRODUCTION CHANGE (approved)
