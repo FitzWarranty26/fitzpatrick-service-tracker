@@ -10,6 +10,42 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 _Nothing yet._
 
+## [2026-06-12] — Automated backups + disk sizing fix (Issue #4)
+
+Phase 0 / Issue #4 (Define and test backup & restore procedure). Approved by
+Kevin 2026-06-12. Config-as-code + Render dashboard changes only — no application
+code changed. See `DEPLOYMENT-LOG.md` for the full record and `ROLLBACK.md` §6
+for the documented backup/restore procedure.
+
+### Added
+
+- **Automated database backups.** Created a Render **Cron Job**
+  (`fitzpatrick-service-tracker-backup`) that runs **every 12 hours**
+  (`0 6,18 * * *` UTC = midnight/noon MDT) and POSTs to the app's `/api/backup`
+  endpoint with the `x-backup-secret` header. Declared in `render.yaml`.
+  Previously the backup endpoint existed but **nothing was calling it on a
+  schedule** — backups were effectively manual and could silently stop.
+- **Documented backup & restore procedure** in `ROLLBACK.md` §6: backup
+  mechanism/frequency/retention/owner, how to check health, trigger an
+  on-demand backup, non-destructively verify a backup is restorable, and the
+  DESTRUCTIVE live-restore steps. Notes that code rollback does NOT undo data.
+
+### Fixed
+
+- **Persistent disk too small for backups (launch blocker).** The backup test
+  caught that the 1 GB `/var/data` disk was **97% full** and a full backup pair
+  (2 × ~464 MB) failed with HTTP 500. Retention keeps up to 9 copies (~4.6 GB),
+  which never fit on 1 GB. Grew the disk **1 GB → 10 GB** (`render.yaml` +
+  Render dashboard; resize in place, data preserved). Render disks grow only.
+
+### Verified
+
+- **Backup works end-to-end.** Post-grow, `POST /api/backup` returned
+  `{"success":true}` writing `backup-pm.db` + `backup-fri.db` (each ~464 MB).
+- **Backup is restorable.** Non-destructive restore test on the newest backup:
+  `integrity_check: ok`, 61 `service_calls` rows; scratch copy deleted, live DB
+  untouched. Disk after grow: 14% used (8.5 GB free).
+
 ## [2026-06-12] — Production database persistence verified (Issue #3)
 
 Phase 0 / Issue #3 (Verify production database persistence on Render). Deployed
