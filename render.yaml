@@ -30,3 +30,37 @@ services:
       # never committed. sync: false keeps it out of this file.
       - key: BACKUP_SECRET
         sync: false
+
+  # ---------------------------------------------------------------------------
+  # Automated database backup (Issue #4 — Phase 0 launch blocker).
+  # Twice-daily (every 12h) cron that POSTs to the app's /api/backup endpoint.
+  # The endpoint uses SQLite's .backup() API for a safe, consistent copy and
+  # writes rolling files to the persistent disk: backup-am.db / backup-pm.db
+  # (overwritten each half-day) plus backup-{mon..sun}.db (7-day retention).
+  #
+  # Runs as a lightweight curl image — it does NOT build or run the app, it
+  # just calls the already-running web service over HTTPS. Schedule is in UTC.
+  #   06:00 UTC -> app records this as the "am" slot (getUTCHours() < 12)
+  #   18:00 UTC -> app records this as the "pm" slot (getUTCHours() >= 12)
+  # 06:00/18:00 UTC == midnight/noon America/Denver (MDT, UTC-6).
+  #
+  # BACKUP_SECRET must be set on THIS cron job (sync: false) to the same value
+  # as the web service's BACKUP_SECRET; it is sent via the x-backup-secret
+  # header (never as a query string, which can leak into logs).
+  - type: cron
+    name: fitzpatrick-service-tracker-backup
+    runtime: image
+    image:
+      url: docker.io/curlimages/curl:8.11.0
+    region: oregon
+    plan: starter
+    schedule: "0 6,18 * * *"
+    envVars:
+      - key: BACKUP_SECRET
+        sync: false
+    # --fail makes curl exit non-zero on HTTP >= 400 so a failed backup shows
+    # as a failed cron run in Render. -sS keeps output quiet but shows errors.
+    dockerCommand: >-
+      sh -c 'curl --fail -sS -X POST
+      -H "x-backup-secret: $BACKUP_SECRET"
+      https://warranty.fitzpatricksalescrm.com/api/backup'
