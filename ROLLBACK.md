@@ -9,6 +9,26 @@ known-good commit or tag from GitHub before changing the running deployment.
 
 ---
 
+## 0. Known-good rollback targets (tags)
+
+These tags mark commits verified healthy in production. Newest first — prefer
+the newest tag that predates the problem you are recovering from.
+
+| Tag | Commit | Verified | Notes |
+| --- | ------ | -------- | ----- |
+| `known-good-2026-06-12` | `e28492b` | 2026-06-12 | `master` after PR #42 (CI gate, Issue #5). CI green; backups operational on 10 GB disk. **Current recommended target.** |
+| `known-good-2026-06-05` | `44e91ce` | 2026-06-05 | Original Phase 0 baseline. Re-verified deployable 2026-06-12 (`npm run check` + `npm run build` pass). |
+
+```bash
+# List all tags newest-first
+git tag --list --sort=-creatordate
+# Resolve a tag to its commit
+git rev-list -n1 known-good-2026-06-12
+```
+
+When you create a new known-good state, **add a tag and a row here** (see
+§5 and the Future Work Protocol in `RECOVERY-INDEX.md`).
+
 ## 1. Identify the last known-good state
 
 1. Open the commit history:
@@ -68,24 +88,60 @@ git checkout <tag-name>
 
 ## 3. Restore / redeploy on the deployment provider
 
-This app deploys via **Render** (see `render.yaml`).
+This app deploys via **Render** (see `render.yaml`). There are **two rollback
+methods** — use the decision guide, then follow the matching method.
 
-### Render — restore a previous deploy (fastest)
+**Which method?**
 
-1. Log in to the Render dashboard and open the `fitzpatrick-service-tracker`
-   service.
-2. Open the **Events** / **Deploys** tab.
-3. Find the last successful deploy that matches your known-good commit.
-4. Choose **Rollback** / **Redeploy** for that deploy to restore it immediately.
+| Situation | Use |
+| --------- | --- |
+| Need production healthy **right now**; the bad change is already deployed; you don't yet have a code fix | **Method 1 — Render native rollback** (fastest; no Git push, no rebuild) |
+| You want an **auditable, permanent** fix in Git, or the bad deploy will keep re-deploying from `master` until the code is corrected | **Method 2 — Git revert/tag + redeploy** (combine with §2) |
 
-### Render — redeploy after a code fix
+> In practice: **Method 1 to stop the bleeding immediately, then Method 2** to
+> make the fix permanent in `master` (otherwise the next push could redeploy the
+> bad code). Method 1 alone is temporary — Render's auto-deploy on `master` will
+> overwrite it on the next push.
 
-1. Push the reverted/reset/tagged commit to `master` (Step 2).
-2. Render auto-deploys on push. If auto-deploy is off, trigger a **Manual
-   Deploy** of the desired commit from the dashboard.
-3. Watch the build/start logs:
+### Method 1 — Render native rollback (fastest, no rebuild)
+
+Render keeps every past successful deploy and can re-activate one instantly
+(it re-serves the already-built image; no new build runs).
+
+1. Log in to the Render dashboard → open the **`fitzpatrick-service-tracker`**
+   web service (`srv-d71fadcr85hc73a0i1cg`).
+2. Open the **Events** tab (or **Deploys**). You'll see the deploy history with
+   commit hashes and timestamps.
+3. Find the last **Live**/successful deploy that matches a known-good commit
+   (cross-reference §0 tags and `DEPLOYMENT-LOG.md`).
+4. Click that deploy → use the **⋮ / Rollback to this deploy** action (Render
+   labels it "Rollback" on the deploy's menu). Confirm.
+5. Render re-activates that build. Watch it go **Live**, then run §4 Verify.
+
+> ⚠️ This does **not** change `master`. The code in GitHub is still the bad
+> version, so the **next push to `master` will auto-deploy the bad code again.**
+> Always follow up with Method 2 to correct `master`.
+
+### Method 2 — Git revert/tag + redeploy (permanent fix)
+
+This corrects `master` so the good code is what auto-deploys.
+
+1. Roll back the code in Git using **§2** — prefer **Option A (revert)** for an
+   auditable forward fix, or **Option C (redeploy from a known-good tag)** such
+   as `known-good-2026-06-12` (see §0).
+2. Open a PR and let **CI** (`check-and-build`) pass, then merge to `master`.
+   (Branch protection requires a green CI run before merge — see
+   `RECOVERY-INDEX.md`.)
+3. Render auto-deploys on the merge to `master`. If auto-deploy is off, trigger
+   a **Manual Deploy** of the desired commit/tag from the dashboard.
+4. Watch the build/start logs:
    - Build: `npm install && npm run build`
    - Start: `NODE_ENV=production node dist/index.cjs`
+
+> Emergency exception: if production is down and you cannot wait for CI, you may
+> use §2 Option B (reset + `--force-with-lease`) to rewind `master` directly.
+> This bypasses the PR/CI gate — do it only in a genuine emergency and record it
+> in `DEPLOYMENT-LOG.md`.
 
 ### Generic provider (if not Render)
 
@@ -107,6 +163,31 @@ This app deploys via **Render** (see `render.yaml`).
    commit, action taken, outcome).
 2. If the root cause is known, note it in `CHANGELOG.md` under `[Unreleased]`
    and open or update a GitHub issue using the bug report template.
+
+## 5a. Rollback rehearsal log (Issue #6)
+
+Record rehearsals here so we know the procedure has been exercised and the
+targets are deployable.
+
+### 2026-06-12 — Code-rollback dry-run (non-destructive; no production touched)
+
+- **Performed by:** Perplexity Computer (for Kevin Withers). Approach: paper +
+  code dry-run only (option A) — production was **not** redeployed.
+- **Targets verified:**
+  - `known-good-2026-06-12` → `e28492b` created and pushed (current recommended
+    target).
+  - `known-good-2026-06-05` → `44e91ce` (existing baseline) checked out in a
+    detached HEAD and re-verified deployable.
+- **Method 2 (Git tag) rehearsed:** `git checkout known-good-2026-06-05` →
+  `npm ci` → `npm run check` (tsc) **passed (exit 0)** → `npm run build`
+  **passed (exit 0)**. Returned cleanly to `master` (`e28492b`), working tree
+  clean. This proves the documented tag-redeploy path produces a deployable
+  build.
+- **Method 1 (Render native rollback):** documented and ready (§3 Method 1); a
+  live click-through drill on Render was intentionally deferred to avoid
+  redeploying production. Recommended as a future scheduled exercise.
+- **Data safety:** no database operations were performed; the live SQLite DB
+  and backups were never touched.
 
 ---
 

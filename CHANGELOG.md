@@ -10,6 +10,30 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 _Nothing yet._
 
+## [2026-06-12] — Rollback rehearsal + new known-good tag (Issue #6)
+
+Phase 0 / Issue #6 (Rehearse rollback and create a current production rollback
+tag). No application code or production change — production was not redeployed.
+
+### Added
+
+- **New rollback tag** `known-good-2026-06-12` → `e28492b` (current `master`
+  after the CI gate landed) as the recommended Git rollback target.
+- **`ROLLBACK.md` §0 — Known-good rollback targets** table listing both tags.
+- **`ROLLBACK.md` §3 rewritten** to document **two rollback methods** with a
+  decision guide: **Method 1** = Render native "Rollback to this deploy"
+  (fastest, no rebuild) and **Method 2** = Git revert/tag + redeploy through a
+  CI-gated PR (permanent fix). Notes that Method 1 alone is temporary because
+  Render auto-deploys `master`.
+- **`ROLLBACK.md` §5a — Rollback rehearsal log** documenting the 2026-06-12
+  non-destructive code-rollback dry-run.
+
+### Verified
+
+- Rehearsed the Git-tag rollback path against `known-good-2026-06-05`
+  (`44e91ce`): `npm run check` and `npm run build` both pass (exit 0). No
+  database operations; live DB and backups untouched.
+
 ## [2026-06-12] — CI gate for check + build (Issue #5)
 
 Phase 0 / Issue #5 (Add CI gate before production deploys). No application code
