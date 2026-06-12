@@ -57,8 +57,9 @@ session.**
       plan, so free-tier sleep does not apply.
 - [x] Confirm whether **auto-deploy on push to `master`** is enabled. Confirmed
       by Kevin (2026-06-11): Auto-Deploy = **On Commit**.
-- [ ] Capture environment variables configured in Render (names only — **no
-      secret values** in this repo). **(needs Kevin / authenticated Render access)**
+- [x] Capture environment variables configured in Render (names only — **no
+      secret values** in this repo). Verified 2026-06-12: `NODE_ENV`, `DB_PATH`,
+      `BACKUP_SECRET` (set; value not recorded). No `DATABASE_URL`/`DATA_DIR`.
 - [x] Record the confirmed production URL in `DEPLOYMENT-LOG.md`
       (recorded 2026-06-11: `https://warranty.fitzpatricksalescrm.com/#/`).
 
@@ -71,23 +72,31 @@ persistent disk, the local filesystem is ephemeral** — data written to a local
 SQLite file can be lost on restart, redeploy, or instance recycle. This is the
 single highest commercial risk.
 
-- [~] Confirm where the SQLite database file is stored at runtime. A persistent
-      disk is mounted at `/var/data` (see below); **still must verify the SQLite
-      file actually lives under `/var/data`** and not on the ephemeral filesystem.
+- [x] Confirm where the SQLite database file is stored at runtime. Verified live
+      2026-06-12 (Render shell): `DB_PATH=/var/data/warranty_tracker.db` and
+      `ls -la /var/data` shows `warranty_tracker.db` (~457 MB, modified same day)
+      on the persistent disk — **not** the ephemeral filesystem.
 - [x] Confirm whether a Render **persistent disk** is attached and mounted at
-      the database path. Confirmed via Render screenshot (2026-06-11): persistent
-      disk attached to `fitzpatrick-service-tracker`, mount path `/var/data`,
-      size 1 GB, with a snapshot visible dated 2026-06-10 18:16.
-- [ ] If no persistent disk: treat all production data as **at risk of loss**
-      until remediated. Do not onboard paying customers before this is resolved.
-      (Disk now confirmed attached; residual risk is whether SQLite uses it.)
-- [ ] Decide on the durable storage path:
-      - attach a persistent disk and point SQLite at it, **or**
-      - migrate to a managed database (e.g. hosted Postgres) — note the project
-        already uses `drizzle.config.ts`, easing a future migration.
-- [ ] Define and test an automated **backup** procedure for the database.
-- [ ] Document and test a **restore-from-backup** procedure.
-- [ ] Verify data survives a redeploy and a manual instance restart.
+      the database path. Verified live 2026-06-12: disk mounted at `/var/data`,
+      1 GB provisioned (~48% used, `/dev/nvme1n1`), with 7 daily snapshots
+      (Jun 5–11, 2026).
+- [x] If no persistent disk: treat all production data as at risk of loss.
+      N/A — persistent disk is attached and SQLite is confirmed writing to it.
+- [x] Decide on the durable storage path:
+      Current decision: persistent disk + SQLite at `/var/data/warranty_tracker.db`
+      (now declared in `render.yaml`). A future migration to managed Postgres
+      remains an option (`drizzle.config.ts` already present) but is not required
+      for launch.
+- [~] Define and test an automated **backup** procedure for the database.
+      In place: `/api/backup` writes AM/PM + day-of-week snapshots to `/var/data`,
+      and Render takes 7 daily disk snapshots. Still to do: confirm the backup
+      cron is scheduled and exercise it end-to-end (tracked by Issue #4).
+- [ ] Document and test a **restore-from-backup** procedure (Issue #4).
+- [~] Verify data survives a redeploy and a manual instance restart. Strong
+      evidence: the DB on the persistent disk and the 7 daily snapshots persisted
+      across recent redeploys (incl. the 2026-06-11 deploy). A deliberate
+      restart/redeploy survival test with a fake placeholder record is still
+      recommended to fully close this item.
 
 ---
 

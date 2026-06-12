@@ -8,7 +8,24 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+
+- **Reconciled `render.yaml` with the live Render service (Issue #3, Phase 0).**
+  The committed blueprint previously declared `plan: free` with no persistent
+  disk and no `DB_PATH`, which did not match production and would have rebuilt
+  the service on an ephemeral filesystem with an empty database. It now declares
+  `plan: starter`, a 1 GB persistent disk mounted at `/var/data`,
+  `DB_PATH=/var/data/warranty_tracker.db`, and `BACKUP_SECRET` (`sync: false`),
+  so production config is reproducible from the repo. No application code or
+  runtime behavior changed; no deploy performed by this change.
+
+### Verified
+
+- **Production database persistence (Issue #3).** Read-only verification of the
+  live Render service (2026-06-12) confirmed the app writes to a persistent disk:
+  `DB_PATH=/var/data/warranty_tracker.db`, the DB file lives on the `/var/data`
+  1 GB disk (~48% used), and 7 daily snapshots exist (Jun 5–11). Findings
+  recorded in `DEPLOYMENT-LOG.md` and `RECOVERY-INDEX.md`; checklist §3 updated.
 
 ## [2026-06-11] — Installation Review Notes
 

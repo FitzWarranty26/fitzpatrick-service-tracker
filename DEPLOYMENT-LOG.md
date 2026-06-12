@@ -36,13 +36,46 @@ Copy this block for each new deployment:
 | Default branch    | `master`                                                       |
 | Production URL    | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11) |
 | Auto-Deploy       | On Commit (confirmed by Kevin 2026-06-11)                      |
-| Plan              | Starter (confirmed by Kevin 2026-06-11; `render.yaml` still says `free`) |
-| Persistent disk   | Confirmed: `/var/data`, 1 GB, snapshots visible (2026-06-11)   |
+| Plan              | Starter (verified 2026-06-12 via Render dashboard; `render.yaml` reconciled to `starter` in the same change) |
+| Persistent disk   | Verified live 2026-06-12: disk mounted at `/var/data`, 1 GB (~48% used); 7 daily snapshots (Jun 5–11) |
+| DB_PATH           | `DB_PATH=/var/data/warranty_tracker.db` (verified live env var + shell 2026-06-12) |
 | Internal address  | `fitzpatrick-service-tracker:10000`                            |
 
 ## Deployment History
 
 <!-- Newest entries first. -->
+
+### 2026-06-12 — Issue #3 persistence verification + render.yaml reconcile (NO PRODUCTION DEPLOY)
+
+- **Date:**            2026-06-12 08:18 (MDT)
+- **Commit:**          on branch `fix/render-yaml-reconcile` (PR, not merged)
+- **Environment:**     none — **no production deploy.** Config-as-code + docs only;
+                       does not change the running service.
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/ (unchanged; not redeployed)
+- **Deploy action:**   **None.** Read-only verification of the live Render service
+                       plus a reconciling edit to `render.yaml` and the continuity docs.
+- **Checks run:**      `npm run check` (tsc) — PASS; `npm run build` — PASS.
+- **Rollback point:**  N/A (no deploy). Current production unchanged; `known-good-2026-06-05`
+                       → `44e91ce` remains the baseline.
+- **Verification (Issue #3, read-only via authenticated Render dashboard + shell, 2026-06-12):**
+  - Plan: **Starter** (region Oregon; service `srv-d71fadcr85hc73a0i1cg`).
+  - Env vars present: `NODE_ENV`, `DB_PATH=/var/data/warranty_tracker.db`,
+    `BACKUP_SECRET` (set; value not recorded). No `DATABASE_URL`/`DATA_DIR`.
+  - Persistent disk attached, mount path `/var/data`, 1 GB provisioned, ~458 MB
+    used (48%), filesystem `/dev/nvme1n1`. 7 daily snapshots: Jun 5,6,7,8,9,10,11.
+  - Shell: `echo $DB_PATH` → `/var/data/warranty_tracker.db`; `ls -la /var/data`
+    shows `warranty_tracker.db` (~457 MB, modified same day) on the disk;
+    `df -h /var/data` confirms `/var/data` is a mounted volume.
+  - **Conclusion:** production data IS on durable storage and survives
+    restarts/redeploys; snapshots provide point-in-time recovery.
+- **Mismatch fixed in this change:** committed `render.yaml` previously declared
+  `plan: free` with no `disk:` block and no `DB_PATH`/`BACKUP_SECRET`. It is now
+  reconciled to `plan: starter` + `/var/data` 1 GB disk + `DB_PATH` +
+  `BACKUP_SECRET (sync: false)` so the config is reproducible from the repo. This
+  closes the from-blueprint risk where a rebuild would have started on an
+  ephemeral filesystem with an empty database.
+- **Notes:**           No secrets or customer data recorded here. Persistence was
+                       verified, not changed.
 
 ### 2026-06-11 — Installation Review Notes — PRODUCTION DEPLOY (approved & merged to master)
 
