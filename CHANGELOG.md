@@ -8,24 +8,37 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026-06-12] — Production database persistence verified (Issue #3)
+
+Phase 0 / Issue #3 (Verify production database persistence on Render). Deployed
+to production 2026-06-12 (commit `0d1f89b`, approved by Kevin); Render auto-deploy
+on commit. Config-as-code change only — no application code changed. See
+`DEPLOYMENT-LOG.md` for the deploy record, rollback point (`0f67980`), and the
+disk/DB integrity + restart-survival results.
+
 ### Changed
 
-- **Reconciled `render.yaml` with the live Render service (Issue #3, Phase 0).**
-  The committed blueprint previously declared `plan: free` with no persistent
-  disk and no `DB_PATH`, which did not match production and would have rebuilt
-  the service on an ephemeral filesystem with an empty database. It now declares
-  `plan: starter`, a 1 GB persistent disk mounted at `/var/data`,
+- **Reconciled `render.yaml` with the live Render service.** The committed
+  blueprint previously declared `plan: free` with no persistent disk and no
+  `DB_PATH`, which did not match production and would have rebuilt the service on
+  an ephemeral filesystem with an empty database. It now declares `plan: starter`,
+  a 1 GB persistent disk mounted at `/var/data`,
   `DB_PATH=/var/data/warranty_tracker.db`, and `BACKUP_SECRET` (`sync: false`),
-  so production config is reproducible from the repo. No application code or
-  runtime behavior changed; no deploy performed by this change.
+  so production config is reproducible from the repo.
 
 ### Verified
 
-- **Production database persistence (Issue #3).** Read-only verification of the
-  live Render service (2026-06-12) confirmed the app writes to a persistent disk:
-  `DB_PATH=/var/data/warranty_tracker.db`, the DB file lives on the `/var/data`
-  1 GB disk (~48% used), and 7 daily snapshots exist (Jun 5–11). Findings
-  recorded in `DEPLOYMENT-LOG.md` and `RECOVERY-INDEX.md`; checklist §3 updated.
+- **Database persistence on durable storage.** Read-only verification of the live
+  Render service confirmed the app writes to the persistent disk:
+  `DB_PATH=/var/data/warranty_tracker.db`, DB file on the `/var/data` 1 GB disk
+  (~48% used), 7 daily snapshots (Jun 5–11).
+- **Survives redeploy and restart.** Across the PR #37 redeploy the DB file was
+  byte-identical to baseline (size `479436800`, md5
+  `72f8c2be507a850c8caff0cf0a5c3065`, not recreated). A subsequent approved manual
+  instance restart left the disk attached, usage unchanged, and the app healthy.
+  Checklist §3 items closed accordingly.
 
 ## [2026-06-11] — Installation Review Notes
 
