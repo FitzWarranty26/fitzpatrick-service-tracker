@@ -114,7 +114,9 @@ agent — must follow this protocol:
 
 5. **Run checks before deploy.** Run `npm run check` (TypeScript) and
    `npm run build` (and a smoke test where possible) before deploying. Do not
-   deploy code that fails these checks.
+   deploy code that fails these checks. **CI runs these automatically on every
+   pull request to `master`** (see CI Gate below) — wait for a green run before
+   merging.
 
 6. **Update the logs after meaningful work.** After any meaningful change,
    update `CHANGELOG.md`, `DEPLOYMENT-LOG.md`, and this `RECOVERY-INDEX.md` so
@@ -124,6 +126,24 @@ agent — must follow this protocol:
    create a git tag and record the rollback point in `DEPLOYMENT-LOG.md` so a
    safe restore target always exists (see `ROLLBACK.md`).
 
+## CI Gate & Deploy Relationship (Issue #5)
+
+**Render Auto-Deploy is ON for `master`** — every push/merge to `master` deploys
+straight to production. There is no manual gate at the Render side, so the
+safety gate lives in GitHub.
+
+- **CI workflow:** `.github/workflows/ci.yml` (job `check-and-build`) runs
+  `npm run check` (tsc) and `npm run build` on:
+  - every **pull request** targeting `master` (catch problems before merge), and
+  - every **push to `master`** (backstop).
+- **Required workflow:** make changes on a **branch**, open a **PR**, and merge
+  **only after CI is green.** This keeps broken type-checks/builds from
+  auto-deploying to production.
+- **Recommended hardening (one-time, in GitHub UI):** Settings → Branches → add
+  a protection rule for `master` → require the **`check-and-build`** status
+  check to pass before merging (and optionally require a PR). Until this is
+  enabled, CI reports status but does not *block* a merge.
+
 ## Operational Safety Documents
 
 | Document             | Purpose                                                     |
@@ -131,4 +151,5 @@ agent — must follow this protocol:
 | `CHANGELOG.md`       | Notable changes over time (Keep a Changelog format)         |
 | `DEPLOYMENT-LOG.md`  | Per-deployment record and rollback points                   |
 | `ROLLBACK.md`        | Step-by-step rollback via GitHub and the deploy provider    |
+| `.github/workflows/ci.yml` | CI gate: runs `check` + `build` on PRs/pushes to `master` |
 | `.github/ISSUE_TEMPLATE/` | Standardized bug report and feature request templates  |
