@@ -24,9 +24,10 @@ repository, trust the repository.
 | Visibility      | Public                                                                 |
 | Description     | Warranty service tracking app for Fitzpatrick Warranty Service, LLC    |
 | Production URL  | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11)     |
-| Current deploy  | `0d1f89b` — render.yaml reconcile (PR #37) deployed to production 2026-06-12 (Render auto-deploy). Prior production `0f67980` (rollback target) |
+| Current deploy  | `32d7f0b` — Issue #4 (PR #40 disk grow; PR #39 backup cron) on production 2026-06-12. Prior `0d1f89b` (Issue #3 render.yaml reconcile), `0f67980` (rollback target). |
 | Auto-Deploy     | On Commit — merges to `master` trigger a Render deploy automatically    |
-| Persistent disk | Verified live 2026-06-12: `DB_PATH=/var/data/warranty_tracker.db`, DB file on the `/var/data` 1 GB disk (~48% used), 7 daily snapshots (Jun 5–11). `render.yaml` reconciled to declare plan/disk/DB_PATH (Issue #3). |
+| Persistent disk | `DB_PATH=/var/data/warranty_tracker.db` on the `/var/data` persistent disk, **10 GB** (grown from 1 GB on 2026-06-12, Issue #4; ~14% used). Holds the live DB + on-disk backups. `render.yaml` declares plan/disk/DB_PATH. |
+| Backups         | Render Cron Job `fitzpatrick-service-tracker-backup` (`crn-d8m2sn28qa3s73b0uqm0`), every 12h (`0 6,18 * * *` UTC), POSTs `/api/backup`. Files: `backup-am/pm.db` + `backup-{mon..sun}.db` on `/var/data`. Verified working + restorable 2026-06-12. Procedure: `ROLLBACK.md` §6. |
 | Rollback anchor | `known-good-2026-06-05` → `44e91ce` (pre-readiness baseline)            |
 
 ## Key Recent Commits

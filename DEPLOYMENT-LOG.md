@@ -37,13 +37,49 @@ Copy this block for each new deployment:
 | Production URL    | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11) |
 | Auto-Deploy       | On Commit (confirmed by Kevin 2026-06-11)                      |
 | Plan              | Starter (verified 2026-06-12 via Render dashboard; `render.yaml` reconciled to `starter` in the same change) |
-| Persistent disk   | Verified live 2026-06-12: disk mounted at `/var/data`, 1 GB (~48% used); 7 daily snapshots (Jun 5–11) |
+| Persistent disk   | `/var/data`, **10 GB** (grown from 1 GB on 2026-06-12, Issue #4; ~14% used after grow). Holds `warranty_tracker.db` + on-disk backups. |
 | DB_PATH           | `DB_PATH=/var/data/warranty_tracker.db` (verified live env var + shell 2026-06-12) |
 | Internal address  | `fitzpatrick-service-tracker:10000`                            |
 
 ## Deployment History
 
 <!-- Newest entries first. -->
+
+### 2026-06-12 — Issue #4: automated backups + disk grow 1→10 GB — PRODUCTION CHANGE (approved)
+
+- **Date:**            2026-06-12 (MDT)
+- **Commits:**         `bb994b6` (PR #39 — add backup Cron Job to `render.yaml`),
+                       `32d7f0b` (PR #40 — grow disk `sizeGB` 1→10). Docs in PR #41.
+- **Environment:**     production
+- **Deploy action:**   **Approved by Kevin (2026-06-12).** (1) Created a standalone
+                       Render **Cron Job** `fitzpatrick-service-tracker-backup`
+                       (`crn-d8m2sn28qa3s73b0uqm0`), image `curlimages/curl:8.11.0`,
+                       schedule `0 6,18 * * *` UTC, command POSTs `/api/backup` with
+                       the `x-backup-secret` header. (2) Grew the `/var/data`
+                       persistent disk 1 GB → 10 GB in the Render dashboard (resize in
+                       place; data preserved; service restarted to remount).
+- **Checks run:**      `npm run check` (tsc) — PASS; `npm run build` — PASS (PR #39/#40).
+- **Rollback point:**  Code unchanged in app; `render.yaml` only. Web-service rollback
+                       anchor remains `0d1f89b` / `0f67980`. Disk grow is one-way
+                       (Render disks grow only, never shrink).
+- **Backup/restore verification (Issue #4 acceptance criteria, 2026-06-12 via Web Shell):**
+  - **Problem found & fixed:** the 1 GB disk was **97% full (30 MB free)** and a
+    full backup pair (2 × ~464 MB) failed with **HTTP 500**, leaving an orphaned
+    `backup-fri.db-journal` (removed). Root cause: retention keeps up to 9 copies
+    (~4.6 GB) which never fit on 1 GB. Resolved by growing the disk to 10 GB.
+  - **Backup test (post-grow):** `POST /api/backup` → `{"success":true,...}` writing
+    `backup-pm.db` and `backup-fri.db`, each `486461440` bytes, same timestamp.
+  - **Restore test (non-destructive):** copied newest backup to `/tmp`, opened
+    read-only → `integrity_check: ok`, `service_calls` rows = **61**; scratch copy
+    deleted; **live DB never touched.**
+  - **Disk after grow:** `/var/data` 9.9 G size, 1.4 G used, 8.5 G avail, **14%**.
+  - Backup procedure (health check, on-demand, non-destructive verify, and the
+    DESTRUCTIVE restore steps) documented in `ROLLBACK.md` §6.
+- **Notes:**           No secrets or customer data recorded here. The backup cron's
+                       first scheduled run is 18:00 UTC (noon MDT). Backups live on
+                       the **same disk** as the live DB — protects against bad
+                       data/restarts, not total disk loss (off-disk backup = future
+                       hardening).
 
 ### 2026-06-12 — render.yaml reconcile (PR #37) — PRODUCTION DEPLOY (approved & merged)
 
