@@ -120,6 +120,39 @@ export const insertPartSchema = createInsertSchema(partsUsed).omit({ id: true })
 export type InsertPart = z.infer<typeof insertPartSchema>;
 export type Part = typeof partsUsed.$inferSelect;
 
+// ─── Service Call Products ───────────────────────────────────────────────────
+// One row per physical unit on a service call. A call has >=1 product. The
+// FIRST product mirrors the legacy single-product columns still on
+// service_calls (kept in sync for backward-compat). Migration 33 backfills.
+export const serviceCallProducts = sqliteTable("service_call_products", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  serviceCallId: integer("service_call_id").notNull(),
+  productIndex: integer("product_index").notNull().default(1),
+  manufacturer: text("manufacturer").notNull(),
+  manufacturerOther: text("manufacturer_other"),
+  productModel: text("product_model"),
+  productSerial: text("product_serial"),
+  productType: text("product_type"),
+  installationDate: text("installation_date"),
+  issueDescription: text("issue_description"),
+  diagnosis: text("diagnosis"),
+  resolution: text("resolution"),
+  claimStatus: text("claim_status").notNull().default("Not Filed"),
+  claimNumber: text("claim_number"),
+  claimNotes: text("claim_notes"),
+  partsCost: text("parts_cost"),
+  laborCost: text("labor_cost"),
+  otherCost: text("other_cost"),
+  claimAmount: text("claim_amount"),
+  discoveredVisitNumber: integer("discovered_visit_number").notNull().default(1),
+  voided: integer("voided", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertServiceCallProductSchema = createInsertSchema(serviceCallProducts).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertServiceCallProduct = z.infer<typeof insertServiceCallProductSchema>;
+export type ServiceCallProduct = typeof serviceCallProducts.$inferSelect;
+
 // ─── Activity Log ──────────────────────────────────────────────────────────
 
 export const activityLog = sqliteTable("activity_log", {

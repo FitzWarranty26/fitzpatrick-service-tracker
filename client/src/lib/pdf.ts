@@ -1,9 +1,11 @@
-import type { ServiceCall, Photo, Part, ServiceCallVisit } from "@shared/schema";
+import type { ServiceCall, Photo, Part, ServiceCallVisit, ServiceCallProduct } from "@shared/schema";
+import { getWarrantyStatus } from "@shared/schema";
 import { parseMoney, formatMoney } from "@shared/datetime";
 
 interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
   parts: Part[];
+  products?: ServiceCallProduct[];
 }
 
 // Optional payload — callers that have visits + tech display names pass them
@@ -237,6 +239,40 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string, extras:
       </div>
     </div>
   `;
+
+  // Multi-product: when a call has >1 product, render a per-unit Products
+  // section (identity + warranty + per-unit claim). For single-product calls
+  // the existing Status Bar / Customer / Claim sections already cover Product 1
+  // (legacy columns kept in sync), so we skip this to avoid redundancy.
+  const activeProducts = (call.products || []).filter(p => !p.voided);
+  const productsSection = activeProducts.length > 1 ? `
+    <div class="section">
+      <h2>Products (${activeProducts.length})</h2>
+      ${activeProducts.map((p, i) => {
+        const mfg = p.manufacturer === "Other" ? (p.manufacturerOther || "Other") : p.manufacturer;
+        const w = getWarrantyStatus(p.installationDate, p.manufacturer, p.productType);
+        const warrantyText = w.status === "in-warranty"
+          ? `In Warranty${w.expiresDate ? ` (expires ${formatDate(w.expiresDate)})` : ""}`
+          : w.status === "out-of-warranty"
+          ? `Out of Warranty${w.expiresDate ? ` (expired ${formatDate(w.expiresDate)})` : ""}`
+          : "Warranty Unknown";
+        return `
+        <div class="field-grid" style="${i > 0 ? "margin-top:12px;border-top:1px solid #e5e7eb;padding-top:12px;" : ""}">
+          <div class="field full-width"><label>Product ${i + 1}</label><span class="value" style="font-weight:700">${esc(mfg)}</span></div>
+          <div class="field"><label>Model</label><span class="value" style="font-family:monospace">${esc(p.productModel)}</span></div>
+          <div class="field"><label>Serial #</label><span class="value" style="font-family:monospace">${p.productSerial ? esc(p.productSerial) : "—"}</span></div>
+          <div class="field"><label>Type</label><span class="value">${p.productType ? esc(p.productType) : "—"}</span></div>
+          <div class="field"><label>Install Date</label><span class="value">${formatDate(p.installationDate)}</span></div>
+          <div class="field"><label>Warranty</label><span class="value">${esc(warrantyText)}</span></div>
+          <div class="field"><label>Claim Status</label><span class="value">${esc(p.claimStatus)}</span></div>
+          ${p.claimNumber ? `<div class="field"><label>Claim #</label><span class="value" style="font-family:monospace">${esc(p.claimNumber)}</span></div>` : ""}
+          ${p.claimAmount ? `<div class="field"><label>Claim Amount</label><span class="value" style="font-weight:700;color:#16a34a;">${formatMoney(p.claimAmount)}</span></div>` : ""}
+          ${p.diagnosis ? `<div class="field full-width"><label>Diagnosis</label><p class="value">${esc(p.diagnosis)}</p></div>` : ""}
+          ${p.resolution ? `<div class="field full-width"><label>Resolution</label><p class="value">${esc(p.resolution)}</p></div>` : ""}
+        </div>`;
+      }).join("")}
+    </div>
+  ` : "";
 
   const html = `<!DOCTYPE html>
 <html>
@@ -555,6 +591,7 @@ function buildPDFHtml(call: ServiceCallFull, LOGO_DARK_DATA_URL: string, extras:
 
   ${visitsHtml}
 
+  ${productsSection}
   ${partsHtml}
   ${claimSection}
   ${photosHtml}

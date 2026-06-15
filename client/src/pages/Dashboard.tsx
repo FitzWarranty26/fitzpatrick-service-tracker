@@ -34,6 +34,7 @@ interface DashboardStats {
 interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;
+  productCount: number;
 }
 
 interface TodayData {
@@ -110,7 +111,7 @@ function MyCalls() {
           <StatusBadge status={c.status} />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{c.customerName || c.jobSiteName || "—"}</p>
-            <p className="text-xs text-muted-foreground truncate">{c.manufacturer}{c.jobSiteCity ? ` · ${c.jobSiteCity}` : ""}</p>
+            <p className="text-xs text-muted-foreground truncate">{c.manufacturer}{c.jobSiteCity ? ` · ${c.jobSiteCity}` : ""}{c.productCount > 1 ? ` · ${c.productCount} products` : ""}</p>
           </div>
           <span className="text-xs text-muted-foreground">{formatDate(c.scheduledDate || c.callDate)}</span>
         </div>
@@ -166,7 +167,7 @@ function UpcomingWeek() {
               {c.scheduledTime && <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{c.scheduledTime}</span>}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{c.customerName || c.jobSiteName || "—"}</p>
-                <p className="text-xs text-muted-foreground truncate">{c.manufacturer}{c.jobSiteCity ? ` · ${c.jobSiteCity}` : ""}</p>
+                <p className="text-xs text-muted-foreground truncate">{c.manufacturer}{c.jobSiteCity ? ` · ${c.jobSiteCity}` : ""}{c.productCount > 1 ? ` · ${c.productCount} products` : ""}</p>
               </div>
             </div>
           ))}

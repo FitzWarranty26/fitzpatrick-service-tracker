@@ -62,6 +62,12 @@ historical references only.
 | `2251645a` | PO (purchase order) module planning            |
 | `e57aa4b9` | WarrVault / FieldSeal naming                   |
 
+## In Progress (not yet deployed)
+
+| Date       | Branch                                   | Summary                                                                                                                                                                                                                                                                                 | State                                                                 |
+| ---------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 2026-06-15 | `feature/multi-product-service-calls`    | **Multi-product service calls** (Migration 33). New `service_call_products` table lets one call hold multiple units, each with its own manufacturer/model/serial/type/install date, warranty, diagnosis/resolution, and claim+cost fields. Backfills Product 1 from legacy columns; legacy columns retained and synced to Product 1. New-call form gains "Add another product"; detail page gains a Products section with Add/Edit/Remove per visit. Branched from `master` `ae88d02`. | **Built on branch — NOT deployed. Awaiting Kevin's review/approval.** `npm run check` + `npm run build` pass; Migration 33 + CRUD + UI smoke-tested. See `CHANGELOG.md` `[Unreleased]`. |
+
 ## Recently Deployed
 
 | Date       | Branch                              | Summary                                                                                                                            | State                                                  |

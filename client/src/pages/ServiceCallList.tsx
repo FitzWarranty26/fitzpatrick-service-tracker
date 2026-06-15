@@ -24,6 +24,7 @@ import { todayLocalISO, localDateISO } from "@shared/datetime";
 interface ServiceCallRow extends ServiceCall {
   photoCount: number;
   partCount: number;
+  productCount: number;
   visitCount: number;
   primaryTechnicianId: number | null;
   primaryTechnicianName: string | null;
@@ -627,6 +628,15 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                   <p className="font-mono text-[11px] text-muted-foreground mt-1 truncate">
                     {call.productModel || "—"}
                   </p>
+                  {call.productCount > 1 && (
+                    <span
+                      className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground"
+                      data-testid={`badge-product-count-${call.id}`}
+                    >
+                      <PackageIcon className="w-2.5 h-2.5" />
+                      {call.productCount} products
+                    </span>
+                  )}
                 </div>
 
                 {/* Status (+ scheduled date inline) */}

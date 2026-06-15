@@ -32,6 +32,7 @@ interface BriefingData {
 interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;
+  productCount: number;
 }
 
 interface TodayData {
@@ -364,6 +365,12 @@ export default function ManagerDashboard() {
                         <span className="truncate">{c.jobSiteCity ? `${c.jobSiteCity}, ${c.jobSiteState}` : c.jobSiteName || "No location"}</span>
                         <span className="text-border">·</span>
                         <span>{c.manufacturer}</span>
+                        {c.productCount > 1 && (
+                          <>
+                            <span className="text-border">·</span>
+                            <span data-testid={`badge-product-count-${c.id}`}>{c.productCount} products</span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground transition-colors flex-shrink-0" />
