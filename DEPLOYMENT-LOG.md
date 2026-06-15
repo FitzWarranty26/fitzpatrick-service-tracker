@@ -43,6 +43,17 @@ Copy this block for each new deployment:
 
 ## Deployment History
 
+### 2026-06-15 — Multi-product service calls (PR #46, Migration 33) — PRODUCTION DEPLOY (approved & merged to master)
+
+- **Date:**            2026-06-15 16:07 (America/Denver)
+- **Commit:**          `e910fdc` (merge of `9834e3a` from `feature/multi-product-service-calls` into `master`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   Auto-deploy on merge to `master` (Render Auto-Deploy = On Commit). Kevin explicitly approved merge + deploy.
+- **Checks run:**      `npm run check` (tsc) ✓, `npm run build` ✓, CI `check-and-build` ✓ (PR #46). Independent local verification: Migration 33 ran + backfilled on a legacy DB, full API CRUD, per-unit warranty, New Service Call + Detail UI. Post-deploy smoke: root HTTP 200; `GET /api/service-calls/:id/products` returns 401 (route live, auth-gated) — confirming new endpoints deployed.
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`.
+- **Notes:**           Adds multi-product support to service calls. **Migration 33** (additive, idempotent, `hasTable`-guarded) creates `service_call_products` (one row per unit) and backfills "Product 1" from legacy single-product columns on every existing call; runs automatically at startup. Legacy single-product columns on `service_calls` retained and synced to Product 1 for backward-compat (can retire later). New routes (`GET/POST /api/service-calls/:id/products`, `PATCH/DELETE /api/products/:id`) mirror parts/visits — `requireEditor`, audit-logged; products are voided (soft-delete) not hard-deleted; cannot remove a call's last active product (400). Per-product: manufacturer/model/serial/type/install date, independent warranty, diagnosis/resolution, claim + cost fields; site & contacts shared. Aggregate reports intentionally read Product 1/legacy to avoid double-counting; equipment search + service-call PDF span all product serials. UI: "Add another product" on New Service Call; Products section with Add/Edit/Remove + per-unit warranty badges on Detail (Add tagged with current visit number); "N products" roll-up badge on lists/dashboards.
+
 ### 2026-06-12 — Issue #27: commercial hosting decision (ADR 0001) (NO PRODUCTION DEPLOY)
 
 - **Date:**            2026-06-12 (America/Denver)

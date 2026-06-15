@@ -8,11 +8,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-### Added — Multi-product service calls (branch `feature/multi-product-service-calls`)
+## [2026-06-15] — Multi-product service calls
+
+Deployed to production via PR #46 (merge commit `e910fdc`); Migration 33 runs at
+startup. Rollback anchor: `known-good-2026-06-12` → `e28492b`.
+
+### Added — Multi-product service calls
 
 A service call can now hold **multiple products** (e.g. a tech dispatched for one
 water heater finds two on site). Previously a call held exactly one product as
-flat columns on `service_calls`. **Not yet deployed — awaiting Kevin's review.**
+flat columns on `service_calls`.
 
 - **Schema / Migration 33** (`columnExists`/`hasTable`-guarded, additive,
   idempotent): new `service_call_products` table — one row per physical unit on

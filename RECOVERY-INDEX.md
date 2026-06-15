@@ -64,14 +64,13 @@ historical references only.
 
 ## In Progress (not yet deployed)
 
-| Date       | Branch                                   | Summary                                                                                                                                                                                                                                                                                 | State                                                                 |
-| ---------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| 2026-06-15 | `feature/multi-product-service-calls`    | **Multi-product service calls** (Migration 33). New `service_call_products` table lets one call hold multiple units, each with its own manufacturer/model/serial/type/install date, warranty, diagnosis/resolution, and claim+cost fields. Backfills Product 1 from legacy columns; legacy columns retained and synced to Product 1. New-call form gains "Add another product"; detail page gains a Products section with Add/Edit/Remove per visit. Branched from `master` `ae88d02`. | **Built on branch — NOT deployed. Awaiting Kevin's review/approval.** `npm run check` + `npm run build` pass; Migration 33 + CRUD + UI smoke-tested. See `CHANGELOG.md` `[Unreleased]`. |
+_None._
 
 ## Recently Deployed
 
 | Date       | Branch                              | Summary                                                                                                                            | State                                                  |
 | ---------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 2026-06-15 | `feature/multi-product-service-calls` | **Multi-product service calls** (Migration 33, PR #46, merge `e910fdc`). New `service_call_products` table lets one call hold multiple units, each with its own manufacturer/model/serial/type/install date, warranty, diagnosis/resolution, and claim+cost fields. Backfills Product 1 from legacy columns; legacy columns retained and synced to Product 1. New-call form gains "Add another product"; detail page gains a Products section with Add/Edit/Remove per visit. | **Approved by Kevin & merged to `master` 2026-06-15 16:07 MDT** — Render auto-deploy triggered. Post-deploy smoke OK (root 200; products endpoint 401/auth-gated). Rollback: `known-good-2026-06-12` → `e28492b`. |
 | 2026-06-11 | `feature/installation-review-notes` | Adds internal "Installation Review Notes" field (Migration 32). Excluded from printed/emailed reports by default with opt-in toggle. Residential + commercial. | **Approved by Kevin & merged to `master` 2026-06-11** — Render auto-deploy triggered on commit |
 
 > Deploy approved by Kevin ("Merge and deploy", 2026-06-11 11:09 MDT) and merged
