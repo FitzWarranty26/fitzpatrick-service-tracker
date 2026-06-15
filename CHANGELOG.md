@@ -8,6 +8,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [2026-06-15c] — Service Map zoom & out-of-region geocoding fix
+
+Deployed to production via PR #50 (merge commit `26ba94a`); Migration 35 runs at
+startup. Rollback anchor: `known-good-2026-06-12` → `e28492b`.
+
 ### Fixed — Service Map zoom & out-of-region geocoding
 
 Follow-up to the 2026-06-15b Service Map work. After deploy, the map opened
