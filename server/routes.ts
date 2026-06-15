@@ -173,13 +173,26 @@ async function geocodeAddress(address: string, city: string, state: string): Pro
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
     const query = encodeURIComponent(`${address}, ${city}, ${state}`);
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`, {
+    // Constrain results to the US and the Utah + southern Idaho service region
+    // so an ambiguous/partial address can't match somewhere on the other side
+    // of the planet. viewbox is west,north,east,south; bounded=1 limits results
+    // to that box. Throttle/User-Agent honored by callers.
+    const viewbox = "-115.5,44.5,-108.0,36.0";
+    const url =
+      `https://nominatim.openstreetmap.org/search?q=${query}` +
+      `&format=json&limit=1&countrycodes=us&viewbox=${encodeURIComponent(viewbox)}&bounded=1`;
+    const res = await fetch(url, {
       headers: { "User-Agent": "FitzpatrickServiceTracker/1.0" },
       signal: controller.signal,
     });
     if (!res.ok) return null;
     const data = await res.json();
     if (Array.isArray(data) && data.length > 0 && data[0].lat && data[0].lon) {
+      // Belt-and-suspenders: reject anything outside a generous US box.
+      const lat = Number(data[0].lat);
+      const lng = Number(data[0].lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      if (lat < 24 || lat > 50 || lng < -125 || lng > -66) return null;
       return { lat: String(data[0].lat), lng: String(data[0].lon) };
     }
     return null;

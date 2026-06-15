@@ -8,6 +8,36 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed — Service Map zoom & out-of-region geocoding
+
+Follow-up to the 2026-06-15b Service Map work. After deploy, the map opened
+zoomed out to the whole world and a stray pin appeared off the coast of India.
+Root cause: the initial auto-fit extended the map bounds to **every** pin,
+including one bad geocode in the ocean near India — so the fit spanned Utah to
+India and zoomed all the way out. Three-part fix:
+
+- **Client (`ServiceMap.tsx`):** initial auto-fit now extends bounds **only**
+  with in-region pins (new `REGION_MAX_BOUNDS` = Utah + S. Idaho,
+  `[[36.0,-115.5],[44.5,-108.0]]`, via `inRegion()` helper), so a single bad
+  coordinate can never blow the fit out to the globe. Added `minZoom: 4`.
+  Out-of-region pins are still rendered (no data hidden) but now carry a
+  popup warning "⚠ Location looks out of service area — check address" and no
+  longer drive the fit. "Fit to Utah" reset button and once-only fit behavior
+  unchanged.
+- **Server (`routes.ts`, `geocodeAddress`):** Nominatim query now constrained
+  to the US + service region (`countrycodes=us`, bounded `viewbox`), plus a
+  belt-and-suspenders US-box sanity check (lat 24..50, lng -125..-66) that
+  rejects any match outside it. An ambiguous address can no longer match the
+  other side of the planet.
+- **Data — Migration 35** (`storage.ts`, guarded/idempotent): nulls `latitude`/
+  `longitude` for any `coords_locked = 0` row whose stored coords fall outside
+  the US box, so it returns to the needs-geocoding list and can be retried.
+  **Never deletes a call; never touches manually-locked pins** (`coords_locked = 1`).
+  Verified on a fresh boot: cleared 1 out-of-region row, preserved a good Utah
+  row and a locked out-of-region row; idempotent on rerun.
+
+No new dependencies. Stays on free OpenStreetMap/Nominatim.
+
 ## [2026-06-15b] — Service Map & geolocation improvements
 
 Deployed to production via PR #48 (merge commit `a523ffe`); Migration 34 runs at

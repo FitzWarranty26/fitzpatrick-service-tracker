@@ -618,6 +618,29 @@ if (!columnExists("service_calls", "coords_locked")) {
   console.log("Migration 34: added coords_locked column to service_calls");
 }
 
+// Migration 35: clear out-of-US coordinates left by an unbounded geocoder.
+// A bad address previously matched anywhere on Earth (e.g. off the coast of
+// India), which blew up the map's auto-fit. Null out lat/lng for any call
+// whose stored coords fall outside a generous US box (lat 24..50,
+// lng -125..-66) so it falls back into the needs-geocoding list and can be
+// retried/corrected. Never deletes a call; never touches manually-locked
+// pins (coords_locked=1). Idempotent — safe to run on every boot.
+{
+  const cleared = sqlite.prepare(`
+    UPDATE service_calls
+    SET latitude = NULL, longitude = NULL
+    WHERE coords_locked = 0
+      AND latitude IS NOT NULL
+      AND (
+        CAST(latitude AS REAL) NOT BETWEEN 24 AND 50
+        OR CAST(longitude AS REAL) NOT BETWEEN -125 AND -66
+      )
+  `).run();
+  if (cleared.changes > 0) {
+    console.log(`Migration 35: cleared out-of-US coordinates from ${cleared.changes} service_call row(s)`);
+  }
+}
+
 // Migration 29: Add covering indexes for queries that scan tables fully.
 // These dramatically speed up the manager dashboard and detail pages once the
 // database has thousands of rows. All idempotent (IF NOT EXISTS).
