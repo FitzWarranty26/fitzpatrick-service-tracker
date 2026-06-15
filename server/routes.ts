@@ -803,8 +803,37 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const isFlagOnlyChange = Object.keys(data).every(k => k === "flaggedInternal" || k === "flaggedReason");
       const flagChange = data.flaggedInternal !== undefined ? (data.flaggedInternal ? "flagged_call" : "unflagged_call") : null;
 
+      // Detect an address change so we can re-geocode in the background. Compare
+      // against the existing row before the update is applied. Skip rows whose
+      // coordinates were manually placed (coords_locked).
+      const existingForGeo = storage.getServiceCallById(id);
+      const addressChanged =
+        existingForGeo != null &&
+        !(existingForGeo as any).coordsLocked &&
+        ((data.jobSiteAddress !== undefined && data.jobSiteAddress !== existingForGeo.jobSiteAddress) ||
+          (data.jobSiteCity !== undefined && data.jobSiteCity !== existingForGeo.jobSiteCity) ||
+          (data.jobSiteState !== undefined && data.jobSiteState !== existingForGeo.jobSiteState));
+
       const call = storage.updateServiceCall(id, data);
       if (!call) return res.status(404).json({ error: "Not found" });
+
+      // Re-geocode in the background when the address changed. Clear stale
+      // coords first, then fill them when Nominatim responds. Fire-and-forget
+      // so the PATCH response is never blocked, and fails safe (null coords).
+      if (addressChanged) {
+        const addr = data.jobSiteAddress ?? existingForGeo!.jobSiteAddress ?? "";
+        const city = data.jobSiteCity ?? existingForGeo!.jobSiteCity ?? "";
+        const state = data.jobSiteState ?? existingForGeo!.jobSiteState ?? "";
+        storage.updateServiceCall(id, { latitude: null, longitude: null } as any);
+        geocodeAddress(addr, city, state).then(coords => {
+          if (coords) {
+            const fresh = storage.getServiceCallById(id);
+            if (fresh && !(fresh as any).coordsLocked) {
+              storage.updateServiceCall(id, { latitude: coords.lat, longitude: coords.lng } as any);
+            }
+          }
+        });
+      }
       if (flagChange) {
         logAudit(req, flagChange, "service_call", id, data.flaggedReason || undefined);
       }
@@ -1976,22 +2005,140 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Map & Geocoding ───────────────────────────────────────────────────────
 
-  app.post("/api/geocode-all", requireManager, async (_req, res) => {
+  // In-memory progress tracker for the background geocode-all job. This is a
+  // single-process app so a module-level object is sufficient; only one job
+  // runs at a time (guarded by `running`).
+  const geocodeJob: {
+    running: boolean;
+    total: number;
+    done: number;
+    geocoded: number;
+    startedAt: string | null;
+    finishedAt: string | null;
+  } = { running: false, total: 0, done: 0, geocoded: 0, startedAt: null, finishedAt: null };
+
+  async function runGeocodeAll() {
+    geocodeJob.running = true;
+    geocodeJob.done = 0;
+    geocodeJob.geocoded = 0;
+    geocodeJob.startedAt = new Date().toISOString();
+    geocodeJob.finishedAt = null;
     try {
       const calls = storage.getAllServiceCalls();
-      let geocoded = 0;
-      for (const call of calls) {
-        if (!call.latitude && call.jobSiteAddress) {
+      // Only rows missing coords, with an address, and not manually locked.
+      const pending = calls.filter(
+        (c: any) => !c.latitude && c.jobSiteAddress && !c.coordsLocked
+      );
+      geocodeJob.total = pending.length;
+      for (const call of pending) {
+        // Re-check the lock at processing time in case it changed mid-run.
+        const fresh = storage.getServiceCallById(call.id);
+        if (fresh && !(fresh as any).coordsLocked) {
           const coords = await geocodeAddress(call.jobSiteAddress || "", call.jobSiteCity || "", call.jobSiteState || "");
           if (coords) {
             storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
-            geocoded++;
+            geocodeJob.geocoded++;
           }
           // Respect Nominatim rate limit: 1 request per second
           await new Promise(r => setTimeout(r, 1100));
         }
+        geocodeJob.done++;
       }
-      res.json({ geocoded, total: calls.length });
+    } catch (e) {
+      console.error("geocode-all job error:", e);
+    } finally {
+      geocodeJob.running = false;
+      geocodeJob.finishedAt = new Date().toISOString();
+    }
+  }
+
+  // Start the background geocode-all job. Returns 202 + initial status, or 409
+  // if a job is already running. The loop runs detached so a large backfill
+  // never risks a gateway timeout.
+  app.post("/api/geocode-all", requireManager, (req, res) => {
+    try {
+      if (geocodeJob.running) {
+        return res.status(409).json({ error: "Geocoding job already running", ...geocodeJob });
+      }
+      void runGeocodeAll();
+      logAudit(req, "geocode_all_started", "service_call", 0);
+      res.status(202).json({ ...geocodeJob, running: true });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.get("/api/geocode-all/status", requireManager, (_req, res) => {
+    res.json(geocodeJob);
+  });
+
+  // Calls that have an address but are missing coordinates (excluding test
+  // rows). Surfaced in the map UI so a user can retry them individually.
+  app.get("/api/analytics/needs-geocoding", requireEditor, (_req, res) => {
+    try {
+      const calls = storage.getAllServiceCalls()
+        .filter((c: any) => !c.isTest || c.isTest === 0)
+        .filter((c: any) => c.jobSiteAddress && (!c.latitude || !c.longitude))
+        .map((c: any) => ({
+          id: c.id,
+          customerName: c.customerName,
+          jobSiteName: c.jobSiteName,
+          jobSiteAddress: c.jobSiteAddress,
+          jobSiteCity: c.jobSiteCity,
+          jobSiteState: c.jobSiteState,
+          callDate: c.callDate,
+        }));
+      res.json(calls);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // Geocode a single call synchronously (one Nominatim request, fine inline).
+  // Skips rows whose coordinates are manually locked.
+  app.post("/api/service-calls/:id/geocode", requireEditor, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const call = storage.getServiceCallById(id);
+      if (!call) return res.status(404).json({ error: "Not found" });
+      if ((call as any).coordsLocked) {
+        return res.status(409).json({ error: "Coordinates are manually locked for this call" });
+      }
+      if (!call.jobSiteAddress) {
+        return res.status(400).json({ error: "Call has no address to geocode" });
+      }
+      const coords = await geocodeAddress(call.jobSiteAddress || "", call.jobSiteCity || "", call.jobSiteState || "");
+      if (!coords) {
+        return res.status(404).json({ error: "No coordinates found for this address" });
+      }
+      storage.updateServiceCall(id, { latitude: coords.lat, longitude: coords.lng } as any);
+      logAudit(req, "geocoded_call", "service_call", id);
+      res.json({ id, latitude: coords.lat, longitude: coords.lng });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // Manually set a call's coordinates (pin drag-to-correct). Locks the row so
+  // background geocoding won't overwrite the manual placement.
+  app.post("/api/service-calls/:id/coords", requireEditor, (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const lat = Number(req.body?.latitude);
+      const lng = Number(req.body?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: "Invalid coordinates" });
+      }
+      const call = storage.updateServiceCall(id, {
+        latitude: String(lat),
+        longitude: String(lng),
+        coordsLocked: 1,
+      } as any);
+      if (!call) return res.status(404).json({ error: "Not found" });
+      logAudit(req, "moved_pin", "service_call", id, `${lat},${lng}`);
+      res.json({ id, latitude: String(lat), longitude: String(lng), coordsLocked: 1 });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
@@ -2026,6 +2173,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           jobSiteState: c.jobSiteState,
           productModel: c.productModel,
           callDate: c.callDate,
+          coordsLocked: (c as any).coordsLocked ? 1 : 0,
         }));
       res.json(mapData);
     } catch (e: any) {
