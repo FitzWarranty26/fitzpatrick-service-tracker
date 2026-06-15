@@ -5,7 +5,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { storage, sqlite as sqliteHandle, DB_PATH } from "./storage";
-import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema, getWarrantyStatus } from "@shared/schema";
+import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema, insertServiceCallProductSchema, getWarrantyStatus } from "@shared/schema";
 import { z } from "zod";
 import { todayLocalISO, parseMoney, safeDivide } from "@shared/datetime";
 
@@ -671,6 +671,44 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const data = insertServiceCallSchema.parse(req.body);
       const call = storage.createServiceCall(data);
 
+      // Multi-product: if the client sent a `products` array, persist each as a
+      // product row (productIndex assigned sequentially by storage). Otherwise
+      // fall back to creating a single Product 1 from the legacy call fields so
+      // every call always has >=1 product row (direct API callers + legacy form).
+      try {
+        const bodyProducts = Array.isArray(req.body.products) ? req.body.products : [];
+        if (bodyProducts.length > 0) {
+          for (const p of bodyProducts) {
+            const productData = insertServiceCallProductSchema.parse({ ...p, serviceCallId: call.id });
+            storage.createServiceCallProduct(productData);
+          }
+        } else {
+          storage.createServiceCallProduct({
+            serviceCallId: call.id,
+            productIndex: 1,
+            manufacturer: data.manufacturer || "Other",
+            manufacturerOther: data.manufacturerOther ?? null,
+            productModel: data.productModel ?? null,
+            productSerial: data.productSerial ?? null,
+            productType: data.productType ?? null,
+            installationDate: data.installationDate ?? null,
+            issueDescription: data.issueDescription ?? null,
+            diagnosis: data.diagnosis ?? null,
+            resolution: data.resolution ?? null,
+            claimStatus: data.claimStatus || "Not Filed",
+            claimNumber: data.claimNumber ?? null,
+            claimNotes: data.claimNotes ?? null,
+            partsCost: data.partsCost ?? null,
+            laborCost: data.laborCost ?? null,
+            otherCost: data.otherCost ?? null,
+            claimAmount: data.claimAmount ?? null,
+            discoveredVisitNumber: 1,
+          } as any);
+        }
+      } catch (e) {
+        console.error("Create initial products error:", e);
+      }
+
       // If the call was created with an initial scheduled date, seed the
       // Schedule History with an active appointment row. Without this, the
       // Schedule History tab would show "No appointments scheduled yet" even
@@ -1133,6 +1171,68 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       storage.deletePart(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── Service Call Products (multi-product) ───────────────────────────────────
+
+  app.get("/api/service-calls/:id/products", (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const products = storage.getProductsByServiceCallId(id);
+      res.json(products);
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.post("/api/service-calls/:id/products", requireEditor, (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const data = insertServiceCallProductSchema.parse({ ...req.body, serviceCallId: id });
+      const product = storage.createServiceCallProduct(data);
+      logAudit(req, "added_product", "service_call", id, `${data.productModel || ""} ${data.productSerial || ""}`.trim());
+      res.status(201).json(product);
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation failed" });
+      }
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.patch("/api/products/:id", requireEditor, (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const data = insertServiceCallProductSchema.partial().parse(req.body);
+      const product = storage.updateServiceCallProduct(id, data);
+      if (!product) return res.status(404).json({ error: "Not found" });
+      logAudit(req, "updated_product", "service_call", product.serviceCallId, `${product.productModel || ""} ${product.productSerial || ""}`.trim());
+      res.json(product);
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation failed" });
+      }
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.delete("/api/products/:id", requireEditor, (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const result = storage.voidServiceCallProduct(id);
+      if (!result.voided) {
+        if (result.reason === "not_found") return res.status(404).json({ error: "Not found" });
+        return res.status(400).json({ error: "Cannot remove the only product on a call" });
+      }
+      logAudit(req, "voided_product", "product", id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -2817,16 +2917,25 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (serial.length < 3) return res.json([]);
       // Serial numbers are often typed in different cases or with trailing
       // whitespace — match case-insensitively against the trimmed column.
+      // Match on the legacy single-product column OR any (non-voided) product
+      // serial in service_call_products, so a unit found on any product row of
+      // a multi-product call still surfaces here.
       const rows = sqliteHandle.prepare(`
         SELECT id, call_date, scheduled_date, manufacturer, customer_name,
                job_site_name, status, product_model, product_serial,
                installation_date, product_type, issue_description
         FROM service_calls
         WHERE (is_test = 0 OR is_test IS NULL)
-          AND UPPER(TRIM(product_serial)) = UPPER(?)
+          AND (
+            UPPER(TRIM(product_serial)) = UPPER(?)
+            OR id IN (
+              SELECT service_call_id FROM service_call_products
+              WHERE voided = 0 AND UPPER(TRIM(product_serial)) = UPPER(?)
+            )
+          )
         ORDER BY call_date DESC
         LIMIT 10
-      `).all(serial) as any[];
+      `).all(serial, serial) as any[];
       res.json(rows.map((r: any) => ({
         id: r.id, callDate: r.call_date, scheduledDate: r.scheduled_date,
         manufacturer: r.manufacturer, customerName: r.customer_name,
@@ -2846,16 +2955,26 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (q.length < 2) return res.json([]);
 
       const pattern = `%${q}%`;
+      // Drive equipment grouping off service_call_products (one row per physical
+      // unit) joined to its call. Migration 33 backfilled Product 1 + keeps it
+      // synced, and additional products live here too, so this naturally covers
+      // every unit without double-counting. Voided products are excluded.
+      // Per-unit fields (serial/model/type/install/diagnosis/resolution) come
+      // from the product row; site/customer fields come from the call.
       const rows = sqliteHandle.prepare(`
         SELECT
-          id, call_date, customer_name, job_site_name, job_site_address,
-          job_site_city, job_site_state, job_site_zip,
-          manufacturer, product_model, product_serial, product_type,
-          installation_date, status, issue_description, diagnosis, resolution,
-          tech_notes, hours_on_job, miles_traveled
-        FROM service_calls
-        WHERE product_serial LIKE ? OR job_site_address LIKE ? OR customer_name LIKE ?
-        ORDER BY call_date DESC
+          sc.id AS id, sc.call_date, sc.customer_name, sc.job_site_name, sc.job_site_address,
+          sc.job_site_city, sc.job_site_state, sc.job_site_zip,
+          p.manufacturer AS manufacturer, p.product_model AS product_model,
+          p.product_serial AS product_serial, p.product_type AS product_type,
+          p.installation_date AS installation_date, sc.status,
+          p.issue_description AS issue_description, p.diagnosis AS diagnosis,
+          p.resolution AS resolution, sc.tech_notes, sc.hours_on_job, sc.miles_traveled
+        FROM service_call_products p
+        JOIN service_calls sc ON sc.id = p.service_call_id
+        WHERE p.voided = 0
+          AND (p.product_serial LIKE ? OR sc.job_site_address LIKE ? OR sc.customer_name LIKE ?)
+        ORDER BY sc.call_date DESC
       `).all(pattern, pattern, pattern) as any[];
 
       // Group by serial number + address combo

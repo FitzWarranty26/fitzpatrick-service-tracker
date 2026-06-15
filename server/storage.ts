@@ -34,6 +34,9 @@ import {
   type InsertInvoiceItem,
   type ServiceCallVisit,
   type InsertServiceCallVisit,
+  serviceCallProducts,
+  type ServiceCallProduct,
+  type InsertServiceCallProduct,
 } from "@shared/schema";
 
 // Use persistent disk path on Render if available, otherwise local
@@ -193,7 +196,7 @@ sqlite.exec(`
 // We check first to avoid errors on tables that already have the column.
 
 // Allow only known table names to prevent SQL injection
-const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system", "service_call_visits", "invoice_items"]);
+const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system", "service_call_visits", "invoice_items", "service_call_products"]);
 
 function columnExists(table: string, column: string): boolean {
   if (!ALLOWED_TABLES.has(table)) throw new Error(`Unknown table: ${table}`);
@@ -561,6 +564,53 @@ if (!columnExists("service_calls", "installation_review_notes")) {
   console.log("Migration 32: added installation_review_notes column to service_calls");
 }
 
+// Migration 33: Multi-product support. Create service_call_products and
+// backfill one "Product 1" row per existing call from the legacy single-
+// product columns on service_calls. Legacy columns are RETAINED and kept in
+// sync with product_index=1 for backward-compat (reports/equipment search read
+// them until those screens migrate). Additive + idempotent.
+{
+  const hasTable = (sqlite.prepare(`SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name='service_call_products'`).get() as any).c > 0;
+  if (!hasTable) {
+    sqlite.exec(`CREATE TABLE service_call_products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      service_call_id INTEGER NOT NULL REFERENCES service_calls(id) ON DELETE CASCADE,
+      product_index INTEGER NOT NULL DEFAULT 1,
+      manufacturer TEXT NOT NULL,
+      manufacturer_other TEXT,
+      product_model TEXT,
+      product_serial TEXT,
+      product_type TEXT,
+      installation_date TEXT,
+      issue_description TEXT,
+      diagnosis TEXT,
+      resolution TEXT,
+      claim_status TEXT NOT NULL DEFAULT 'Not Filed',
+      claim_number TEXT,
+      claim_notes TEXT,
+      parts_cost TEXT,
+      labor_cost TEXT,
+      other_cost TEXT,
+      claim_amount TEXT,
+      discovered_visit_number INTEGER NOT NULL DEFAULT 1,
+      voided INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    )`);
+    sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_scp_call_id ON service_call_products(service_call_id)`);
+    // Backfill Product 1 from legacy columns for every existing call.
+    const now = new Date().toISOString();
+    const calls = sqlite.prepare(`SELECT * FROM service_calls`).all() as any[];
+    const ins = sqlite.prepare(`INSERT INTO service_call_products
+      (service_call_id, product_index, manufacturer, manufacturer_other, product_model, product_serial, product_type, installation_date, issue_description, diagnosis, resolution, claim_status, claim_number, claim_notes, parts_cost, labor_cost, other_cost, claim_amount, discovered_visit_number, voided, created_at, updated_at)
+      VALUES (?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0,?,?)`);
+    for (const c of calls) {
+      ins.run(c.id, c.manufacturer || 'Other', c.manufacturer_other, c.product_model, c.product_serial, c.product_type, c.installation_date, c.issue_description, c.diagnosis, c.resolution, c.claim_status || 'Not Filed', c.claim_number, c.claim_notes, c.parts_cost, c.labor_cost, c.other_cost, c.claim_amount, c.created_at || now, c.updated_at);
+    }
+    console.log(`Migration 33: created service_call_products, backfilled ${calls.length} Product-1 rows`);
+  }
+}
+
 // Migration 29: Add covering indexes for queries that scan tables fully.
 // These dramatically speed up the manager dashboard and detail pages once the
 // database has thousands of rows. All idempotent (IF NOT EXISTS).
@@ -591,6 +641,7 @@ if (userCount === 0) {
 export interface ServiceCallWithCounts extends ServiceCall {
   photoCount: number;
   partCount: number;
+  productCount: number;
   // Roll-up fields for the operational list view
   primaryTechnicianId: number | null;     // technician on most-recent visit
   primaryTechnicianName: string | null;
@@ -606,6 +657,7 @@ export interface ServiceCallFull extends ServiceCall {
   photos: Photo[];
   parts: Part[];
   activities: ActivityLog[];
+  products: ServiceCallProduct[];
 }
 
 export interface DashboardStats {
@@ -671,6 +723,12 @@ export interface IStorage {
   createPart(part: InsertPart): Part;
   updatePart(id: number, part: Partial<InsertPart>): Part | undefined;
   deletePart(id: number): void;
+
+  // Service Call Products (multi-product)
+  getProductsByServiceCallId(serviceCallId: number): ServiceCallProduct[];
+  createServiceCallProduct(data: InsertServiceCallProduct): ServiceCallProduct;
+  updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): ServiceCallProduct | undefined;
+  voidServiceCallProduct(id: number): { voided: boolean; reason?: string };
 
   // Dashboard
   getDashboardStats(): DashboardStats;
@@ -760,6 +818,7 @@ export class SQLiteStorage implements IStorage {
       SELECT sc.*,
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
         (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count,
+        (SELECT COUNT(*) FROM service_call_products scp WHERE scp.service_call_id = sc.id AND scp.voided = 0) AS product_count,
         (SELECT COUNT(*) FROM service_call_visits v WHERE v.service_call_id = sc.id) AS visit_count,
         (
           SELECT v.technician_id FROM service_call_visits v
@@ -860,6 +919,7 @@ export class SQLiteStorage implements IStorage {
       flaggedReason: row.flagged_reason ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
+      productCount: row.product_count ?? 0,
       visitCount: row.visit_count ?? 0,
       primaryTechnicianId: row.primary_technician_id ?? null,
       primaryTechnicianName: row.primary_technician_name ?? null,
@@ -880,7 +940,8 @@ export class SQLiteStorage implements IStorage {
     const callPhotos = this.getPhotosByServiceCallId(id);
     const callParts = db.select().from(partsUsed).where(eq(partsUsed.serviceCallId, id)).all();
     const callActivities = db.select().from(activityLog).where(eq(activityLog.serviceCallId, id)).all();
-    return { ...call, photos: callPhotos, parts: callParts, activities: callActivities };
+    const callProducts = this.getProductsByServiceCallId(id);
+    return { ...call, photos: callPhotos, parts: callParts, activities: callActivities, products: callProducts };
   }
 
   createServiceCall(call: InsertServiceCall): ServiceCall {
@@ -934,6 +995,7 @@ export class SQLiteStorage implements IStorage {
     db.delete(photos).where(eq(photos.serviceCallId, id)).run();
     db.delete(partsUsed).where(eq(partsUsed.serviceCallId, id)).run();
     db.delete(activityLog).where(eq(activityLog.serviceCallId, id)).run();
+    sqlite.prepare(`DELETE FROM service_call_products WHERE service_call_id = ?`).run(id);
     db.delete(serviceCalls).where(eq(serviceCalls.id, id)).run();
   }
 
@@ -1047,6 +1109,92 @@ export class SQLiteStorage implements IStorage {
     db.delete(partsUsed).where(eq(partsUsed.id, id)).run();
   }
 
+  // ─── Service Call Products (multi-product) ────────────────────────────────────
+
+  getProductsByServiceCallId(serviceCallId: number): ServiceCallProduct[] {
+    return db
+      .select()
+      .from(serviceCallProducts)
+      .where(sql`${serviceCallProducts.serviceCallId} = ${serviceCallId} AND ${serviceCallProducts.voided} = 0`)
+      .orderBy(serviceCallProducts.productIndex, serviceCallProducts.id)
+      .all();
+  }
+
+  createServiceCallProduct(data: InsertServiceCallProduct): ServiceCallProduct {
+    const now = new Date().toISOString();
+    // Auto-assign productIndex = MAX(product_index)+1 for this call (min 1).
+    const maxRow = sqlite.prepare(
+      `SELECT MAX(product_index) AS m FROM service_call_products WHERE service_call_id = ?`
+    ).get(data.serviceCallId) as any;
+    const nextIndex = data.productIndex ?? (((maxRow?.m ?? 0) + 1) || 1);
+    const created = db
+      .insert(serviceCallProducts)
+      .values({ ...data, productIndex: nextIndex, createdAt: now })
+      .returning()
+      .get();
+    if (created.productIndex === 1) {
+      this.syncLegacyFromProduct(created);
+    }
+    return created;
+  }
+
+  updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): ServiceCallProduct | undefined {
+    const updated = db
+      .update(serviceCallProducts)
+      .set({ ...data, updatedAt: new Date().toISOString() } as any)
+      .where(eq(serviceCallProducts.id, id))
+      .returning()
+      .get();
+    if (updated && updated.productIndex === 1) {
+      this.syncLegacyFromProduct(updated);
+    }
+    return updated;
+  }
+
+  voidServiceCallProduct(id: number): { voided: boolean; reason?: string } {
+    const product = db.select().from(serviceCallProducts).where(eq(serviceCallProducts.id, id)).get();
+    if (!product) return { voided: false, reason: "not_found" };
+    // A call must always retain >=1 active product. Refuse to void the last one.
+    const activeCount = (sqlite.prepare(
+      `SELECT COUNT(*) AS c FROM service_call_products WHERE service_call_id = ? AND voided = 0`
+    ).get(product.serviceCallId) as any).c as number;
+    if (activeCount <= 1) {
+      return { voided: false, reason: "last_active" };
+    }
+    db.update(serviceCallProducts)
+      .set({ voided: true, updatedAt: new Date().toISOString() })
+      .where(eq(serviceCallProducts.id, id))
+      .run();
+    return { voided: true };
+  }
+
+  // Keep the legacy single-product columns on service_calls in sync with
+  // product_index=1 so reports/equipment search that still read those columns
+  // stay correct until they migrate to the products table.
+  private syncLegacyFromProduct(p: ServiceCallProduct): void {
+    db.update(serviceCalls)
+      .set({
+        manufacturer: p.manufacturer,
+        manufacturerOther: p.manufacturerOther,
+        productModel: p.productModel,
+        productSerial: p.productSerial,
+        productType: p.productType,
+        installationDate: p.installationDate,
+        issueDescription: p.issueDescription,
+        diagnosis: p.diagnosis,
+        resolution: p.resolution,
+        claimStatus: p.claimStatus,
+        claimNumber: p.claimNumber,
+        claimNotes: p.claimNotes,
+        partsCost: p.partsCost,
+        laborCost: p.laborCost,
+        otherCost: p.otherCost,
+        claimAmount: p.claimAmount,
+      })
+      .where(eq(serviceCalls.id, p.serviceCallId))
+      .run();
+  }
+
   // ─── Dashboard ──────────────────────────────────────────────────────────────
 
   getDashboardStats(): DashboardStats {
@@ -1144,7 +1292,8 @@ export class SQLiteStorage implements IStorage {
     const rows = sqlite.prepare(`
       SELECT sc.*,
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
-        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
+        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count,
+        (SELECT COUNT(*) FROM service_call_products scp WHERE scp.service_call_id = sc.id AND scp.voided = 0) AS product_count
       FROM service_calls sc
       WHERE (sc.is_test = 0 OR sc.is_test IS NULL)
         AND sc.status IN ('Scheduled', 'In Progress', 'Needs Return Visit', 'Pending Parts')
@@ -1217,6 +1366,7 @@ export class SQLiteStorage implements IStorage {
       flaggedReason: row.flagged_reason ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
+      productCount: row.product_count ?? 0,
       visitCount: 0,
       primaryTechnicianId: null,
       primaryTechnicianName: null,
@@ -1268,7 +1418,8 @@ export class SQLiteStorage implements IStorage {
     const rows = sqlite.prepare(`
       SELECT sc.*,
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
-        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
+        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count,
+        (SELECT COUNT(*) FROM service_call_products scp WHERE scp.service_call_id = sc.id AND scp.voided = 0) AS product_count
       FROM service_calls sc
       WHERE (sc.is_test = 0 OR sc.is_test IS NULL)
       ORDER BY
@@ -1334,6 +1485,7 @@ export class SQLiteStorage implements IStorage {
       flaggedReason: row.flagged_reason ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
+      productCount: row.product_count ?? 0,
       visitCount: 0,
       primaryTechnicianId: null,
       primaryTechnicianName: null,
@@ -1567,7 +1719,8 @@ export class SQLiteStorage implements IStorage {
     const rows = sqlite.prepare(`
       SELECT sc.*,
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
-        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count
+        (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count,
+        (SELECT COUNT(*) FROM service_call_products scp WHERE scp.service_call_id = sc.id AND scp.voided = 0) AS product_count
       FROM service_calls sc
       WHERE sc.follow_up_date IS NOT NULL AND sc.follow_up_date <= ? AND sc.status != 'Completed'
       ORDER BY sc.follow_up_date ASC
@@ -1628,6 +1781,7 @@ export class SQLiteStorage implements IStorage {
       flaggedReason: row.flagged_reason ?? null,
       photoCount: row.photo_count,
       partCount: row.part_count,
+      productCount: row.product_count ?? 0,
       visitCount: 0,
       primaryTechnicianId: null,
       primaryTechnicianName: null,

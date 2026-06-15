@@ -8,7 +8,53 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added — Multi-product service calls (branch `feature/multi-product-service-calls`)
+
+A service call can now hold **multiple products** (e.g. a tech dispatched for one
+water heater finds two on site). Previously a call held exactly one product as
+flat columns on `service_calls`. **Not yet deployed — awaiting Kevin's review.**
+
+- **Schema / Migration 33** (`columnExists`/`hasTable`-guarded, additive,
+  idempotent): new `service_call_products` table — one row per physical unit on
+  a call, each with its own `manufacturer` / `manufacturer_other` /
+  `product_model` / `product_serial` / `product_type` / `installation_date`,
+  per-unit `issue_description` / `diagnosis` / `resolution`, per-unit warranty
+  **claim** fields (`claim_status` / `claim_number` / `claim_notes` /
+  `parts_cost` / `labor_cost` / `other_cost` / `claim_amount`),
+  `discovered_visit_number` (which visit the unit was found on), a soft-delete
+  `voided` flag, and `product_index` for ordering. Migration backfills a
+  "Product 1" row for every existing call from the legacy single-product
+  columns. **Legacy columns on `service_calls` are retained and kept in sync
+  with Product 1** for backward-compat (reports/equipment search still read
+  them); they can be retired in a later cleanup once every surface reads the
+  new table.
+- **Storage / API**: `getProductsByServiceCallId`, `createServiceCallProduct`
+  (auto-assigns `product_index`, syncs legacy columns when index = 1),
+  `updateServiceCallProduct`, `voidServiceCallProduct` (guarded so a call always
+  keeps ≥1 active product). New routes mirror the parts/visits pattern
+  (`requireEditor`, audit-logged): `GET/POST /api/service-calls/:id/products`,
+  `PATCH/DELETE /api/products/:id`. `getServiceCallById` now returns a `products`
+  array; `deleteServiceCall` cleans up product rows.
+- **New Service Call form**: "Product Information" is now a products list
+  (react-hook-form `useFieldArray`) with an **"Add another product"** button that
+  pre-fills manufacturer/type from the previous product. Captures product
+  identity per unit; diagnosis/claim are filled in later on the detail page.
+- **Service Call Detail**: a **Products** section listing each active unit with
+  a per-product warranty badge, per-unit diagnosis/resolution and claim summary,
+  plus **Add Product** (tagged with the current visit number — works on visit 1
+  and any later visit), **Edit**, and **Remove (void)**. A "N products" roll-up
+  badge appears when a call has more than one active product.
+- **Lists / dashboards**: "N products" badge on `ServiceCallList`, `Dashboard`,
+  and `ManagerDashboard` (counts active products only; no double-counting).
+- **Equipment search & PDFs**: serial lookup spans all product serials; the
+  service-call PDF lists every active product with per-unit warranty/claim.
+  Aggregate reports intentionally continue to read Product 1/legacy to avoid
+  double-counting calls.
+
+Verified locally: `npm run check` (tsc) and `npm run build` both pass; Migration
+33 boots cleanly and backfills on a legacy-shaped DB; create-with-products,
+add/edit/void, the last-product guard, per-unit warranty computation, and the
+detail/new-call UIs were smoke-tested end-to-end.
 
 ## [2026-06-12] — Commercial hosting platform decision (Issue #27)
 

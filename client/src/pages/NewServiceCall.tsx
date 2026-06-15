@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation, Link, useSearch } from "wouter";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
@@ -86,6 +86,18 @@ const formSchema = z.object({
   wholesalerName: z.string().optional().nullable(),
   wholesalerPhone: z.string().optional().nullable(),
   isTest: z.number().optional(),
+  // Additional products (2nd+). Product 1's identity lives in the legacy
+  // top-level manufacturer/product* fields above so existing required-field /
+  // KPI / sidebar logic keeps working. On submit these are combined into a
+  // single `products[]` array sent to the server.
+  additionalProducts: z.array(z.object({
+    manufacturer: z.string().min(1, "Required"),
+    manufacturerOther: z.string().optional().nullable(),
+    productModel: z.string().optional().nullable(),
+    productSerial: z.string().optional().nullable(),
+    productType: z.string().optional().nullable(),
+    installationDate: z.string().optional().nullable(),
+  })).optional().default([]),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -265,8 +277,35 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       wholesalerName: "",
       wholesalerPhone: "",
       isTest: 0,
+      additionalProducts: [],
     },
   });
+
+  const { fields: productFields, append: appendProduct, remove: removeProduct } = useFieldArray({
+    control: form.control,
+    name: "additionalProducts",
+  });
+
+  // "Add another product" pre-fills manufacturer + manufacturerOther +
+  // productType from the previous product (the last additional product, or
+  // Product 1's legacy fields if none added yet). Model/serial/install blank.
+  const addAnotherProduct = () => {
+    const prev = productFields.length > 0
+      ? form.getValues(`additionalProducts.${productFields.length - 1}`)
+      : {
+          manufacturer: form.getValues("manufacturer"),
+          manufacturerOther: form.getValues("manufacturerOther") ?? "",
+          productType: form.getValues("productType") ?? "",
+        };
+    appendProduct({
+      manufacturer: prev?.manufacturer || "",
+      manufacturerOther: prev?.manufacturerOther ?? "",
+      productModel: "",
+      productSerial: "",
+      productType: prev?.productType ?? "",
+      installationDate: "",
+    });
+  };
 
   // Pre-fill from parent call when it loads
   useEffect(() => {
@@ -344,8 +383,30 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
 
   const createMutation = useMutation({
     mutationFn: async (values: FormValues) => {
+      // Build the products[] array: Product 1 from the legacy top-level fields,
+      // then any additional products. Keep the legacy top-level fields in the
+      // body too (server fallback + legacy consumers read product[0] from them).
+      const products = [
+        {
+          manufacturer: values.manufacturer || "Other",
+          manufacturerOther: values.manufacturerOther ?? null,
+          productModel: values.productModel ?? null,
+          productSerial: values.productSerial ?? null,
+          productType: values.productType ?? null,
+          installationDate: values.installationDate ?? null,
+        },
+        ...(values.additionalProducts ?? []).map((p) => ({
+          manufacturer: p.manufacturer || "Other",
+          manufacturerOther: p.manufacturerOther ?? null,
+          productModel: p.productModel ?? null,
+          productSerial: p.productSerial ?? null,
+          productType: p.productType ?? null,
+          installationDate: p.installationDate ?? null,
+        })),
+      ];
       const res = await apiRequest("POST", "/api/service-calls", {
         ...values,
+        products,
         createdBy: createdBy !== "" ? Number(createdBy) : null,
       });
       return res.json();
@@ -686,33 +747,6 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
                 )} />
               </div>
 
-              <FormField control={form.control} name="manufacturer" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Manufacturer *</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger data-testid="select-manufacturer">
-                        <SelectValue placeholder="Select manufacturer…" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {MANUFACTURERS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-
-              {manufacturer === "Other" && (
-                <FormField control={form.control} name="manufacturerOther" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Manufacturer Name</FormLabel>
-                    <FormControl><Input placeholder="Enter manufacturer name…" {...field} value={field.value ?? ""} data-testid="input-manufacturer-other" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              )}
-
               {currentUser?.role !== "staff" && (
                 <div className="flex items-center gap-2">
                   <Checkbox
@@ -1021,52 +1055,177 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
             </CardContent>
           </Card>
 
-          {/* ── Product Info ──────────────────────────────────────────── */}
+          {/* ── Products ──────────────────────────────────────────────── */}
+          {/* Multi-product: Product 1 binds to the legacy top-level form fields
+             (manufacturer/product*) so KPI/required/sidebar logic is unchanged.
+             Additional products live in the `additionalProducts` field array. */}
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-violet-500 rounded-sm" />Product Information</CardTitle></CardHeader>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-violet-500 rounded-sm" />Products</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField control={form.control} name="productModel" render={({ field }) => (
+              {/* Product 1 (legacy-bound) */}
+              <div className="border border-border rounded-lg p-4 space-y-4" data-testid="product-card-0">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Product 1</p>
+                <FormField control={form.control} name="manufacturer" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Model Number</FormLabel>
-                    <FormControl><Input placeholder="e.g. HVHPT-50-240-PE" {...field} value={field.value ?? ""} data-testid="input-model" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="productSerial" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Serial Number</FormLabel>
-                    <FormControl><Input placeholder="Serial number" {...field} value={field.value ?? ""} data-testid="input-serial" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField control={form.control} name="productType" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Product Type</FormLabel>
-                    <Select value={field.value || "__none__"} onValueChange={v => field.onChange(v === "__none__" ? "" : v)}>
+                    <FormLabel>Manufacturer *</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-product-type">
-                          <SelectValue placeholder="Select type…" />
+                        <SelectTrigger data-testid="select-manufacturer-0">
+                          <SelectValue placeholder="Select manufacturer…" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="__none__">Not specified</SelectItem>
-                        {PRODUCT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                        {MANUFACTURERS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
                 )} />
-                <FormField control={form.control} name="installationDate" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Installation Date</FormLabel>
-                    <FormControl><Input type="date" {...field} value={field.value ?? ""} data-testid="input-install-date" /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
+                {manufacturer === "Other" && (
+                  <FormField control={form.control} name="manufacturerOther" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Manufacturer Name</FormLabel>
+                      <FormControl><Input placeholder="Enter manufacturer name…" {...field} value={field.value ?? ""} data-testid="input-manufacturer-other-0" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="productModel" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Model Number</FormLabel>
+                      <FormControl><Input placeholder="e.g. HVHPT-50-240-PE" {...field} value={field.value ?? ""} data-testid="input-model-0" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="productSerial" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Serial Number</FormLabel>
+                      <FormControl><Input placeholder="Serial number" {...field} value={field.value ?? ""} data-testid="input-serial-0" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="productType" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Product Type</FormLabel>
+                      <Select value={field.value || "__none__"} onValueChange={v => field.onChange(v === "__none__" ? "" : v)}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-product-type-0">
+                            <SelectValue placeholder="Select type…" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">Not specified</SelectItem>
+                          {PRODUCT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="installationDate" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Installation Date</FormLabel>
+                      <FormControl><Input type="date" {...field} value={field.value ?? ""} data-testid="input-install-date-0" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
               </div>
+
+              {/* Additional products (2nd+) */}
+              {productFields.map((pf, idx) => {
+                const otherSelected = form.watch(`additionalProducts.${idx}.manufacturer`) === "Other";
+                return (
+                  <div key={pf.id} className="border border-border rounded-lg p-4 space-y-4" data-testid={`product-card-${idx + 1}`}>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Product {idx + 2}</p>
+                      <button
+                        type="button"
+                        onClick={() => removeProduct(idx)}
+                        className="text-destructive hover:text-destructive/80"
+                        data-testid={`button-remove-product-${idx + 1}`}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <FormField control={form.control} name={`additionalProducts.${idx}.manufacturer`} render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Manufacturer *</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger data-testid={`select-manufacturer-${idx + 1}`}>
+                              <SelectValue placeholder="Select manufacturer…" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {MANUFACTURERS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    {otherSelected && (
+                      <FormField control={form.control} name={`additionalProducts.${idx}.manufacturerOther`} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Manufacturer Name</FormLabel>
+                          <FormControl><Input placeholder="Enter manufacturer name…" {...field} value={field.value ?? ""} data-testid={`input-manufacturer-other-${idx + 1}`} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField control={form.control} name={`additionalProducts.${idx}.productModel`} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Model Number</FormLabel>
+                          <FormControl><Input placeholder="e.g. HVHPT-50-240-PE" {...field} value={field.value ?? ""} data-testid={`input-model-${idx + 1}`} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name={`additionalProducts.${idx}.productSerial`} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Serial Number</FormLabel>
+                          <FormControl><Input placeholder="Serial number" {...field} value={field.value ?? ""} data-testid={`input-serial-${idx + 1}`} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField control={form.control} name={`additionalProducts.${idx}.productType`} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Product Type</FormLabel>
+                          <Select value={field.value || "__none__"} onValueChange={v => field.onChange(v === "__none__" ? "" : v)}>
+                            <FormControl>
+                              <SelectTrigger data-testid={`select-product-type-${idx + 1}`}>
+                                <SelectValue placeholder="Select type…" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="__none__">Not specified</SelectItem>
+                              {PRODUCT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name={`additionalProducts.${idx}.installationDate`} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Installation Date</FormLabel>
+                          <FormControl><Input type="date" {...field} value={field.value ?? ""} data-testid={`input-install-date-${idx + 1}`} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+                  </div>
+                );
+              })}
+
+              <Button type="button" variant="outline" size="sm" onClick={addAnotherProduct} data-testid="button-add-product">
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add another product
+              </Button>
             </CardContent>
           </Card>
 

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { MANUFACTURERS, SERVICE_STATUSES, CLAIM_STATUSES, PRODUCT_TYPES, getWarrantyStatus } from "@shared/schema";
-import type { ServiceCall, Photo, Part, Contact } from "@shared/schema";
+import type { ServiceCall, Photo, Part, Contact, ServiceCallProduct } from "@shared/schema";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -865,6 +865,160 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       updateVisitMutation.mutate({ id: editingVisit.id, data: payload });
     } else {
       createVisitMutation.mutate(payload as any);
+    }
+  };
+
+  // ─── Multi-product (per-call products) ──────────────────────────────────────
+  const { data: products = [] } = useQuery<ServiceCallProduct[]>({
+    queryKey: ["/api/service-calls", callId, "products"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/service-calls/${callId}/products`);
+      return res.json();
+    },
+    enabled: !!callId,
+  });
+
+  const invalidateProducts = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId, "products"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+  };
+
+  const emptyProductForm = {
+    manufacturer: "",
+    manufacturerOther: "",
+    productModel: "",
+    productSerial: "",
+    productType: "",
+    installationDate: "",
+    issueDescription: "",
+    diagnosis: "",
+    resolution: "",
+    claimStatus: "Not Filed",
+    claimNumber: "",
+    claimNotes: "",
+    partsCost: "",
+    laborCost: "",
+    otherCost: "",
+    claimAmount: "",
+  };
+  const [showProductDialog, setShowProductDialog] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<ServiceCallProduct | null>(null);
+  const [productForm, setProductForm] = useState({ ...emptyProductForm });
+  const [productManufacturerError, setProductManufacturerError] = useState("");
+  const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
+
+  const openAddProduct = () => {
+    setProductForm({ ...emptyProductForm });
+    setProductManufacturerError("");
+    setEditingProduct(null);
+    setShowProductDialog(true);
+  };
+
+  const openEditProduct = (p: ServiceCallProduct) => {
+    setProductForm({
+      manufacturer: p.manufacturer || "",
+      manufacturerOther: p.manufacturerOther || "",
+      productModel: p.productModel || "",
+      productSerial: p.productSerial || "",
+      productType: p.productType || "",
+      installationDate: p.installationDate || "",
+      issueDescription: p.issueDescription || "",
+      diagnosis: p.diagnosis || "",
+      resolution: p.resolution || "",
+      claimStatus: p.claimStatus || "Not Filed",
+      claimNumber: p.claimNumber || "",
+      claimNotes: p.claimNotes || "",
+      partsCost: p.partsCost || "",
+      laborCost: p.laborCost || "",
+      otherCost: p.otherCost || "",
+      claimAmount: p.claimAmount || "",
+    });
+    setProductManufacturerError("");
+    setEditingProduct(p);
+    setShowProductDialog(true);
+  };
+
+  // Latest visit number — tags a newly discovered unit with the visit it was
+  // found on. Defaults to 1 when there are no return visits yet.
+  const latestVisitNumber = visits.length > 0
+    ? Math.max(...visits.map((v) => v.visitNumber || 1))
+    : 1;
+
+  const createProductMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", `/api/service-calls/${callId}/products`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setShowProductDialog(false);
+      invalidateProducts();
+      toast({ title: "Product added" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const updateProductMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/products/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setShowProductDialog(false);
+      setEditingProduct(null);
+      invalidateProducts();
+      toast({ title: "Product updated" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteProductMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/products/${id}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to remove product");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setDeletingProductId(null);
+      invalidateProducts();
+      toast({ title: "Product removed" });
+    },
+    onError: (e: any) => {
+      setDeletingProductId(null);
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const handleProductSubmit = () => {
+    if (!productForm.manufacturer) {
+      setProductManufacturerError("Manufacturer is required");
+      return;
+    }
+    setProductManufacturerError("");
+    const payload: any = {
+      manufacturer: productForm.manufacturer,
+      manufacturerOther: productForm.manufacturerOther || null,
+      productModel: productForm.productModel || null,
+      productSerial: productForm.productSerial || null,
+      productType: productForm.productType || null,
+      installationDate: productForm.installationDate || null,
+      issueDescription: productForm.issueDescription || null,
+      diagnosis: productForm.diagnosis || null,
+      resolution: productForm.resolution || null,
+      claimStatus: productForm.claimStatus || "Not Filed",
+      claimNumber: productForm.claimNumber || null,
+      claimNotes: productForm.claimNotes || null,
+      partsCost: productForm.partsCost || null,
+      laborCost: productForm.laborCost || null,
+      otherCost: productForm.otherCost || null,
+      claimAmount: productForm.claimAmount || null,
+    };
+    if (editingProduct) {
+      updateProductMutation.mutate({ id: editingProduct.id, data: payload });
+    } else {
+      createProductMutation.mutate({ ...payload, discoveredVisitNumber: latestVisitNumber });
     }
   };
 
@@ -1717,35 +1871,110 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </Card>
       </div>
 
-      {/* Product with Warranty Badge */}
+      {/* Products with per-unit Warranty Badge + claim summary.
+         NOTE: In call-level edit mode the inline editor below edits the legacy
+         single-product columns, which the server keeps in sync with Product 1.
+         The per-product Add/Edit/Remove UI (view mode) drives the products
+         table directly. We keep both so the existing call-level edit flow and
+         the legacy call-level Warranty Claim card keep working off Product 1. */}
       <Card>
-        <CardHeader className="pb-3 border-b border-border"><CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Product</CardTitle></CardHeader>
+        <CardHeader className="pb-3 border-b border-border flex flex-row items-center justify-between">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+            Products
+            {products.length > 1 && (
+              <Badge variant="secondary" data-testid="badge-product-count">{products.length} products</Badge>
+            )}
+          </CardTitle>
+          {!isEditing && canEdit && (
+            <Button type="button" variant="outline" size="sm" onClick={openAddProduct} data-testid="button-add-product">
+              <Plus className="w-3.5 h-3.5 mr-1" /> Add Product
+            </Button>
+          )}
+        </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {!isEditing ? (
-              <>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Model Number</p>
-                  <p className="text-sm font-mono font-medium">{call.productModel}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Serial Number</p>
-                  <p className="text-sm font-mono">{call.productSerial || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Product Type</p>
-                  <p className="text-sm">{call.productType || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Install Date</p>
-                  <p className="text-sm">{formatDate(call.installationDate)}</p>
-                  <div className="mt-1">
-                    <WarrantyBadge installationDate={call.installationDate} manufacturer={call.manufacturer} productType={call.productType} />
-                  </div>
-                </div>
-              </>
+          {!isEditing ? (
+            products.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No products on this call.</p>
             ) : (
-              <>
+              <div className="space-y-4">
+                {products.map((p, idx) => {
+                  const mfg = p.manufacturer === "Other" ? (p.manufacturerOther || "Other") : p.manufacturer;
+                  const hasClaim = p.claimStatus && p.claimStatus !== "Not Filed";
+                  return (
+                    <div key={p.id} className="border border-border rounded-lg p-4" data-testid={`product-row-${p.id}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product {idx + 1}</span>
+                          <span className="text-sm font-medium">{mfg}</span>
+                        </div>
+                        {canEdit && (
+                          <div className="flex items-center gap-1">
+                            <Button type="button" variant="ghost" size="sm" onClick={() => openEditProduct(p)} data-testid={`button-edit-product-${p.id}`}>
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => setDeletingProductId(p.id)} data-testid={`button-remove-product-${p.id}`}>
+                              <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Model Number</p>
+                          <p className="text-sm font-mono font-medium">{p.productModel || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Serial Number</p>
+                          <p className="text-sm font-mono">{p.productSerial || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Product Type</p>
+                          <p className="text-sm">{p.productType || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Install Date</p>
+                          <p className="text-sm">{formatDate(p.installationDate)}</p>
+                          <div className="mt-1">
+                            <WarrantyBadge installationDate={p.installationDate} manufacturer={p.manufacturer} productType={p.productType} />
+                          </div>
+                        </div>
+                      </div>
+                      {(p.diagnosis || p.resolution) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-border">
+                          {p.diagnosis && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-0.5">Diagnosis</p>
+                              <p className="text-sm whitespace-pre-wrap">{p.diagnosis}</p>
+                            </div>
+                          )}
+                          {p.resolution && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-0.5">Resolution</p>
+                              <p className="text-sm whitespace-pre-wrap">{p.resolution}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-3 border-t border-border">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">Claim</span>
+                          <ClaimBadge status={p.claimStatus} />
+                        </div>
+                        {p.claimNumber && (
+                          <span className="text-xs font-mono text-muted-foreground" data-testid={`product-claim-number-${p.id}`}>#{p.claimNumber}</span>
+                        )}
+                        {hasClaim && p.claimAmount && (
+                          <span className="text-xs text-muted-foreground">Amount: ${p.claimAmount}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <>
                 {[
                   { key: "productModel", label: "Model #" },
                   { key: "productSerial", label: "Serial #" },
@@ -1784,8 +2013,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   />
                 </div>
               </>
-            )}
           </div>
+            )}
         </CardContent>
       </Card>
 
@@ -2735,6 +2964,141 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Add / Edit Product dialog */}
+      <Dialog open={showProductDialog} onOpenChange={(open) => { if (!open) { setShowProductDialog(false); setEditingProduct(null); } }}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
+            <DialogDescription>
+              {editingProduct ? "Update this unit's details." : `New unit (tagged to Visit ${latestVisitNumber}).`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Manufacturer *</label>
+              <Select value={productForm.manufacturer} onValueChange={v => { setProductForm(f => ({ ...f, manufacturer: v })); setProductManufacturerError(""); }}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-product-manufacturer">
+                  <SelectValue placeholder="Select manufacturer…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MANUFACTURERS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {productManufacturerError && <p className="text-xs text-destructive mt-1">{productManufacturerError}</p>}
+            </div>
+            {productForm.manufacturer === "Other" && (
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Manufacturer Name</label>
+                <Input value={productForm.manufacturerOther} onChange={e => setProductForm(f => ({ ...f, manufacturerOther: e.target.value }))} className="h-8 text-sm" placeholder="Enter manufacturer name…" data-testid="input-product-manufacturer-other" />
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Model Number</label>
+                <Input value={productForm.productModel} onChange={e => setProductForm(f => ({ ...f, productModel: e.target.value }))} className="h-8 text-sm" placeholder="e.g. HVHPT-50-240-PE" data-testid="input-product-model" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Serial Number</label>
+                <Input value={productForm.productSerial} onChange={e => setProductForm(f => ({ ...f, productSerial: e.target.value }))} className="h-8 text-sm" placeholder="Serial number" data-testid="input-product-serial" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Product Type</label>
+                <Select value={productForm.productType || "__none__"} onValueChange={v => setProductForm(f => ({ ...f, productType: v === "__none__" ? "" : v }))}>
+                  <SelectTrigger className="h-8 text-sm" data-testid="select-product-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Not specified</SelectItem>
+                    {PRODUCT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Install Date</label>
+                <Input type="date" value={productForm.installationDate} onChange={e => setProductForm(f => ({ ...f, installationDate: e.target.value }))} className="h-8 text-sm" data-testid="input-product-install-date" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Issue Description</label>
+              <Textarea rows={2} value={productForm.issueDescription} onChange={e => setProductForm(f => ({ ...f, issueDescription: e.target.value }))} className="text-sm" placeholder="What was reported for this unit…" data-testid="input-product-issue" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Diagnosis</label>
+              <Textarea rows={2} value={productForm.diagnosis} onChange={e => setProductForm(f => ({ ...f, diagnosis: e.target.value }))} className="text-sm" placeholder="Tech findings…" data-testid="input-product-diagnosis" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Resolution</label>
+              <Textarea rows={2} value={productForm.resolution} onChange={e => setProductForm(f => ({ ...f, resolution: e.target.value }))} className="text-sm" placeholder="What was done…" data-testid="input-product-resolution" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Claim Status</label>
+                <Select value={productForm.claimStatus} onValueChange={v => setProductForm(f => ({ ...f, claimStatus: v }))}>
+                  <SelectTrigger className="h-8 text-sm" data-testid="select-product-claim-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CLAIM_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Claim / Reference #</label>
+                <Input value={productForm.claimNumber} onChange={e => setProductForm(f => ({ ...f, claimNumber: e.target.value }))} className="h-8 text-sm font-mono" placeholder="e.g. WC-2026-04512" data-testid="input-product-claim-number" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {([
+                { key: "partsCost", label: "Parts Cost" },
+                { key: "laborCost", label: "Labor Cost" },
+                { key: "otherCost", label: "Other Cost" },
+                { key: "claimAmount", label: "Claim Amount" },
+              ] as const).map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-xs text-muted-foreground mb-1 block">{label}</label>
+                  <Input type="number" step="0.01" min="0" placeholder="0.00" value={productForm[key]} onChange={e => setProductForm(f => ({ ...f, [key]: e.target.value }))} className="h-8 text-sm" data-testid={`input-product-${key}`} />
+                </div>
+              ))}
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Claim Notes</label>
+              <Textarea rows={2} value={productForm.claimNotes} onChange={e => setProductForm(f => ({ ...f, claimNotes: e.target.value }))} className="text-sm" placeholder="Claim notes…" data-testid="input-product-claim-notes" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowProductDialog(false); setEditingProduct(null); }}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleProductSubmit} disabled={createProductMutation.isPending || updateProductMutation.isPending} data-testid="button-save-product">
+                {(createProductMutation.isPending || updateProductMutation.isPending) ? "Saving…" : (editingProduct ? "Update Product" : "Add Product")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove (void) product confirmation */}
+      <AlertDialog open={deletingProductId !== null} onOpenChange={(open) => { if (!open) setDeletingProductId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this product?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The product is voided (soft-deleted) so the audit trail is preserved. A call must keep at least one active product.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { if (deletingProductId !== null) deleteProductMutation.mutate(deletingProductId); }}
+              data-testid="button-confirm-remove-product"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Fixed save bar at bottom of viewport */}
       {isEditing && (
