@@ -49,6 +49,16 @@ const STATUS_FALLBACK = "#6B7280";
 // only widens outward (e.g. southern Idaho) when pins fall outside it.
 const UTAH_BOUNDS = L.latLngBounds([[36.95, -114.10], [42.05, -109.00]]);
 
+// Service-region clamp: Utah plus southern Idaho (generous slack). Only pins
+// inside this box drive the initial auto-fit, so a single bad coordinate
+// (e.g. a geocode that landed off the coast of India) can never zoom the map
+// out to the whole world. Out-of-region pins are still rendered as markers.
+const REGION_MAX_BOUNDS = L.latLngBounds([[36.0, -115.5], [44.5, -108.0]]);
+
+function inRegion(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && REGION_MAX_BOUNDS.contains([lat, lng]);
+}
+
 function createColoredIcon(color: string, locked: boolean) {
   const lockBadge = locked
     ? `<circle cx="19" cy="6" r="5" fill="#111827" stroke="#fff" stroke-width="1"/>`
@@ -243,7 +253,7 @@ export default function ServiceMap() {
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
-    const map = L.map(mapRef.current, { zoomControl: true });
+    const map = L.map(mapRef.current, { zoomControl: true, minZoom: 4 });
     map.fitBounds(UTAH_BOUNDS);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -281,6 +291,9 @@ export default function ServiceMap() {
       const lockedNote = call.coordsLocked
         ? `<div style="font-size: 10px; color: #111827; margin-top: 4px; font-weight: 600;">📌 Manually placed</div>`
         : "";
+      const outOfRegionNote = inRegion(call.lat, call.lng)
+        ? ""
+        : `<div style="font-size: 10px; color: #B45309; margin-top: 4px; font-weight: 600;">⚠ Location looks out of service area — check address</div>`;
       marker.bindPopup(`
         <div style="font-family: sans-serif; min-width: 200px;">
           <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">${escHtml(call.customerName)}</div>
@@ -292,6 +305,7 @@ export default function ServiceMap() {
           <div style="font-size: 11px; margin-bottom: 2px;">${escHtml(call.jobSiteCity)}, ${escHtml(call.jobSiteState)}</div>
           <a href="#/calls/${Number(call.id)}" style="font-size: 11px; color: hsl(200, 72%, 40%); text-decoration: none; font-weight: 600;">View Details →</a>
           ${lockedNote}
+          ${outOfRegionNote}
         </div>
       `);
 
@@ -326,11 +340,16 @@ export default function ServiceMap() {
       if (!map.hasLayer(cluster)) map.addLayer(cluster);
     }
 
-    // Fit view: union of Utah with pin bounds, never tighter than Utah. Only on
-    // first data arrival to avoid jarring re-fits on every filter tweak.
+    // Fit view: union of Utah with in-region pin bounds, never tighter than
+    // Utah. We extend ONLY with pins inside REGION_MAX_BOUNDS so a single bad
+    // coordinate can't blow the fit out to the whole globe. Out-of-region pins
+    // are still drawn above — they just don't drive the fit. Only on first data
+    // arrival to avoid jarring re-fits on every filter tweak.
     if (!didInitialFitRef.current && calls.length > 0) {
       const bounds = L.latLngBounds(UTAH_BOUNDS.getSouthWest(), UTAH_BOUNDS.getNorthEast());
-      for (const c of calls) bounds.extend([c.lat, c.lng]);
+      for (const c of calls) {
+        if (inRegion(c.lat, c.lng)) bounds.extend([c.lat, c.lng]);
+      }
       map.fitBounds(bounds, { padding: [30, 30] });
       didInitialFitRef.current = true;
     }
