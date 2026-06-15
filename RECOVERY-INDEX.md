@@ -64,7 +64,9 @@ historical references only.
 
 ## In Progress (not yet deployed)
 
-_None._
+| Date       | Branch                            | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | State                                                                                                                                                                                  |
+| ---------- | --------------------------------- | --- | --- |
+| 2026-06-15 | `fix/map-fit-and-geocode-bounds` | **Service Map zoom & out-of-region geocoding fix** (Migration 35). Post-deploy bug: map opened zoomed out to the whole world with a stray pin off the coast of India. Root cause: initial auto-fit extended bounds to **every** pin including one bad geocode near India. Fix: (1) client auto-fit now extends only with in-region pins (`REGION_MAX_BOUNDS` Utah+S.Idaho, `inRegion()`), `minZoom: 4`, out-of-region pins still drawn with a "check address" popup note; (2) Nominatim geocoder bounded to US + region (`countrycodes=us`, viewbox, US-box sanity check); (3) Migration 35 nulls out-of-US coords for unlocked rows (never deletes calls, never touches `coords_locked=1`, idempotent). | **Proposed only — NOT deployed.** Built on `8a16b88`. `npm run check` + `npm run build` pass; Migration 35 verified on fresh boot (cleared 1 bad row, preserved good + locked rows, idempotent). PR pending; awaiting Kevin's merge+deploy approval. |
 
 ## Recently Deployed
 
