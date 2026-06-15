@@ -611,6 +611,13 @@ if (!columnExists("service_calls", "installation_review_notes")) {
   }
 }
 
+// Migration 34: manual coordinate lock for map pins. Set to 1 when a user drags
+// a pin to correct its location; background geocoding skips locked rows.
+if (!columnExists("service_calls", "coords_locked")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN coords_locked INTEGER DEFAULT 0`);
+  console.log("Migration 34: added coords_locked column to service_calls");
+}
+
 // Migration 29: Add covering indexes for queries that scan tables fully.
 // These dramatically speed up the manager dashboard and detail pages once the
 // database has thousands of rows. All idempotent (IF NOT EXISTS).
@@ -917,6 +924,7 @@ export class SQLiteStorage implements IStorage {
       completedDate: row.completed_date ?? null,
       flaggedInternal: !!row.flagged_internal,
       flaggedReason: row.flagged_reason ?? null,
+      coordsLocked: row.coords_locked ?? 0,
       photoCount: row.photo_count,
       partCount: row.part_count,
       productCount: row.product_count ?? 0,
@@ -1364,6 +1372,7 @@ export class SQLiteStorage implements IStorage {
       completedDate: row.completed_date ?? null,
       flaggedInternal: !!row.flagged_internal,
       flaggedReason: row.flagged_reason ?? null,
+      coordsLocked: row.coords_locked ?? 0,
       photoCount: row.photo_count,
       partCount: row.part_count,
       productCount: row.product_count ?? 0,
@@ -1483,6 +1492,7 @@ export class SQLiteStorage implements IStorage {
       completedDate: row.completed_date ?? null,
       flaggedInternal: !!row.flagged_internal,
       flaggedReason: row.flagged_reason ?? null,
+      coordsLocked: row.coords_locked ?? 0,
       photoCount: row.photo_count,
       partCount: row.part_count,
       productCount: row.product_count ?? 0,
@@ -1591,6 +1601,7 @@ export class SQLiteStorage implements IStorage {
       completedDate: row.completed_date ?? null,
       flaggedInternal: !!row.flagged_internal,
       flaggedReason: row.flagged_reason ?? null,
+      coordsLocked: row.coords_locked ?? 0,
     }));
   }
 
@@ -1779,6 +1790,7 @@ export class SQLiteStorage implements IStorage {
       completedDate: row.completed_date ?? null,
       flaggedInternal: !!row.flagged_internal,
       flaggedReason: row.flagged_reason ?? null,
+      coordsLocked: row.coords_locked ?? 0,
       photoCount: row.photo_count,
       partCount: row.part_count,
       productCount: row.product_count ?? 0,

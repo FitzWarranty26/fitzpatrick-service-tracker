@@ -76,6 +76,10 @@ export const serviceCalls = sqliteTable("service_calls", {
   // reason note travels with it.
   flaggedInternal: integer("flagged_internal", { mode: "boolean" }).notNull().default(false),
   flaggedReason: text("flagged_reason"),
+  // Manual coordinate lock (Migration 34). Set to 1 when a user drags a map pin
+  // to correct its location; background geocoding skips locked rows so the
+  // manual placement is never overwritten.
+  coordsLocked: integer("coords_locked").default(0),
 });
 
 export const insertServiceCallSchema = createInsertSchema(serviceCalls).omit({

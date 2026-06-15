@@ -8,6 +8,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added — Service Map & geolocation improvements (branch `feature/map-improvements`)
+
+Review-and-improve pass on the Service Map. **Built on branch — awaiting Kevin's review/approval; not yet deployed.**
+
+- **Utah-first default view:** the map now opens framed on Utah (bounds `[[36.95,-114.10],[42.05,-109.00]]`) instead of a wide multi-state view. On first data load it fits the **union** of Utah with the actual pin bounds — never tighter than Utah, and auto-widens only if pins fall outside it (e.g. Southern Idaho), so future S. Idaho coverage just works. No hard `maxBounds` lock (panning to Idaho still allowed). New **"Fit to Utah"** reset button.
+- **Marker clustering** via `leaflet.markercluster`: dense areas (SLC/Provo corridor) collapse into count bubbles that expand on zoom. Colored icons + escaped popups preserved.
+- **Server-side status filter:** the status filter is now applied server-side so the pin count is accurate (previously client-only).
+- **Re-geocode on address edit:** editing a call's job-site address now clears stale coordinates and re-geocodes in the background (skips manually-placed pins).
+- **"Needs geocoding" panel:** new `GET /api/analytics/needs-geocoding` lists calls with an address but no coordinates; per-row **Retry** (`POST /api/service-calls/:id/geocode`) and a link to the call.
+- **Background Geocode All:** `POST /api/geocode-all` now runs as a non-blocking background job (202/409) with `GET /api/geocode-all/status` for live `done/total` progress — no more gateway-timeout risk on large backfills. Keeps the 1.1s Nominatim throttle; skips locked pins.
+- **Color-by-status toggle:** switch pin color between Manufacturer (default) and call Status; legend updates accordingly.
+- **Heat-map toggle:** Pins (clustered) vs Heat density view via `leaflet.heat`.
+- **Manual pin drag-to-correct:** editors can drag a misplaced pin; on confirm, `POST /api/service-calls/:id/coords` saves the location, sets `coords_locked = 1` (audit-logged `moved_pin`), and shows a "Manually placed" badge/note. Background re-geocode and Geocode All both skip locked pins.
+- **Schema / Migration 34** (`columnExists`-guarded, additive, idempotent): adds `coords_locked INTEGER DEFAULT 0` to `service_calls`.
+- **New deps (all free):** `leaflet.markercluster`, `leaflet.heat`, `@types/leaflet.markercluster`. Stays on free OpenStreetMap/Nominatim.
+
 ## [2026-06-15] — Multi-product service calls
 
 Deployed to production via PR #46 (merge commit `e910fdc`); Migration 33 runs at

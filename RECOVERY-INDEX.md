@@ -64,7 +64,9 @@ historical references only.
 
 ## In Progress (not yet deployed)
 
-_None._
+| Date       | Branch                   | Summary                                                                                                                                                                                                                                                                                                                                                                                                                  | State                                                                                                                                  |
+| ---------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-15 | `feature/map-improvements` | **Service Map & geolocation improvements** (Migration 34, column `coords_locked`). Utah-first auto-widen default view + "Fit to Utah" button; marker clustering (`leaflet.markercluster`); server-side status filter; re-geocode on address edit; "needs geocoding" panel + per-call retry; background `geocode-all` job with progress; color-by-status toggle; heat-map toggle (`leaflet.heat`); manual pin drag-to-correct (locked pins skip geocoding). Branched from `master` `3e27c45`. | **Built on branch — NOT deployed. Awaiting Kevin's review/approval.** `npm run check` + `npm run build` pass; Migration 34 verified on fresh-DB boot; new endpoints return 401 (registered/auth-gated). See `CHANGELOG.md` `[Unreleased]`. Rollback anchor: `known-good-2026-06-12` → `e28492b`. |
 
 ## Recently Deployed
 
