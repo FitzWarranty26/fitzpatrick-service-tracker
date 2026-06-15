@@ -43,6 +43,17 @@ Copy this block for each new deployment:
 
 ## Deployment History
 
+### 2026-06-15 — Service Map & geolocation improvements (PR #48, Migration 34) — PRODUCTION DEPLOY (approved & merged to master)
+
+- **Date:**            2026-06-15 17:02 (America/Denver)
+- **Commit:**          `a523ffe` (merge of `feature/map-improvements` into `master`; feature commit `61c3dc6`, docs `86f72a6`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   Auto-deploy on merge to `master` (Render Auto-Deploy = On Commit). Kevin explicitly approved merge + deploy.
+- **Checks run:**      `npm run check` (tsc) ✓, `npm run build` ✓, CI `check-and-build` ✓ (PR #48). Independent local verification: fresh-DB boot ran Migration 34 and created `coords_locked`; new endpoints registered (401 auth-gated). Post-deploy smoke: root HTTP 200; `GET /api/analytics/needs-geocoding`, `GET /api/geocode-all/status`, `GET /api/analytics/map-data` all 401 (live, auth-gated).
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`.
+- **Notes:**           Service Map review-and-improve pass (3 phases). **Migration 34** (additive, idempotent, `columnExists`-guarded) adds `coords_locked INTEGER DEFAULT 0` to `service_calls`. Phase 1: Utah-first auto-widen default view (bounds `[[36.95,-114.10],[42.05,-109.00]]`; opens framed on Utah, unions with pin bounds, auto-widens for out-of-state/Southern Idaho pins, no `maxBounds` lock) + "Fit to Utah" button; marker clustering (`leaflet.markercluster`); server-side status filter; background re-geocode on address edit (skips locked pins). Phase 2: `GET /api/analytics/needs-geocoding` + per-call retry `POST /api/service-calls/:id/geocode`; `POST /api/geocode-all` now a non-blocking background job (202/409) + `GET /api/geocode-all/status` progress (keeps 1.1s Nominatim throttle; skips locked pins). Phase 3: color-by-status toggle; heat-map toggle (`leaflet.heat`); manual pin drag-to-correct `POST /api/service-calls/:id/coords` (sets `coords_locked=1`, audit-logged `moved_pin`). New free deps: `leaflet.markercluster`, `leaflet.heat`, `@types/leaflet.markercluster`. Stays on free OpenStreetMap/Nominatim. **Follow-up:** the map UI (clustering, heat layer, Utah framing, drag-to-correct) was not click-tested in a real browser pre-deploy — recommend a quick manual eyeball in production.
+
 ### 2026-06-15 — Multi-product service calls (PR #46, Migration 33) — PRODUCTION DEPLOY (approved & merged to master)
 
 - **Date:**            2026-06-15 16:07 (America/Denver)

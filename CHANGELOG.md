@@ -8,9 +8,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-### Added — Service Map & geolocation improvements (branch `feature/map-improvements`)
+## [2026-06-15b] — Service Map & geolocation improvements
 
-Review-and-improve pass on the Service Map. **Built on branch — awaiting Kevin's review/approval; not yet deployed.**
+Deployed to production via PR #48 (merge commit `a523ffe`); Migration 34 runs at
+startup. Rollback anchor: `known-good-2026-06-12` → `e28492b`.
+
+### Added — Service Map & geolocation improvements
+
+Review-and-improve pass on the Service Map (3 phases).
 
 - **Utah-first default view:** the map now opens framed on Utah (bounds `[[36.95,-114.10],[42.05,-109.00]]`) instead of a wide multi-state view. On first data load it fits the **union** of Utah with the actual pin bounds — never tighter than Utah, and auto-widens only if pins fall outside it (e.g. Southern Idaho), so future S. Idaho coverage just works. No hard `maxBounds` lock (panning to Idaho still allowed). New **"Fit to Utah"** reset button.
 - **Marker clustering** via `leaflet.markercluster`: dense areas (SLC/Provo corridor) collapse into count bubbles that expand on zoom. Colored icons + escaped popups preserved.
