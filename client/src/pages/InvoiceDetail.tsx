@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Trash2, Send, CheckCircle, FileDown, Mail, Pencil, Building } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Send, CheckCircle, FileDown, Mail, Pencil, Building, CreditCard, Loader2 } from "lucide-react";
 import { PageHero, KPICell } from "@/components/PageHero";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { getAuthHeaders } from "@/lib/auth";
@@ -45,6 +45,10 @@ interface Invoice {
   subtotal: string;
   total: string;
   paidDate: string | null;
+  stripeConnectAccountId: string | null;
+  stripeCheckoutSessionId: string | null;
+  stripePaymentIntentId: string | null;
+  stripePaymentStatus: string | null;
   items: InvoiceItem[];
 }
 
@@ -124,6 +128,21 @@ export default function InvoiceDetail({ id }: { id: string }) {
       navigate("/invoices");
       toast({ title: "Invoice deleted" });
     },
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/invoices/${id}/stripe-checkout`);
+      return r.json() as Promise<{ url: string }>;
+    },
+    onSuccess: (data) => {
+      if (data.url) window.location.assign(data.url);
+    },
+    onError: (e: any) => toast({
+      title: "Could not start payment",
+      description: e?.message || "Check Stripe configuration.",
+      variant: "destructive",
+    }),
   });
 
   function setStatus(status: string) {
@@ -282,6 +301,12 @@ export default function InvoiceDetail({ id }: { id: string }) {
             {(invoice.status === "Sent" || invoice.status === "Overdue") && !isEditing && (
               <Button size="sm" variant="outline" onClick={() => setStatus("Paid")} className="text-emerald-600 border-emerald-300">
                 <CheckCircle className="w-3.5 h-3.5 mr-1" /> Mark Paid
+              </Button>
+            )}
+            {invoice.status !== "Paid" && total > 0 && !isEditing && (
+              <Button size="sm" variant="outline" onClick={() => checkoutMutation.mutate()} disabled={checkoutMutation.isPending} className="text-emerald-600 border-emerald-300">
+                {checkoutMutation.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CreditCard className="w-3.5 h-3.5 mr-1" />}
+                Collect Payment
               </Button>
             )}
             {!isEditing && (

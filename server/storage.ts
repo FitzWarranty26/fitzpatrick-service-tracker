@@ -196,7 +196,7 @@ sqlite.exec(`
 // We check first to avoid errors on tables that already have the column.
 
 // Allow only known table names to prevent SQL injection
-const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system", "service_call_visits", "invoice_items", "service_call_products"]);
+const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system", "service_call_visits", "invoices", "invoice_items", "service_call_products"]);
 
 function columnExists(table: string, column: string): boolean {
   if (!ALLOWED_TABLES.has(table)) throw new Error(`Unknown table: ${table}`);
@@ -690,6 +690,37 @@ if (!columnExists("service_calls", "assigned_technician_id")) {
   console.log("Migration 37: added assigned_technician_id column to service_calls");
 }
 
+// Migration 38: Stripe Connect invoice payments. Nullable columns keep the
+// existing invoice lifecycle intact while recording checkout/webhook state.
+let addedStripeInvoiceColumn = false;
+for (const column of [
+  "stripe_connect_account_id",
+  "stripe_checkout_session_id",
+  "stripe_payment_intent_id",
+  "stripe_payment_status",
+]) {
+  if (!columnExists("invoices", column)) {
+    sqlite.prepare(`ALTER TABLE invoices ADD COLUMN ${column} TEXT`).run();
+    addedStripeInvoiceColumn = true;
+  }
+}
+sqlite.exec(`
+  CREATE INDEX IF NOT EXISTS idx_invoices_stripe_checkout_session_id ON invoices(stripe_checkout_session_id);
+  CREATE INDEX IF NOT EXISTS idx_invoices_stripe_payment_intent_id ON invoices(stripe_payment_intent_id);
+`);
+if (addedStripeInvoiceColumn) {
+  console.log("Migration 38: added Stripe invoice payment columns");
+}
+
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at);
+`);
+
 // Migration 29: Add covering indexes for queries that scan tables fully.
 // These dramatically speed up the manager dashboard and detail pages once the
 // database has thousands of rows. All idempotent (IF NOT EXISTS).
@@ -698,6 +729,8 @@ sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
   CREATE INDEX IF NOT EXISTS idx_invoices_issue_date ON invoices(issue_date);
   CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
+  CREATE INDEX IF NOT EXISTS idx_invoices_stripe_checkout_session_id ON invoices(stripe_checkout_session_id);
+  CREATE INDEX IF NOT EXISTS idx_invoices_stripe_payment_intent_id ON invoices(stripe_payment_intent_id);
   CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
   CREATE INDEX IF NOT EXISTS idx_service_calls_parent_call_id ON service_calls(parent_call_id);
   CREATE INDEX IF NOT EXISTS idx_service_calls_scheduled_date ON service_calls(scheduled_date);
@@ -2095,6 +2128,10 @@ export class SQLiteStorage implements IStorage {
       billToPhone: r.bill_to_phone, issueDate: r.issue_date, dueDate: r.due_date,
       paymentTerms: r.payment_terms, status: r.status, notes: r.notes,
       subtotal: r.subtotal, total: r.total, paidDate: r.paid_date,
+      stripeConnectAccountId: r.stripe_connect_account_id ?? null,
+      stripeCheckoutSessionId: r.stripe_checkout_session_id ?? null,
+      stripePaymentIntentId: r.stripe_payment_intent_id ?? null,
+      stripePaymentStatus: r.stripe_payment_status ?? null,
       createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
     };
   }
@@ -2161,13 +2198,18 @@ export class SQLiteStorage implements IStorage {
     const now = new Date().toISOString();
     const allowed = ["billToType","billToName","billToAddress","billToCity","billToState",
       "billToEmail","billToPhone","issueDate","dueDate","paymentTerms","status",
-      "notes","subtotal","total","paidDate","serviceCallId"];
+      "notes","subtotal","total","paidDate","serviceCallId","stripeConnectAccountId",
+      "stripeCheckoutSessionId","stripePaymentIntentId","stripePaymentStatus"];
     const colMap: Record<string,string> = {
       billToType:"bill_to_type", billToName:"bill_to_name", billToAddress:"bill_to_address",
       billToCity:"bill_to_city", billToState:"bill_to_state", billToEmail:"bill_to_email",
       billToPhone:"bill_to_phone", issueDate:"issue_date", dueDate:"due_date",
       paymentTerms:"payment_terms", status:"status", notes:"notes",
       subtotal:"subtotal", total:"total", paidDate:"paid_date", serviceCallId:"service_call_id",
+      stripeConnectAccountId:"stripe_connect_account_id",
+      stripeCheckoutSessionId:"stripe_checkout_session_id",
+      stripePaymentIntentId:"stripe_payment_intent_id",
+      stripePaymentStatus:"stripe_payment_status",
     };
     const updates: string[] = ["updated_at = ?"];
     const params: any[] = [now];
@@ -2649,5 +2691,3 @@ export const storage = new SQLiteStorage();
     console.log("Migration 23: TEST CUSTOMER contact inserted");
   }
 }
-
-

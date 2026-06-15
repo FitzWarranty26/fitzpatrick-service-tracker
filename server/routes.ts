@@ -4,6 +4,7 @@ import type { Server } from "http";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
+import Stripe from "stripe";
 import { storage, sqlite as sqliteHandle, DB_PATH } from "./storage";
 import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema, insertServiceCallProductSchema, getWarrantyStatus } from "@shared/schema";
 import { z } from "zod";
@@ -81,6 +82,116 @@ function safeCompare(a: string, b: string): boolean {
     return false;
   }
   return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
+function getStripeClient(): Stripe | null {
+  const key = process.env.STRIPE_SECRET_KEY?.trim();
+  return key ? new Stripe(key) : null;
+}
+
+function getSetting(key: string): string | null {
+  const row = sqliteHandle.prepare(`SELECT value FROM app_settings WHERE key = ?`).get(key) as { value: string | null } | undefined;
+  return row?.value || null;
+}
+
+function setSetting(key: string, value: string | null): void {
+  sqliteHandle.prepare(`
+    INSERT INTO app_settings (key, value, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).run(key, value, new Date().toISOString());
+}
+
+function clearSetting(key: string): void {
+  sqliteHandle.prepare(`DELETE FROM app_settings WHERE key = ?`).run(key);
+}
+
+function getConfiguredStripeAccountId(): string | null {
+  return process.env.STRIPE_CONNECT_ACCOUNT_ID?.trim() || getSetting("stripe_connect_account_id");
+}
+
+function getBaseUrl(req: any): string {
+  const configured = process.env.APP_BASE_URL?.trim() || process.env.PUBLIC_APP_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http").split(",")[0].trim();
+  return `${proto}://${req.get("host")}`;
+}
+
+function toStripeAmountCents(total: string | number | null | undefined): number {
+  const amount = parseMoney(total);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.round(amount * 100);
+}
+
+function getPlatformFeeAmountCents(amountCents: number): number | undefined {
+  const raw = process.env.STRIPE_PLATFORM_FEE_BPS?.trim();
+  if (!raw) return undefined;
+  const bps = Number.parseInt(raw, 10);
+  if (!Number.isFinite(bps) || bps <= 0) return undefined;
+  return Math.max(1, Math.round((amountCents * Math.min(bps, 10_000)) / 10_000));
+}
+
+function stripeObjectId(value: string | { id?: string } | null | undefined): string | null {
+  if (!value) return null;
+  return typeof value === "string" ? value : value.id || null;
+}
+
+function invoiceIdFromStripe(metadata?: Stripe.Metadata | null, fallback?: string | number | null): number | null {
+  const raw = metadata?.invoiceId || metadata?.invoice_id || fallback;
+  const id = Number.parseInt(String(raw || ""), 10);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function updateInvoiceStripeStatus(args: {
+  invoiceId: number;
+  connectAccountId?: string | null;
+  checkoutSessionId?: string | null;
+  paymentIntentId?: string | null;
+  paymentStatus: string;
+  markPaid?: boolean;
+}) {
+  const row = sqliteHandle.prepare(`
+    SELECT id, stripe_payment_intent_id
+    FROM invoices
+    WHERE id = ?
+  `).get(args.invoiceId) as { id: number; stripe_payment_intent_id: string | null } | undefined;
+
+  if (!row) {
+    throw new Error(`Stripe webhook referenced missing invoice ${args.invoiceId}`);
+  }
+
+  if (
+    row.stripe_payment_intent_id &&
+    args.paymentIntentId &&
+    row.stripe_payment_intent_id !== args.paymentIntentId
+  ) {
+    throw new Error(`Invoice ${args.invoiceId} already has a different Stripe payment intent`);
+  }
+
+  const now = new Date().toISOString();
+  const paidDate = args.markPaid ? todayLocalISO() : null;
+  sqliteHandle.prepare(`
+    UPDATE invoices
+    SET
+      status = CASE WHEN ? = 1 THEN 'Paid' ELSE status END,
+      paid_date = CASE WHEN ? = 1 THEN COALESCE(paid_date, ?) ELSE paid_date END,
+      stripe_connect_account_id = COALESCE(?, stripe_connect_account_id),
+      stripe_checkout_session_id = COALESCE(?, stripe_checkout_session_id),
+      stripe_payment_intent_id = COALESCE(?, stripe_payment_intent_id),
+      stripe_payment_status = ?,
+      updated_at = ?
+    WHERE id = ?
+  `).run(
+    args.markPaid ? 1 : 0,
+    args.markPaid ? 1 : 0,
+    paidDate,
+    args.connectAccountId || null,
+    args.checkoutSessionId || null,
+    args.paymentIntentId || null,
+    args.paymentStatus,
+    now,
+    args.invoiceId,
+  );
 }
 
 // ─── Session Token Management ─────────────────────────────────────────────
@@ -323,6 +434,96 @@ export function registerRoutes(httpServer: Server, app: Express) {
       console.error("[audit] Failed to log:", e);
     }
   }
+
+  // Public Stripe webhook: must run before the Bearer-token API guard.
+  app.post("/api/stripe/webhook", (req: any, res: any) => {
+    const stripe = getStripeClient();
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+    if (!stripe || !webhookSecret) {
+      return res.status(503).json({ error: "Stripe webhook is not configured" });
+    }
+
+    const signature = req.headers["stripe-signature"];
+    if (!signature || !Buffer.isBuffer(req.rawBody)) {
+      return res.status(400).json({ error: "Missing Stripe signature or raw body" });
+    }
+
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
+    } catch (e: any) {
+      return res.status(400).json({ error: `Webhook signature verification failed: ${e.message}` });
+    }
+
+    try {
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const invoiceId = invoiceIdFromStripe(session.metadata, session.client_reference_id);
+        if (invoiceId && session.payment_status === "paid") {
+          updateInvoiceStripeStatus({
+            invoiceId,
+            connectAccountId: event.account || session.metadata?.stripeConnectAccountId || null,
+            checkoutSessionId: session.id,
+            paymentIntentId: stripeObjectId(session.payment_intent),
+            paymentStatus: session.payment_status,
+            markPaid: true,
+          });
+          logAudit(req, "stripe_invoice_paid", "invoice", invoiceId, `Checkout session ${session.id}`);
+        }
+      } else if (event.type === "checkout.session.expired") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const invoiceId = invoiceIdFromStripe(session.metadata, session.client_reference_id);
+        if (invoiceId) {
+          updateInvoiceStripeStatus({
+            invoiceId,
+            connectAccountId: event.account || session.metadata?.stripeConnectAccountId || null,
+            checkoutSessionId: session.id,
+            paymentIntentId: stripeObjectId(session.payment_intent),
+            paymentStatus: "expired",
+          });
+        }
+      } else if (event.type === "payment_intent.succeeded") {
+        const intent = event.data.object as Stripe.PaymentIntent;
+        const invoiceId = invoiceIdFromStripe(intent.metadata);
+        if (invoiceId) {
+          updateInvoiceStripeStatus({
+            invoiceId,
+            connectAccountId: event.account || intent.metadata?.stripeConnectAccountId || null,
+            paymentIntentId: intent.id,
+            paymentStatus: intent.status,
+            markPaid: true,
+          });
+          logAudit(req, "stripe_invoice_paid", "invoice", invoiceId, `PaymentIntent ${intent.id}`);
+        }
+      } else if (event.type === "payment_intent.payment_failed") {
+        const intent = event.data.object as Stripe.PaymentIntent;
+        const invoiceId = invoiceIdFromStripe(intent.metadata);
+        if (invoiceId) {
+          updateInvoiceStripeStatus({
+            invoiceId,
+            connectAccountId: event.account || intent.metadata?.stripeConnectAccountId || null,
+            paymentIntentId: intent.id,
+            paymentStatus: intent.status,
+          });
+        }
+      } else if (event.type === "account.updated") {
+        const account = event.data.object as Stripe.Account;
+        const storedAccountId = getSetting("stripe_connect_account_id");
+        if (storedAccountId === account.id) {
+          setSetting("stripe_connect_account_status", JSON.stringify({
+            chargesEnabled: account.charges_enabled,
+            payoutsEnabled: account.payouts_enabled,
+            detailsSubmitted: account.details_submitted,
+          }));
+        }
+      }
+
+      return res.json({ received: true });
+    } catch (e: any) {
+      console.error("[stripe] webhook handling failed:", e);
+      return res.status(500).json({ error: safeError(e) });
+    }
+  });
 
   // Apply auth middleware to all API routes except auth and backup endpoints
   // (backup routes have their own requireBackupAuth middleware)
@@ -2547,6 +2748,153 @@ export function registerRoutes(httpServer: Server, app: Express) {
         default:
           return res.status(400).json({ error: "Unknown report type" });
       }
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  // ─── Stripe Connect + Invoice Payments ─────────────────────────────────────
+
+  app.get("/api/stripe/connect/status", requireManager, async (_req: any, res: any) => {
+    try {
+      const stripe = getStripeClient();
+      if (!stripe) return res.status(503).json({ configured: false, error: "STRIPE_SECRET_KEY is not configured" });
+
+      const accountId = getConfiguredStripeAccountId();
+      if (!accountId) {
+        return res.json({ configured: true, connected: false, accountId: null });
+      }
+
+      const account = await stripe.accounts.retrieve(accountId);
+      res.json({
+        configured: true,
+        connected: true,
+        accountId,
+        envConfigured: !!process.env.STRIPE_CONNECT_ACCOUNT_ID?.trim(),
+        chargesEnabled: account.charges_enabled,
+        payoutsEnabled: account.payouts_enabled,
+        detailsSubmitted: account.details_submitted,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.post("/api/stripe/connect/account-link", requireManager, async (req: any, res: any) => {
+    try {
+      const stripe = getStripeClient();
+      if (!stripe) return res.status(503).json({ error: "STRIPE_SECRET_KEY is not configured" });
+
+      let accountId = getConfiguredStripeAccountId();
+      if (!accountId) {
+        const account = await stripe.accounts.create({
+          type: "express",
+          business_type: "company",
+          capabilities: {
+            card_payments: { requested: true },
+            transfers: { requested: true },
+          },
+          metadata: {
+            source: "fitzpatrick-service-tracker",
+          },
+        });
+        accountId = account.id;
+        setSetting("stripe_connect_account_id", accountId);
+      }
+
+      const baseUrl = getBaseUrl(req);
+      const accountLink = await stripe.accountLinks.create({
+        account: accountId,
+        refresh_url: `${baseUrl}/#/invoices?stripe_connect=refresh`,
+        return_url: `${baseUrl}/#/invoices?stripe_connect=return`,
+        type: "account_onboarding",
+      });
+
+      logAudit(req, "stripe_connect_account_link", "stripe_account", undefined, accountId);
+      res.json({ url: accountLink.url, accountId });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.delete("/api/stripe/connect/account", requireManager, (req: any, res: any) => {
+    try {
+      if (process.env.STRIPE_CONNECT_ACCOUNT_ID?.trim()) {
+        return res.status(409).json({ error: "Stripe account is configured by STRIPE_CONNECT_ACCOUNT_ID and cannot be cleared from the app" });
+      }
+      clearSetting("stripe_connect_account_id");
+      clearSetting("stripe_connect_account_status");
+      logAudit(req, "stripe_connect_disconnected", "stripe_account");
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+
+  app.post("/api/invoices/:id/stripe-checkout", requireEditor, async (req: any, res: any) => {
+    try {
+      const stripe = getStripeClient();
+      if (!stripe) return res.status(503).json({ error: "STRIPE_SECRET_KEY is not configured" });
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const invoice = storage.getInvoiceById(id);
+      if (!invoice) return res.status(404).json({ error: "Not found" });
+      if (invoice.status === "Paid") return res.status(409).json({ error: "Invoice is already paid" });
+
+      const amountCents = toStripeAmountCents(invoice.total);
+      if (amountCents <= 0) return res.status(400).json({ error: "Invoice total must be greater than zero" });
+
+      const connectAccountId = getConfiguredStripeAccountId();
+      const metadata: Stripe.MetadataParam = {
+        invoiceId: String(invoice.id),
+        invoiceNumber: invoice.invoiceNumber,
+      };
+      if (connectAccountId) metadata.stripeConnectAccountId = connectAccountId;
+
+      const paymentIntentData: Stripe.Checkout.SessionCreateParams.PaymentIntentData = {
+        metadata,
+      };
+      if (connectAccountId) {
+        paymentIntentData.transfer_data = { destination: connectAccountId };
+        const feeAmount = getPlatformFeeAmountCents(amountCents);
+        if (feeAmount) paymentIntentData.application_fee_amount = feeAmount;
+      }
+
+      const baseUrl = getBaseUrl(req);
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        customer_email: invoice.billToEmail || undefined,
+        client_reference_id: String(invoice.id),
+        line_items: [{
+          quantity: 1,
+          price_data: {
+            currency: process.env.STRIPE_INVOICE_CURRENCY?.trim()?.toLowerCase() || "usd",
+            unit_amount: amountCents,
+            product_data: {
+              name: `Invoice ${invoice.invoiceNumber}`,
+              description: `Payment to Fitzpatrick Warranty Service, LLC for ${invoice.billToName}`,
+            },
+          },
+        }],
+        metadata,
+        payment_intent_data: paymentIntentData,
+        success_url: `${baseUrl}/#/invoices/${invoice.id}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/#/invoices/${invoice.id}?payment=cancelled`,
+      });
+
+      storage.updateInvoice(invoice.id, {
+        status: invoice.status === "Draft" ? "Sent" : invoice.status,
+        stripeConnectAccountId: connectAccountId,
+        stripeCheckoutSessionId: session.id,
+        stripePaymentIntentId: stripeObjectId(session.payment_intent),
+        stripePaymentStatus: session.payment_status || "checkout_open",
+      } as any);
+
+      logAudit(req, "stripe_checkout_created", "invoice", invoice.id, session.id);
+      res.json({ url: session.url, sessionId: session.id, connectAccountId });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
