@@ -43,6 +43,17 @@ Copy this block for each new deployment:
 
 ## Deployment History
 
+### 2026-06-15 — Service Map zoom & out-of-region geocoding fix (PR #50, Migration 35) — PRODUCTION DEPLOY (approved & merged to master)
+
+- **Date:**            2026-06-15 17:27 (America/Denver)
+- **Commit:**          `26ba94a` (merge of `fix/map-fit-and-geocode-bounds` into `master`; fix commit `8a16b88`, docs `0c19400`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   Auto-deploy on merge to `master` (Render Auto-Deploy = On Commit). Kevin explicitly approved merge + deploy.
+- **Checks run:**      `npm run check` (tsc) ✓, `npm run build` ✓, CI `check-and-build` ✓ (PR #50). Independent local verification: fresh-DB boot ran Migration 35 — cleared 1 out-of-region row, preserved a good Utah row and a locked out-of-region row, idempotent on rerun. Post-deploy smoke: root HTTP 200; `GET /api/analytics/needs-geocoding` 401 (live, auth-gated).
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`.
+- **Notes:**           Bug-fix follow-up to the 2026-06-15b Service Map deploy: map had opened zoomed out to the whole world with a stray pin off the coast of India. Root cause — the initial auto-fit extended bounds to **every** pin including one bad geocode near India, so the fit spanned Utah→India and zoomed all the way out. Both symptoms = one root cause. Fix (3 parts): **client** (`ServiceMap.tsx`) auto-fit now extends bounds only with in-region pins (`REGION_MAX_BOUNDS` = Utah + S. Idaho `[[36.0,-115.5],[44.5,-108.0]]`, `inRegion()` helper), `minZoom: 4`; out-of-region pins still rendered but carry a "⚠ Location looks out of service area — check address" popup note and no longer drive the fit. **Server** (`routes.ts`, `geocodeAddress`) Nominatim query bounded to US + region (`countrycodes=us`, bounded `viewbox`) plus a US-box sanity check (lat 24..50, lng -125..-66) rejecting out-of-box matches. **Migration 35** (`storage.ts`, guarded/idempotent) nulls `latitude`/`longitude` for `coords_locked=0` rows outside the US box so they return to the needs-geocoding list; **never deletes a call; never touches manually-locked pins**. No new dependencies; stays on free OpenStreetMap/Nominatim.
+
 ### 2026-06-15 — Service Map & geolocation improvements (PR #48, Migration 34) — PRODUCTION DEPLOY (approved & merged to master)
 
 - **Date:**            2026-06-15 17:02 (America/Denver)
