@@ -8,6 +8,34 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [2026-06-18] — Admin password reset button + manager-lockout recovery script
+
+No schema change, no migration. Rollback anchor: `known-good-2026-06-12` →
+`e28492b`.
+
+### Added — Per-row "Reset Password" action (Team page)
+
+- The Team / user-management screen now shows a dedicated **Reset Password**
+  button on each active user row (managers only). It opens a focused reset-only
+  dialog (new password + confirm, 8-char minimum, passwords-match validation)
+  instead of requiring the manager to open the full Edit User dialog. On submit
+  it reuses the existing `PATCH /api/users/:id` endpoint with a `password`
+  field — no new backend route. The target user is forced to set a new password
+  at next login (`must_change_password = 1`), and the change is recorded in the
+  system audit log exactly as before. UI-only change; server logic unchanged.
+
+### Added — `scripts/reset-password.mjs` (manager-lockout escape hatch)
+
+- New repo-committed Node script for the case where **no working manager
+  account** exists to reset a password from the app (admin lockout). Run from
+  the Render Shell: `node scripts/reset-password.mjs <username> <newPassword>`.
+  It reads the DB from `DB_PATH` (production `/var/data/warranty_tracker.db`),
+  writes a timestamped safety backup beside it, hashes with the same `bcryptjs`
+  cost factor (12) the app uses, re-activates the account, sets
+  `must_change_password = 1`, and writes a `password_reset_cli` audit row.
+  Validated locally against a throwaway DB (correct password verifies, old one
+  rejected, unknown-username handled). Documented in `RECOVERY-INDEX.md`.
+
 ## [2026-06-15c] — Service Map zoom & out-of-region geocoding fix
 
 Deployed to production via PR #50 (merge commit `26ba94a`); Migration 35 runs at
