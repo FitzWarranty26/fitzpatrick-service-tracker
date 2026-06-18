@@ -82,6 +82,27 @@ _None._
 > deploy and does not affect existing rows. See `CHANGELOG.md` and
 > `DEPLOYMENT-LOG.md` for the full deploy record and rollback point.
 
+## Admin Password Recovery (manager lockout)
+
+If a user forgets their password, a **manager** resets it in-app: Team page →
+the user's row → **Reset Password** (or the Edit User dialog's password field).
+The user is forced to set a new password at next login.
+
+If **no working manager account** is available (admin lockout), use the
+committed recovery script from the **Render Shell** of the
+`fitzpatrick-service-tracker` web service:
+
+```bash
+node scripts/reset-password.mjs <username> <newPassword>
+```
+
+It reads `DB_PATH` (production `/var/data/warranty_tracker.db`), writes a
+timestamped `manual-backup-*.db` beside the live DB first, hashes with
+`bcryptjs` (cost 12), re-activates the account, sets `must_change_password = 1`,
+and writes a `password_reset_cli` audit row. Note: the per-IP login lockout is 5
+failed attempts; it clears on its own after the lockout window (or on app
+restart), so a "Too many login attempts" message is not a password problem.
+
 ## Recovery Procedure
 
 To reconstruct project state, follow these steps **in order**:

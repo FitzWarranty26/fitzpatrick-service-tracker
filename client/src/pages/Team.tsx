@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { PageHero } from "@/components/PageHero";
-import { Users, Plus, Shield, Wrench, Eye, Briefcase, Trash2 } from "lucide-react";
+import { Users, Plus, Shield, Wrench, Eye, Briefcase, Trash2, KeyRound } from "lucide-react";
 
 const ROLE_CONFIG = {
   manager: { label: "Manager", icon: Shield, color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800" },
@@ -35,8 +35,12 @@ export default function Team() {
   const [showDialog, setShowDialog] = useState(false);
   const [editUser, setEditUser] = useState<UserData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserData | null>(null);
+  const [resetTarget, setResetTarget] = useState<UserData | null>(null);
+  const [resetForm, setResetForm] = useState({ password: "", confirmPassword: "" });
+  const [resetError, setResetError] = useState("");
   const [form, setForm] = useState({ username: "", displayName: "", email: "", password: "", confirmPassword: "", role: "tech" });
   const [passwordError, setPasswordError] = useState("");
+  const isManager = currentUser?.role === "manager";
 
   const { data: users = [], isLoading } = useQuery<UserData[]>({
     queryKey: ["/api/users"],
@@ -47,7 +51,7 @@ export default function Team() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setShowDialog(false);
-      resetForm();
+      resetCreateEditForm();
       toast({ title: "User created" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -59,16 +63,49 @@ export default function Team() {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setEditUser(null);
       setShowDialog(false);
-      resetForm();
+      resetCreateEditForm();
       toast({ title: "User updated" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const resetForm = () => { setForm({ username: "", displayName: "", email: "", password: "", confirmPassword: "", role: "tech" }); setPasswordError(""); };
+  const resetCreateEditForm = () => { setForm({ username: "", displayName: "", email: "", password: "", confirmPassword: "", role: "tech" }); setPasswordError(""); };
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ id, password }: { id: number; password: string }) =>
+      apiRequest("PATCH", `/api/users/${id}`, { password }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      setResetTarget(null);
+      setResetForm({ password: "", confirmPassword: "" });
+      setResetError("");
+      toast({ title: "Password reset", description: "User must set a new password at next login." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const openReset = (user: UserData) => {
+    setResetForm({ password: "", confirmPassword: "" });
+    setResetError("");
+    setResetTarget(user);
+  };
+
+  const submitReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError("");
+    if (resetForm.password.length < 8) {
+      setResetError("Password must be at least 8 characters");
+      return;
+    }
+    if (resetForm.password !== resetForm.confirmPassword) {
+      setResetError("Passwords do not match");
+      return;
+    }
+    if (resetTarget) resetPasswordMutation.mutate({ id: resetTarget.id, password: resetForm.password });
+  };
 
   const openCreate = () => {
-    resetForm();
+    resetCreateEditForm();
     setEditUser(null);
     setShowDialog(true);
   };
@@ -185,6 +222,11 @@ export default function Team() {
                       </td>
                       <td className="p-3 text-right space-x-2">
                         <Button variant="ghost" size="sm" onClick={() => openEdit(user)}>Edit</Button>
+                        {isManager && user.active && (
+                          <Button variant="ghost" size="sm" onClick={() => openReset(user)} className="text-sky-600 hover:text-sky-800">
+                            <KeyRound className="h-3.5 w-3.5 mr-1" /> Reset Password
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => toggleActive(user)} className={user.active ? "text-amber-500 hover:text-amber-700" : "text-emerald-500 hover:text-emerald-700"}>
                           {user.active ? "Deactivate" : "Activate"}
                         </Button>
@@ -202,6 +244,36 @@ export default function Team() {
           </div>
         </div>
       )}
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!resetTarget} onOpenChange={open => { if (!open) { setResetTarget(null); setResetForm({ password: "", confirmPassword: "" }); setResetError(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Set a temporary password for <strong>{resetTarget?.displayName}</strong> ({resetTarget?.username}).
+              They will be required to choose a new password the next time they log in.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submitReset} className="space-y-4">
+            <div>
+              <label className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">New Password</label>
+              <Input type="password" value={resetForm.password} onChange={e => setResetForm({ ...resetForm, password: e.target.value })} autoComplete="new-password" placeholder="Min 8 characters" required />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Confirm Password</label>
+              <Input type="password" value={resetForm.confirmPassword} onChange={e => setResetForm({ ...resetForm, confirmPassword: e.target.value })} autoComplete="new-password" placeholder="Re-enter password" required />
+              {resetError && <p className="text-xs text-destructive mt-1">{resetError}</p>}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => { setResetTarget(null); setResetForm({ password: "", confirmPassword: "" }); setResetError(""); }}>Cancel</Button>
+              <Button type="submit" className="bg-[hsl(200,72%,40%)] hover:bg-[hsl(200,72%,35%)]" disabled={resetPasswordMutation.isPending}>
+                {resetPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
