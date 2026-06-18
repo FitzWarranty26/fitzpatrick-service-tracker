@@ -24,6 +24,26 @@ Copy this block for each new deployment:
 - **Notes:**           <migrations, env var changes, risks, follow-ups>
 ```
 
+## Deployments
+
+### 2026-06-18 — Admin password reset button + manager-lockout recovery script
+
+- **Date:**            2026-06-18 ~08:30 (America/Denver, MDT)
+- **Commit:**          `97b7b2b` (merge of PR #52, feat commit `8ea910f`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run check (tsc) pass; npm run build pass; CI
+                       check-and-build gate pass (43s); recovery script
+                       validated locally against a throwaway DB
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`
+- **Notes:**           No schema change, no migration. Adds manager-only per-row
+                       "Reset Password" button on the Team page (reuses
+                       `PATCH /api/users/:id`, UI-only) and committed
+                       `scripts/reset-password.mjs` Render-Shell escape hatch for
+                       full manager lockout. Relates to Issue #10. Approved by
+                       Kevin ("Build both and deploy", 2026-06-18).
+
 ## Environment Reference
 
 | Field             | Value                                                          |
