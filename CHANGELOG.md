@@ -8,6 +8,42 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [2026-06-24] — Assign Technician on service calls (dropdown, editable, prominent)
+
+Adds a first-class **assigned technician** to service calls. A technician can
+now be chosen directly when logging a New Service Call, changed later from the
+detail page, and is shown prominently instead of being implied only by a visit.
+Branch `feature/assign-technician`. Includes **Migration 37** (additive,
+nullable `service_calls.assigned_technician_id` column — no data backfill).
+Rollback anchor: `known-good-2026-06-12` → `e28492b`.
+
+### Added — Technician assignment captured, editable, and surfaced
+
+- **New Service Call form:** an **Assign Technician** dropdown now sits at the
+  top of the Scheduling card (options = active users with role tech / manager /
+  sales, plus an explicit *Unassigned*). The chosen technician is sent on
+  `POST /api/service-calls` as `assignedTechnicianId`.
+- **Editable after scheduling:** the **Service Call detail** page shows an
+  **Assigned Technician** row in Call Information and an editable dropdown in
+  edit mode; the change persists via `PATCH /api/service-calls/:id`. A prominent
+  **Technician** cell was added to the detail header KPI strip (now 7 cells) so
+  the assignment is visible at a glance rather than buried under Visits.
+- **Schema / persistence:** `shared/schema.ts` adds `assignedTechnicianId` to
+  `serviceCalls`. Unlike `createdBy`, it is intentionally **user-settable** on
+  both create and update, so it is **not** omitted from `insertServiceCallSchema`
+  — `POST` and `PATCH` accept it automatically and `createServiceCall` /
+  `updateServiceCall` persist it.
+- **List "Tech" column:** `getAllServiceCalls` now resolves
+  `primary_technician_id` / `primary_technician_name` as
+  `COALESCE(sc.assigned_technician_id, most-recent visit's technician)`. The
+  Service Calls list Tech column and the "My Calls" filter therefore reflect the
+  explicitly assigned technician, and fall back to the visit-derived technician
+  for legacy calls that predate the column.
+- **Migration 37:** `ALTER TABLE service_calls ADD COLUMN assigned_technician_id
+  INTEGER`. Additive, nullable, guarded by `columnExists` (idempotent); no
+  backfill — existing calls start NULL ("Unassigned") and keep their
+  visit-derived Tech value via the COALESCE fallback.
+
 ## [2026-06-24] — Service call creator attribution (capture, display, retroactive backfill)
 
 Adds first-class “who created this service call” tracking. Branch

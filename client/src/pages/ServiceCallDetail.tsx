@@ -746,6 +746,16 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     },
   });
   const createdByName = teamMembers.find(u => u.id === call?.createdBy)?.displayName ?? null;
+  // Assigned technician display name (Migration 37). Resolve against the active
+  // team list; if the assigned user is inactive/missing we fall back to the
+  // tech list, then null (renders as "Unassigned").
+  const assignedTechnicianId = (call as any)?.assignedTechnicianId ?? null;
+  const assignedTechnicianName =
+    assignedTechnicianId != null
+      ? teamMembers.find(u => u.id === assignedTechnicianId)?.displayName
+        ?? techUsers.find(u => u.id === assignedTechnicianId)?.displayName
+        ?? null
+      : null;
 
   // Wholesaler contacts for edit dropdown
   const { data: wholesalers = [] } = useQuery<{ id: number; companyName: string; contactName: string; phone: string | null }[]>({
@@ -1427,7 +1437,8 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </div>
 
         {/* ── KPI Strip ── */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 mt-5 pt-5 border-t border-border/50">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-3 md:gap-4 mt-5 pt-5 border-t border-border/50">
+          <KPICell label="Technician" value={assignedTechnicianName ?? "Unassigned"} />
           <KPICell label="Call Date" value={formatDate(call.callDate)} />
           <KPICell label="Scheduled" value={call.scheduledDate ? formatDate(call.scheduledDate) + (call.scheduledTime ? ` · ${formatTime(call.scheduledTime)}` : "") : "—"} />
           <KPICell label="Days Open" value={call.status === "Completed" ? "—" : `${daysOpen}d`} />
@@ -1607,6 +1618,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   </div>
                 )}
                 {createdByName && <DetailRow label="Created By" value={createdByName} />}
+                <DetailRow label="Assigned Technician" value={assignedTechnicianName ?? "Unassigned"} />
                 <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
                 {/* Follow-up Reminder */}
                 <div>
@@ -1672,6 +1684,22 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select team member…" /></SelectTrigger>
                     <SelectContent>
                       {teamMembers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Assigned Technician</label>
+                  <Select
+                    value={(() => {
+                      const v = (editData as any).assignedTechnicianId ?? (call as any).assignedTechnicianId;
+                      return v != null ? String(v) : "unassigned";
+                    })()}
+                    onValueChange={v => setEditData(d => ({ ...d, assignedTechnicianId: v === "unassigned" ? null : Number(v) } as any))}
+                  >
+                    <SelectTrigger className="h-8 text-sm" data-testid="edit-assigned-technician"><SelectValue placeholder="Select technician…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {techUsers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>

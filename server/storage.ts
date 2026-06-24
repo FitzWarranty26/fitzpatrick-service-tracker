@@ -679,6 +679,17 @@ if (!columnExists("service_calls", "coords_locked")) {
   }
 }
 
+// Migration 37: add assigned_technician_id to service_calls. Lets a user pick a
+// technician directly on the New Service Call form and edit it on the detail
+// page, instead of the tech only being implied by the most-recent visit. The
+// Service Calls list "Tech" column prefers this value and falls back to the
+// most-recent visit's technician for legacy calls (NULL here). Additive,
+// nullable column — no backfill, idempotent (guarded by columnExists).
+if (!columnExists("service_calls", "assigned_technician_id")) {
+  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN assigned_technician_id INTEGER`);
+  console.log("Migration 37: added assigned_technician_id column to service_calls");
+}
+
 // Migration 29: Add covering indexes for queries that scan tables fully.
 // These dramatically speed up the manager dashboard and detail pages once the
 // database has thousands of rows. All idempotent (IF NOT EXISTS).
@@ -882,7 +893,9 @@ export class SQLiteStorage implements IStorage {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     // Single query with subqueries for counts + rollups (tech, invoice) — eliminates N+1
-    // primary_technician_id = most-recent visit's technician (or NULL)
+    // primary_technician_id = the explicitly assigned technician
+    // (sc.assigned_technician_id, Migration 37) if set, else the most-recent
+    // visit's technician (legacy fallback), else NULL.
     // invoice_* = latest invoice (by issue_date) on this call (or NULL)
     const query = `
       SELECT sc.*,
@@ -890,16 +903,22 @@ export class SQLiteStorage implements IStorage {
         (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count,
         (SELECT COUNT(*) FROM service_call_products scp WHERE scp.service_call_id = sc.id AND scp.voided = 0) AS product_count,
         (SELECT COUNT(*) FROM service_call_visits v WHERE v.service_call_id = sc.id) AS visit_count,
-        (
-          SELECT v.technician_id FROM service_call_visits v
-          WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
-          ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+        COALESCE(
+          sc.assigned_technician_id,
+          (
+            SELECT v.technician_id FROM service_call_visits v
+            WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
+            ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+          )
         ) AS primary_technician_id,
-        (
-          SELECT u.display_name FROM service_call_visits v
-          LEFT JOIN users u ON u.id = v.technician_id
-          WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
-          ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+        COALESCE(
+          (SELECT u.display_name FROM users u WHERE u.id = sc.assigned_technician_id LIMIT 1),
+          (
+            SELECT u.display_name FROM service_call_visits v
+            LEFT JOIN users u ON u.id = v.technician_id
+            WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
+            ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+          )
         ) AS primary_technician_name,
         (
           SELECT u.display_name FROM users u WHERE u.id = sc.created_by LIMIT 1
@@ -999,6 +1018,7 @@ export class SQLiteStorage implements IStorage {
       primaryTechnicianName: row.primary_technician_name ?? null,
       createdBy: row.created_by ?? null,
       createdByName: row.created_by_name ?? null,
+      assignedTechnicianId: row.assigned_technician_id ?? null,
       invoiceId: row.invoice_id ?? null,
       invoiceNumber: row.invoice_number ?? null,
       invoiceStatus: row.invoice_status ?? null,
@@ -1458,6 +1478,7 @@ export class SQLiteStorage implements IStorage {
       primaryTechnicianName: null,
       createdBy: (row as any).created_by ?? null,
       createdByName: null,
+      assignedTechnicianId: (row as any).assigned_technician_id ?? null,
       invoiceId: null,
       invoiceNumber: null,
       invoiceStatus: null,
@@ -1580,6 +1601,7 @@ export class SQLiteStorage implements IStorage {
       primaryTechnicianName: null,
       createdBy: (row as any).created_by ?? null,
       createdByName: null,
+      assignedTechnicianId: (row as any).assigned_technician_id ?? null,
       invoiceId: null,
       invoiceNumber: null,
       invoiceStatus: null,
@@ -1678,6 +1700,7 @@ export class SQLiteStorage implements IStorage {
       parentCallId: row.parent_call_id,
       isTest: row.is_test,
       createdBy: row.created_by ?? null,
+      assignedTechnicianId: row.assigned_technician_id ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       completedDate: row.completed_date ?? null,
@@ -1881,6 +1904,7 @@ export class SQLiteStorage implements IStorage {
       primaryTechnicianName: null,
       createdBy: (row as any).created_by ?? null,
       createdByName: null,
+      assignedTechnicianId: (row as any).assigned_technician_id ?? null,
       invoiceId: null,
       invoiceNumber: null,
       invoiceStatus: null,

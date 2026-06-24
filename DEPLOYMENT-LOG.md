@@ -26,6 +26,24 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-06-24 — Assign Technician on service calls (dropdown + editable + prominent)
+
+- **Date:**            2026-06-24 (America/Denver, MDT) — to be merged after green CI (check-and-build).
+- **Commit:**          `feature/assign-technician` (PR pending; merge commit to be recorded post-merge)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run check (tsc) ✓, npm run build ✓, local migration smoke test ✓ (Migration 37 idempotency + COALESCE tech-resolution verified)
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`
+- **Notes:**           Migration 37 = additive, nullable `service_calls.assigned_technician_id`
+  column (guarded by `columnExists`, idempotent; **no data backfill**). Adds an
+  **Assign Technician** dropdown to the New Service Call form, an editable
+  Assigned Technician control on the detail page, and a prominent Technician
+  KPI cell. `assignedTechnicianId` is user-settable on `POST` and `PATCH`
+  (kept in `insertServiceCallSchema`). The list "Tech" column / "My Calls"
+  filter now resolve `COALESCE(assigned_technician_id, most-recent visit tech)`,
+  preserving legacy behavior for older calls. No customer-facing data exposed.
+
 ### 2026-06-24 — Service call creator attribution (capture + display + retroactive backfill)
 
 - **Date:**            2026-06-24 (America/Denver, MDT) — merged after green CI (check-and-build ✓). Post-deploy smoke: root 200, /api/service-calls 401 (auth-gated).

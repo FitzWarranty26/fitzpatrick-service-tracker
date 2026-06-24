@@ -66,6 +66,13 @@ export const serviceCalls = sqliteTable("service_calls", {
   // (Migration 11 added the column; this is when we started writing + showing
   // it). Migration 36 backfills existing rows from the audit log.
   createdBy: integer("created_by"),
+  // Technician assigned to this service call (FK to users.id). Set on the New
+  // Service Call form and editable on the detail page (Migration 37 added the
+  // column). Unlike created_by this is intentionally user-settable on both
+  // create and update, so it is NOT omitted from insertServiceCallSchema.
+  // The Service Calls list "Tech" column prefers this value, falling back to
+  // the most-recent visit's technician for legacy calls that pre-date it.
+  assignedTechnicianId: integer("assigned_technician_id"),
   createdAt: text("created_at").notNull(),
   // Set on every update so optimistic concurrency works. Migration 28
   // backfills it to created_at for pre-existing rows.
