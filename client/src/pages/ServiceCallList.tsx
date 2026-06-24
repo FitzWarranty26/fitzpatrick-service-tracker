@@ -15,6 +15,7 @@ import {
   PlusCircle, Search, SlidersHorizontal, X, ChevronRight, ClipboardList,
   MapPin, ArrowRight, Calendar as CalendarIcon, ChevronUp, ChevronDown,
   Clock, Wrench, Package as PackageIcon, AlertTriangle, FileText, DollarSign, Flag,
+  User as UserIcon,
 } from "lucide-react";
 import { MANUFACTURERS, SERVICE_STATUSES, getWarrantyStatus } from "@shared/schema";
 import type { ServiceCall } from "@shared/schema";
@@ -28,6 +29,7 @@ interface ServiceCallRow extends ServiceCall {
   visitCount: number;
   primaryTechnicianId: number | null;
   primaryTechnicianName: string | null;
+  createdByName: string | null;
   invoiceId: number | null;
   invoiceNumber: string | null;
   invoiceStatus: string | null;     // Draft | Sent | Paid | Overdue
@@ -620,6 +622,13 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                       {call.jobSiteCity ? ` · ${call.jobSiteCity}${call.jobSiteState ? `, ${call.jobSiteState}` : ""}` : ""}
                     </span>
                   </div>
+                  <div
+                    className="flex items-center gap-1 mt-1 text-[10.5px] text-muted-foreground/80 truncate"
+                    data-testid={`row-created-by-${call.id}`}
+                  >
+                    <UserIcon className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate">Logged by {call.createdByName || "Unknown"}</span>
+                  </div>
                 </div>
 
                 {/* Equipment */}
@@ -698,6 +707,10 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
                       {call.jobSiteName || (call.callType === "commercial" ? "Commercial" : "Residential")}
                       {call.jobSiteCity ? ` · ${call.jobSiteCity}${call.jobSiteState ? `, ${call.jobSiteState}` : ""}` : ""}
                     </span>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1 text-[10.5px] text-muted-foreground/80">
+                    <UserIcon className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate">Logged by {call.createdByName || "Unknown"}</span>
                   </div>
                   <div className="grid grid-cols-3 gap-2 mt-2.5 pt-2.5 border-t border-border/30">
                     <div>

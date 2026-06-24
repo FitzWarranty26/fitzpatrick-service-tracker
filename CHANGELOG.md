@@ -8,6 +8,46 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [2026-06-24] — Service call creator attribution (capture, display, retroactive backfill)
+
+Adds first-class “who created this service call” tracking. Branch
+`feature/service-call-creator-attribution`. Includes **Migration 36** (a
+one-time, idempotent data backfill — no schema/column change). Rollback anchor:
+`known-good-2026-06-12` → `e28492b`.
+
+### Added — Creator captured, shown, and recoverable for past calls
+
+Every new service call now records the **creator** (the authenticated user who
+logged it), it is shown in the UI, and existing calls are backfilled.
+
+- **Capture (going forward):** `POST /api/service-calls` now stamps
+  `service_calls.created_by` from the authenticated session
+  (`req.user.id`) — never from the request body. The `created_by` column has
+  existed since Migration 11 but was never written; this is the first code that
+  populates it. `shared/schema.ts` now exposes `createdBy`; it is omitted from
+  `insertServiceCallSchema` so it cannot be spoofed via the create body.
+- **Display:** the **Service Call list** (desktop rows + mobile cards) shows a
+  subtle “Logged by {name}” line under the customer/site; the **Service Call
+  detail** page shows “Created By {name}” in Call Information and lets a manager
+  reassign the creator from the edit view. `GET /api/service-calls` resolves the
+  creator’s display name (`created_by_name`) via a `users` subquery, and
+  `GET /api/service-calls/:id` returns `createdByName`. The existing **Reports →
+  Team Workload** section (which groups calls by `created_by`) now populates
+  because the column finally has data.
+- **Retroactive backfill (Migration 36):** for any existing call with a NULL
+  creator, recovers the creator from the audit log — the earliest
+  `created_call` / `service_call` entry’s `user_id` (`audit_log_system`). Only
+  fills NULL rows, never overwrites an existing value, and is idempotent (skips
+  already-attributed rows on every boot). Calls created before audit logging
+  existed remain NULL and surface gracefully as “Unknown.”
+- **Manager reassignment:** `PATCH /api/service-calls/:id` accepts an explicit
+  `createdBy` (numeric user id, or null to clear) so the detail page’s “Created
+  By” editor keeps working even though `createdBy` is omitted from the insert
+  schema.
+
+No customer-facing data is exposed; creator is an internal team attribution
+only. `npm run check` and `npm run build` pass.
+
 ## [2026-06-24] — Fix visit count + total hours on Service Call detail header
 
 Deployed to production via PR #55 (merge commit `7970b4f`, fix commit

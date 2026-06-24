@@ -64,7 +64,14 @@ historical references only.
 
 ## In Progress (not yet deployed)
 
-_None._
+- **Service call creator attribution** (`feature/service-call-creator-attribution`).
+  Captures the creator (`service_calls.created_by`, stamped from the session on
+  `POST`), shows "Logged by {name}" on the call list + "Created By" on the detail
+  page, and retroactively backfills existing calls from the audit log
+  (**Migration 36**, idempotent data-only backfill — no schema change). Reports →
+  Team Workload now populates. `npm run check` + `npm run build` pass; local
+  migration smoke test verified. Awaiting green CI + merge to `master` (Render
+  auto-deploys). Rollback: `known-good-2026-06-12` → `e28492b`.
 
 ## Recently Deployed
 
