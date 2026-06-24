@@ -28,8 +28,8 @@ Copy this block for each new deployment:
 
 ### 2026-06-24 — Service call creator attribution (capture + display + retroactive backfill)
 
-- **Date:**            2026-06-24 (America/Denver, MDT) — merged after green CI
-- **Commit:**          PR from `feature/service-call-creator-attribution` (merge hash recorded on merge)
+- **Date:**            2026-06-24 (America/Denver, MDT) — merged after green CI (check-and-build ✓). Post-deploy smoke: root 200, /api/service-calls 401 (auth-gated).
+- **Commit:**          `4ec990d` (merge of PR #57, feature commit `24416b6`)
 - **Environment:**     production
 - **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
 - **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)

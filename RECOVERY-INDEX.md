@@ -24,7 +24,7 @@ repository, trust the repository.
 | Visibility      | Public                                                                 |
 | Description     | Warranty service tracking app for Fitzpatrick Warranty Service, LLC    |
 | Production URL  | https://warranty.fitzpatricksalescrm.com/#/ (confirmed 2026-06-11)     |
-| Current deploy  | `7970b4f` — visit-count + total-hours header fix (PR #55, fix commit `eba52ae`) on production 2026-06-24; client-only, no schema/migration. Prior `97b7b2b` (admin password reset + recovery script, PR #52, 2026-06-18), `26ba94a` (Service Map zoom/geocode fix, PR #50, Migration 35), `e28492b` (Issue #5 CI gate, PR #42, rollback anchor `known-good-2026-06-12`). |
+| Current deploy  | `4ec990d` — service call creator attribution (PR #57, feature commit `24416b6`) on production 2026-06-24; Migration 36 = idempotent data-only backfill of `created_by` (no schema change). Prior `7970b4f` — visit-count + total-hours header fix (PR #55, fix commit `eba52ae`) on production 2026-06-24; client-only, no schema/migration. Prior `97b7b2b` (admin password reset + recovery script, PR #52, 2026-06-18), `26ba94a` (Service Map zoom/geocode fix, PR #50, Migration 35), `e28492b` (Issue #5 CI gate, PR #42, rollback anchor `known-good-2026-06-12`). |
 | Auto-Deploy     | On Commit — merges to `master` trigger a Render deploy automatically    |
 | Persistent disk | `DB_PATH=/var/data/warranty_tracker.db` on the `/var/data` persistent disk, **10 GB** (grown from 1 GB on 2026-06-12, Issue #4; ~14% used). Holds the live DB + on-disk backups. `render.yaml` declares plan/disk/DB_PATH. |
 | Backups         | Render Cron Job `fitzpatrick-service-tracker-backup` (`crn-d8m2sn28qa3s73b0uqm0`), every 12h (`0 6,18 * * *` UTC), POSTs `/api/backup`. Files: `backup-am/pm.db` + `backup-{mon..sun}.db` on `/var/data`. Verified working + restorable 2026-06-12. Procedure: `ROLLBACK.md` §6. |
@@ -64,16 +64,15 @@ historical references only.
 
 ## In Progress (not yet deployed)
 
-- **Service call creator attribution** (`feature/service-call-creator-attribution`).
-  Captures the creator (`service_calls.created_by`, stamped from the session on
-  `POST`), shows "Logged by {name}" on the call list + "Created By" on the detail
-  page, and retroactively backfills existing calls from the audit log
-  (**Migration 36**, idempotent data-only backfill — no schema change). Reports →
-  Team Workload now populates. `npm run check` + `npm run build` pass; local
-  migration smoke test verified. Awaiting green CI + merge to `master` (Render
-  auto-deploys). Rollback: `known-good-2026-06-12` → `e28492b`.
+_None._
 
 ## Recently Deployed
+
+| Date       | Branch                              | Summary |
+| ---------- | ----------------------------------- | ------- |
+| 2026-06-24 | `feature/service-call-creator-attribution` | **Service call creator attribution** (PR #57, merge `4ec990d`). Stamps `service_calls.created_by` from the session on create; shows "Logged by {name}" on the call list and "Created By" on the detail page (manager-reassignable); resolves `created_by_name`/`createdByName` in the list/detail APIs; **Migration 36** idempotently backfills existing calls' creators from `audit_log_system` `created_call` entries (NULL-only, never overwrites). Reports → Team Workload now populates. **Merged to `master` 2026-06-24 after green CI** — Render auto-deploy. Post-deploy smoke OK (root 200; /api/service-calls 401/auth-gated). Rollback: `known-good-2026-06-12` → `e28492b`. |
+
+<!-- legacy table below retained -->
 
 | Date       | Branch                              | Summary                                                                                                                            | State                                                  |
 | ---------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
