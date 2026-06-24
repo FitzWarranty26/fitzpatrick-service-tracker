@@ -30,7 +30,7 @@ import type { ServiceCall, Contact } from "@shared/schema";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Camera, Plus, Trash2, ChevronLeft, Save, WifiOff, ArrowLeft, UserPlus, X, FilePlus,
-  Home, Building2, Phone, Video, User, CalendarDays, ClipboardList, Wrench, Settings,
+  Home, Building2, Phone, Video, User, CalendarDays, ClipboardList, Wrench, Settings, UserCog,
 } from "lucide-react";
 import { SortablePhotoGrid } from "@/components/SortablePhotoGrid";
 import { NewCallSidebar } from "@/components/NewCallSidebar";
@@ -82,6 +82,7 @@ const formSchema = z.object({
   scheduledDate: z.string().optional().nullable(),
   scheduledTime: z.string().optional().nullable(),
   followUpDate: z.string().optional().nullable(),
+  assignedTechnicianId: z.number().optional().nullable(),
   parentCallId: z.number().optional().nullable(),
   wholesalerName: z.string().optional().nullable(),
   wholesalerPhone: z.string().optional().nullable(),
@@ -201,6 +202,10 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       return res.json();
     },
   });
+  // Technician dropdown options — same role set the detail page uses for the
+  // visit technician picker (tech / manager / sales). teamMembers is already
+  // active-only (server filters on active).
+  const techUsers = teamMembers.filter(u => ["tech", "manager", "sales"].includes(u.role));
 
   // Fetch parent call data for follow-up
   const { data: parentCall } = useQuery<ServiceCall & { photos: any[]; parts: any[] }>({
@@ -273,6 +278,7 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       scheduledDate: "",
       scheduledTime: "",
       followUpDate: "",
+      assignedTechnicianId: null,
       parentCallId: null,
       wholesalerName: "",
       wholesalerPhone: "",
@@ -782,6 +788,33 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground flex items-center gap-2"><span className="inline-block w-[3px] h-3.5 bg-amber-500 rounded-sm" />Scheduling</CardTitle></CardHeader>
             <CardContent className="space-y-4">
+              {/* Assign Technician — prominent, top of the Scheduling card so it's
+                  not buried. Editable later on the detail page. */}
+              <FormField control={form.control} name="assignedTechnicianId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1.5">
+                    <UserCog className="w-4 h-4 text-amber-500" />
+                    Assign Technician
+                  </FormLabel>
+                  <Select
+                    value={field.value != null ? String(field.value) : "unassigned"}
+                    onValueChange={v => field.onChange(v === "unassigned" ? null : Number(v))}
+                  >
+                    <FormControl>
+                      <SelectTrigger data-testid="select-assigned-technician">
+                        <SelectValue placeholder="Select technician…" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {techUsers.map(u => (
+                        <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField control={form.control} name="scheduledDate" render={({ field }) => (
                   <FormItem>
