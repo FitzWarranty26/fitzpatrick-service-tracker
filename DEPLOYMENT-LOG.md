@@ -28,8 +28,8 @@ Copy this block for each new deployment:
 
 ### 2026-06-24 — Assign Technician on service calls (dropdown + editable + prominent)
 
-- **Date:**            2026-06-24 (America/Denver, MDT) — to be merged after green CI (check-and-build).
-- **Commit:**          `feature/assign-technician` (PR pending; merge commit to be recorded post-merge)
+- **Date:**            2026-06-24 (America/Denver, MDT) — merged after green CI (check-and-build ✓, 41s).
+- **Commit:**          `5fbdf88` (merge of PR #59, feature commit `36bffcb`)
 - **Environment:**     production
 - **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
 - **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
