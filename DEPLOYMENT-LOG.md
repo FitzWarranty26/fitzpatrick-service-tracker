@@ -26,6 +26,26 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-06-24 — Fix visit count + total hours on Service Call detail header
+
+- **Date:**            2026-06-24 ~08:55 (America/Denver, MDT)
+- **Commit:**          `7970b4f` (merge of PR #55, fix commit `eba52ae`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run check (tsc) pass; npm run build pass; CI
+                       check-and-build gate pass (42s)
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`
+- **Notes:**           Client-only fix to `client/src/pages/ServiceCallDetail.tsx`.
+                       Header VISITS KPI + Visits tab badge now use
+                       `visits.length + 1` (return visits + original Visit 1)
+                       instead of the never-populated `call.visits`; HOURS ON
+                       JOB now sums `call.hoursOnJob` + each return visit's
+                       hours. Fixes Call #65 showing 1 visit / 7h instead of 2
+                       visits / 11h. No schema change, no migration, no backend
+                       change. Approved by Kevin ("Branch, PR, then deploy",
+                       2026-06-24).
+
 ### 2026-06-18 — Admin password reset button + manager-lockout recovery script
 
 - **Date:**            2026-06-18 ~08:30 (America/Denver, MDT)

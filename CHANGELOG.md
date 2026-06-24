@@ -8,6 +8,34 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [2026-06-24] — Fix visit count + total hours on Service Call detail header
+
+Deployed to production via PR #55 (merge commit `7970b4f`, fix commit
+`eba52ae`). No schema change, no migration. Rollback anchor:
+`known-good-2026-06-12` → `e28492b`.
+
+### Fixed — Service Call detail header undercounted visits and hours
+
+On the Service Call detail screen, the header **VISITS** KPI and the **Visits**
+tab badge always read **1**, and **HOURS ON JOB** showed only the original
+visit's hours, even when return visits existed. Reported on Call #65 (Visit 1 =
+7h, return Visit 2 = 4h): header showed `1 visit / 7h` and the tab badge showed
+`1` — all incorrect.
+
+Root cause: the count was `(call.visits?.length || 0) + 1`, but
+`GET /api/service-calls/:id` (`getServiceCallById`) never populates a `visits`
+array on the call object (it returns only `photos`, `parts`, `activities`,
+`products`), so the value was hardcoded to 1. The Hours KPI likewise read only
+`call.hoursOnJob`, ignoring return-visit hours.
+
+Fix (client-only, `client/src/pages/ServiceCallDetail.tsx`): compute both from
+the already-loaded `visits` query array — `visitCount = visits.length + 1`
+(return visits + the original Visit 1, which drives both the header KPI and the
+tab badge) and `totalHoursOnJob = call.hoursOnJob + sum(visits[].hoursOnJob)`,
+formatted to drop a trailing `.0`. Call #65 now correctly shows **2 visits**
+and **11h**. Single-visit calls are unchanged; a scheduled return visit with no
+logged hours counts toward visits but not hours. No backend or schema change.
+
 ## [2026-06-18] — Admin password reset button + manager-lockout recovery script
 
 No schema change, no migration. Rollback anchor: `known-good-2026-06-12` →
