@@ -1265,7 +1265,28 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     const start = new Date(call.callDate + "T00:00:00").getTime();
     return Math.max(0, Math.floor((Date.now() - start) / 86400000));
   })();
-  const visitCount = (call.visits?.length || 0) + 1;
+  // Total visits = the original on-site work (Visit 1, stored on the parent
+  // `call`) + every return visit (Visit 2+, rows in `service_call_visits`,
+  // loaded into the `visits` array above). `call.visits` is NOT populated by
+  // GET /api/service-calls/:id, so the old `(call.visits?.length || 0) + 1`
+  // was always 1 — drives both the header KPI and the Visits tab badge.
+  const visitCount = visits.length + 1;
+
+  // Total hours on job = the parent call's hours (Visit 1) + the hours logged
+  // on each return visit. The header previously showed only the Visit 1 hours.
+  const totalHoursOnJob = (() => {
+    const base = parseFloat(call.hoursOnJob ?? "") || 0;
+    const returnHours = visits.reduce(
+      (sum, v) => sum + (parseFloat(v.hoursOnJob ?? "") || 0),
+      0,
+    );
+    return base + returnHours;
+  })();
+  // Trim a trailing ".0" so whole numbers read "11h" not "11.0h".
+  const totalHoursLabel =
+    totalHoursOnJob > 0
+      ? `${Number.isInteger(totalHoursOnJob) ? totalHoursOnJob : totalHoursOnJob.toFixed(1)}h`
+      : "\u2014";
   const photoCount = call.photos?.length || 0;
   const partsCount = call.parts?.length || 0;
   const activityCount = call.activities?.length || 0;
@@ -1411,7 +1432,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
           <KPICell label="Scheduled" value={call.scheduledDate ? formatDate(call.scheduledDate) + (call.scheduledTime ? ` · ${formatTime(call.scheduledTime)}` : "") : "—"} />
           <KPICell label="Days Open" value={call.status === "Completed" ? "—" : `${daysOpen}d`} />
           <KPICell label="Visits" value={String(visitCount)} />
-          <KPICell label="Hours on Job" value={call.hoursOnJob ? `${call.hoursOnJob}h` : "—"} />
+          <KPICell label="Hours on Job" value={totalHoursLabel} />
           <KPICell label="Photos" value={String(photoCount)} />
         </div>
       </div>
