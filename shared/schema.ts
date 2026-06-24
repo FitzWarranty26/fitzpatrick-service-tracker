@@ -62,6 +62,10 @@ export const serviceCalls = sqliteTable("service_calls", {
   longitude: text("longitude"),
   parentCallId: integer("parent_call_id"),
   isTest: integer("is_test").default(0),
+  // User who created this service call (FK to users.id). Populated on create
+  // (Migration 11 added the column; this is when we started writing + showing
+  // it). Migration 36 backfills existing rows from the audit log.
+  createdBy: integer("created_by"),
   createdAt: text("created_at").notNull(),
   // Set on every update so optimistic concurrency works. Migration 28
   // backfills it to created_at for pre-existing rows.
@@ -87,6 +91,9 @@ export const insertServiceCallSchema = createInsertSchema(serviceCalls).omit({
   createdAt: true,
   updatedAt: true,
   completedDate: true,
+  // createdBy is stamped server-side from the authenticated user, never from
+  // the client request body.
+  createdBy: true,
 });
 
 export type InsertServiceCall = z.infer<typeof insertServiceCallSchema>;

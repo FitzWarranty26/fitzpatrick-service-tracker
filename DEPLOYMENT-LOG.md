@@ -26,6 +26,24 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-06-24 — Service call creator attribution (capture + display + retroactive backfill)
+
+- **Date:**            2026-06-24 (America/Denver, MDT) — merged after green CI
+- **Commit:**          PR from `feature/service-call-creator-attribution` (merge hash recorded on merge)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run check (tsc) ✓, npm run build ✓, local migration smoke test ✓ (backfill + idempotency verified)
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`
+- **Notes:**           Migration 36 = one-time idempotent **data backfill** of
+  `service_calls.created_by` from `audit_log_system` (`created_call` entries);
+  no column/schema change (the `created_by` column has existed since Migration
+  11). `POST /api/service-calls` now stamps the creator from the session;
+  `PATCH` accepts an explicit `createdBy` for manager reassignment. UI: "Logged
+  by" line on the call list + "Created By" on the detail page; Reports → Team
+  Workload now populates. Backfill only fills NULL rows, never overwrites, and
+  is safe to re-run. No customer-facing data exposed.
+
 ### 2026-06-24 — Fix visit count + total hours on Service Call detail header
 
 - **Date:**            2026-06-24 ~08:55 (America/Denver, MDT)

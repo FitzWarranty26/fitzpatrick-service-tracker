@@ -641,6 +641,44 @@ if (!columnExists("service_calls", "coords_locked")) {
   }
 }
 
+// Migration 36: backfill service_calls.created_by from the audit log. The
+// created_by column has existed since Migration 11 but was never written, so
+// every existing call has a NULL creator. Call creation has been audit-logged
+// (action='created_call', entity_type='service_call', entity_id=<call id>)
+// with the acting user's id since the audit system shipped, so we can recover
+// the original creator for any call that has such an entry. We take the
+// EARLIEST created_call entry per call (the actual creation event) and only
+// fill rows where created_by IS NULL and the audit user_id is known — never
+// overwriting a value once set. Calls created before audit logging existed
+// stay NULL and surface as "Unknown" in the UI. Idempotent: once a row has a
+// creator it is skipped on every subsequent boot.
+{
+  const backfilled = sqlite.prepare(`
+    UPDATE service_calls
+    SET created_by = (
+      SELECT a.user_id
+      FROM audit_log_system a
+      WHERE a.action = 'created_call'
+        AND a.entity_type = 'service_call'
+        AND a.entity_id = service_calls.id
+        AND a.user_id IS NOT NULL
+      ORDER BY a.created_at ASC, a.id ASC
+      LIMIT 1
+    )
+    WHERE created_by IS NULL
+      AND EXISTS (
+        SELECT 1 FROM audit_log_system a
+        WHERE a.action = 'created_call'
+          AND a.entity_type = 'service_call'
+          AND a.entity_id = service_calls.id
+          AND a.user_id IS NOT NULL
+      )
+  `).run();
+  if (backfilled.changes > 0) {
+    console.log(`Migration 36: backfilled created_by for ${backfilled.changes} service_call row(s) from audit log`);
+  }
+}
+
 // Migration 29: Add covering indexes for queries that scan tables fully.
 // These dramatically speed up the manager dashboard and detail pages once the
 // database has thousands of rows. All idempotent (IF NOT EXISTS).
@@ -675,6 +713,7 @@ export interface ServiceCallWithCounts extends ServiceCall {
   // Roll-up fields for the operational list view
   primaryTechnicianId: number | null;     // technician on most-recent visit
   primaryTechnicianName: string | null;
+  createdByName: string | null;            // display name of the user who created the call
   visitCount: number;                      // # of return visits
   invoiceId: number | null;                // latest invoice on this call
   invoiceNumber: string | null;
@@ -684,6 +723,7 @@ export interface ServiceCallWithCounts extends ServiceCall {
 }
 
 export interface ServiceCallFull extends ServiceCall {
+  createdByName: string | null;            // display name of the user who created the call
   photos: Photo[];
   parts: Part[];
   activities: ActivityLog[];
@@ -862,6 +902,9 @@ export class SQLiteStorage implements IStorage {
           ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
         ) AS primary_technician_name,
         (
+          SELECT u.display_name FROM users u WHERE u.id = sc.created_by LIMIT 1
+        ) AS created_by_name,
+        (
           SELECT i.id FROM invoices i
           WHERE i.service_call_id = sc.id
           ORDER BY i.issue_date DESC, i.id DESC LIMIT 1
@@ -954,6 +997,8 @@ export class SQLiteStorage implements IStorage {
       visitCount: row.visit_count ?? 0,
       primaryTechnicianId: row.primary_technician_id ?? null,
       primaryTechnicianName: row.primary_technician_name ?? null,
+      createdBy: row.created_by ?? null,
+      createdByName: row.created_by_name ?? null,
       invoiceId: row.invoice_id ?? null,
       invoiceNumber: row.invoice_number ?? null,
       invoiceStatus: row.invoice_status ?? null,
@@ -972,12 +1017,21 @@ export class SQLiteStorage implements IStorage {
     const callParts = db.select().from(partsUsed).where(eq(partsUsed.serviceCallId, id)).all();
     const callActivities = db.select().from(activityLog).where(eq(activityLog.serviceCallId, id)).all();
     const callProducts = this.getProductsByServiceCallId(id);
-    return { ...call, photos: callPhotos, parts: callParts, activities: callActivities, products: callProducts };
+    // Resolve the creator's display name (if the call has a creator and that
+    // user still exists). Surfaces "Created by …" on the detail page header.
+    let createdByName: string | null = null;
+    if ((call as any).createdBy) {
+      const u = sqlite
+        .prepare(`SELECT display_name FROM users WHERE id = ? LIMIT 1`)
+        .get((call as any).createdBy) as any;
+      createdByName = u?.display_name ?? null;
+    }
+    return { ...call, createdByName, photos: callPhotos, parts: callParts, activities: callActivities, products: callProducts };
   }
 
-  createServiceCall(call: InsertServiceCall): ServiceCall {
+  createServiceCall(call: InsertServiceCall, createdBy?: number | null): ServiceCall {
     const now = new Date().toISOString();
-    return db.insert(serviceCalls).values({ ...call, createdAt: now }).returning().get();
+    return db.insert(serviceCalls).values({ ...call, createdBy: createdBy ?? null, createdAt: now } as any).returning().get();
   }
 
   updateServiceCall(id: number, call: Partial<InsertServiceCall>): ServiceCall | undefined {
@@ -1402,6 +1456,8 @@ export class SQLiteStorage implements IStorage {
       visitCount: 0,
       primaryTechnicianId: null,
       primaryTechnicianName: null,
+      createdBy: (row as any).created_by ?? null,
+      createdByName: null,
       invoiceId: null,
       invoiceNumber: null,
       invoiceStatus: null,
@@ -1522,6 +1578,8 @@ export class SQLiteStorage implements IStorage {
       visitCount: 0,
       primaryTechnicianId: null,
       primaryTechnicianName: null,
+      createdBy: (row as any).created_by ?? null,
+      createdByName: null,
       invoiceId: null,
       invoiceNumber: null,
       invoiceStatus: null,
@@ -1619,6 +1677,7 @@ export class SQLiteStorage implements IStorage {
       longitude: row.longitude,
       parentCallId: row.parent_call_id,
       isTest: row.is_test,
+      createdBy: row.created_by ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       completedDate: row.completed_date ?? null,
@@ -1820,6 +1879,8 @@ export class SQLiteStorage implements IStorage {
       visitCount: 0,
       primaryTechnicianId: null,
       primaryTechnicianName: null,
+      createdBy: (row as any).created_by ?? null,
+      createdByName: null,
       invoiceId: null,
       invoiceNumber: null,
       invoiceStatus: null,

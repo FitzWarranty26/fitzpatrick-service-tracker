@@ -682,7 +682,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.post("/api/service-calls", requireEditor, (req: any, res) => {
     try {
       const data = insertServiceCallSchema.parse(req.body);
-      const call = storage.createServiceCall(data);
+      // Stamp the creator from the authenticated session (never trust the body).
+      const call = storage.createServiceCall(data, req.user?.id ?? null);
 
       // Multi-product: if the client sent a `products` array, persist each as a
       // product row (productIndex assigned sequentially by storage). Otherwise
@@ -809,7 +810,23 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }
       }
 
-      const data = insertServiceCallSchema.partial().parse(req.body);
+      const data: any = insertServiceCallSchema.partial().parse(req.body);
+
+      // createdBy is intentionally omitted from insertServiceCallSchema (it is
+      // stamped server-side at creation, never trusted from the body on POST).
+      // On PATCH, however, a manager can deliberately reassign the creator from
+      // the detail page's "Created By" editor, so accept it explicitly here when
+      // present and valid (a numeric user id, or null to clear).
+      if (Object.prototype.hasOwnProperty.call(req.body, "createdBy")) {
+        const cb = req.body.createdBy;
+        if (cb === null || cb === "") {
+          data.createdBy = null;
+        } else if (typeof cb === "number" && Number.isInteger(cb)) {
+          data.createdBy = cb;
+        } else if (typeof cb === "string" && /^\d+$/.test(cb)) {
+          data.createdBy = Number(cb);
+        }
+      }
 
       // If this PATCH is just toggling the internal flag, capture a dedicated
       // audit entry so a manager can later see who flagged what when.
