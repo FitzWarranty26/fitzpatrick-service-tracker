@@ -26,6 +26,40 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-07-16 — Fix service call description wiped on create (multi-product sync)
+
+- **Date:**            2026-07-16 (America/Denver, MDT)
+- **Commit:**          `87463c0` (merge of PR #61, fix commit `3e292c2b`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run check (tsc) — PASS; npm run build — PASS
+- **Rollback point:**  `known-good-2026-06-05` → `44e91ce` (deeper baseline
+                       `known-good-2026-06-12` → `e28492b`)
+- **Notes:**           No schema change, no migration. Server-only fix to
+                       `POST /api/service-calls` (`server/routes.ts`). Fixes a bug
+                       where a new service call's `issue_description` (and
+                       diagnosis / resolution / claim fields) was wiped to NULL at
+                       create time via the multi-product `products[]` path: the New
+                       Service Call form sends only identity fields per product, so
+                       `syncLegacyFromProduct()` copied Product 1's absent narrative
+                       fields back onto the parent `service_calls` row, overwriting
+                       the text `createServiceCall` had just stored. The if-branch
+                       now merges the call-level narrative/claim fields onto Product
+                       1, making the legacy sync idempotent. Also fixes the
+                       offline-sync replay path and any direct API caller posting
+                       identity-only products. Root cause detail in `bug-findings.md`.
+                       **Post-deploy verification:** app confirmed up (sign-in
+                       screen serving) at warranty.fitzpatricksalescrm.com.
+  - **Follow-up — data cleanup PENDING:** real service calls **#41, #85, #86** were
+    created through the buggy path and have blank (`NULL`) descriptions. The text
+    is **NOT recoverable** (it was never stored on the product row either) and must
+    be **manually re-entered**. (Call #42 was `is_test = 1` — ignore.)
+  - **Follow-up — hardening RECOMMENDED:** make `syncLegacyFromProduct` non-destructive
+    (never overwrite a populated field with an empty/NULL one); establish a single
+    source of truth for the description; add a regression test covering the
+    `products[]` create path so this cannot silently recur.
+
 ### 2026-06-24 — Assign Technician on service calls (dropdown + editable + prominent)
 
 - **Date:**            2026-06-24 (America/Denver, MDT) — merged after green CI (check-and-build ✓, 41s).
