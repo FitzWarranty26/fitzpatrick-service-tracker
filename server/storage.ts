@@ -1276,26 +1276,50 @@ export class SQLiteStorage implements IStorage {
   // Keep the legacy single-product columns on service_calls in sync with
   // product_index=1 so reports/equipment search that still read those columns
   // stay correct until they migrate to the products table.
+  //
+  // FILL-ONLY / MERGE, NEVER CLOBBER: only mirror a product field back onto the
+  // parent when the incoming value is a real, non-empty value. If a field is
+  // null/undefined/empty-string/whitespace-only we OMIT it from the update so
+  // the existing parent value is preserved. This makes the sync non-destructive:
+  // a Product 1 that omits narrative/claim fields (e.g. the New Service Call
+  // form, offline replay, or a direct API caller posting identity-only products)
+  // can never wipe issue_description / diagnosis / resolution / claim_* that
+  // createServiceCall already stored. Genuine non-empty edits still overwrite.
+  // To intentionally CLEAR a parent field, use the parent update path
+  // (PATCH /api/service-calls/:id → updateServiceCall), not a blank product.
   private syncLegacyFromProduct(p: ServiceCallProduct): void {
+    const patch: Partial<typeof serviceCalls.$inferInsert> = {};
+    const fillOnly = (
+      key: keyof typeof serviceCalls.$inferInsert,
+      value: string | null | undefined,
+    ): void => {
+      if (typeof value === "string" && value.trim() !== "") {
+        (patch as any)[key] = value;
+      }
+    };
+
+    fillOnly("manufacturer", p.manufacturer);
+    fillOnly("manufacturerOther", p.manufacturerOther);
+    fillOnly("productModel", p.productModel);
+    fillOnly("productSerial", p.productSerial);
+    fillOnly("productType", p.productType);
+    fillOnly("installationDate", p.installationDate);
+    fillOnly("issueDescription", p.issueDescription);
+    fillOnly("diagnosis", p.diagnosis);
+    fillOnly("resolution", p.resolution);
+    fillOnly("claimStatus", p.claimStatus);
+    fillOnly("claimNumber", p.claimNumber);
+    fillOnly("claimNotes", p.claimNotes);
+    fillOnly("partsCost", p.partsCost);
+    fillOnly("laborCost", p.laborCost);
+    fillOnly("otherCost", p.otherCost);
+    fillOnly("claimAmount", p.claimAmount);
+
+    // Nothing meaningful to mirror — leave the parent row untouched.
+    if (Object.keys(patch).length === 0) return;
+
     db.update(serviceCalls)
-      .set({
-        manufacturer: p.manufacturer,
-        manufacturerOther: p.manufacturerOther,
-        productModel: p.productModel,
-        productSerial: p.productSerial,
-        productType: p.productType,
-        installationDate: p.installationDate,
-        issueDescription: p.issueDescription,
-        diagnosis: p.diagnosis,
-        resolution: p.resolution,
-        claimStatus: p.claimStatus,
-        claimNumber: p.claimNumber,
-        claimNotes: p.claimNotes,
-        partsCost: p.partsCost,
-        laborCost: p.laborCost,
-        otherCost: p.otherCost,
-        claimAmount: p.claimAmount,
-      })
+      .set(patch)
       .where(eq(serviceCalls.id, p.serviceCallId))
       .run();
   }
