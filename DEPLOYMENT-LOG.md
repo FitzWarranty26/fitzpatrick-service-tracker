@@ -26,6 +26,33 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-07-16 — Harden legacy sync: non-destructive fill-only merge (permanent description-wipe fix)
+
+- **Date:**            2026-07-16 (America/Denver, MDT)
+- **Commit:**          `69dae783` (merge of PR #65, fix commit `0eb67775`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run test — 4/4 PASS (`server/storage.test.ts`);
+                       npm run check (tsc) — PASS; npm run build — PASS
+- **Rollback point:**  prior production deploy = `87463c07` (merge of PR #61, fix
+                       commit `3e292c2b`). Known-good tags:
+                       `known-good-2026-06-05` → `44e91ce` (deeper baseline
+                       `known-good-2026-06-12` → `e28492b`)
+- **Notes:**           No schema change, no migration. Server-only hardening to
+                       `syncLegacyFromProduct` (`server/storage.ts`): the legacy
+                       sync is now **non-destructive (fill-only merge)** — it never
+                       overwrites an already-populated field with an empty,
+                       `undefined`, or whitespace-only value, applied to all **16**
+                       synced fields. This is the **permanent / class-kill hardening
+                       fix** for the description-wipe bug, following the earlier
+                       targeted hotfix PR #61 (deployed same day). Adds **4
+                       regression tests** (`server/storage.test.ts`) plus a `test`
+                       npm script. Full re-architecture (single source of truth for
+                       the description) remains tracked in **issue #64**.
+                       **Post-deploy verification:** app confirmed up (sign-in
+                       screen serving) at warranty.fitzpatricksalescrm.com.
+
 ### 2026-07-16 — Fix service call description wiped on create (multi-product sync)
 
 - **Date:**            2026-07-16 (America/Denver, MDT)

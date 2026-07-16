@@ -8,6 +8,37 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [2026-07-16b] — Harden legacy sync: non-destructive fill-only merge
+
+Deployed to production via PR #65 (merge commit `69dae783`, fix commit
+`0eb67775`). No schema change, no migration. Rollback anchor: prior deploy
+`87463c07` (PR #61); known-good `known-good-2026-06-05` → `44e91ce`.
+
+### Fixed — `syncLegacyFromProduct` no longer overwrites populated fields with empty values
+
+Permanent, class-kill hardening fix for the description-wipe bug, following the
+same-day targeted hotfix (PR #61). PR #61 patched the single `POST
+/api/service-calls` create path, but `syncLegacyFromProduct` itself was still
+destructive: any caller that saved a Product 1 row with an absent
+narrative/claim field would blank the corresponding populated column on the
+parent `service_calls` row.
+
+Fix (server-only, `server/storage.ts`): `syncLegacyFromProduct` is now a
+**non-destructive, fill-only merge** — it never overwrites an already-populated
+field with an empty, `undefined`, or whitespace-only value. Applied uniformly to
+all **16** synced fields, so the legacy sync can no longer wipe existing data
+regardless of which code path (create, offline-sync replay, product edit, or a
+direct API caller) triggers it.
+
+### Added — Regression tests + `test` npm script
+
+- **4 regression tests** in `server/storage.test.ts` covering the fill-only
+  merge (populated fields preserved when a product omits them; genuinely new
+  values still written). Added a `test` npm script to run them.
+- `npm run test` (4/4 pass), `npm run check`, and `npm run build` all pass. Full
+  re-architecture (single source of truth for the description) remains tracked in
+  **issue #64**.
+
 ## [2026-07-16] — Fix service call description wiped on create (multi-product sync)
 
 Deployed to production via PR #61 (merge commit `87463c0`, fix commit
