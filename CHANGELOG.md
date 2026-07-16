@@ -8,6 +8,43 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [2026-07-16] — Fix service call description wiped on create (multi-product sync)
+
+Deployed to production via PR #61 (merge commit `87463c0`, fix commit
+`3e292c2b`). No schema change, no migration. Rollback anchor:
+`known-good-2026-06-05` → `44e91ce`.
+
+### Fixed — New service call Issue Description (and diagnosis/resolution/claim) blanked on create
+
+Creating a service call through the **New Service Call** form silently blanked the
+**Issue Description** (and Diagnosis / Resolution / all Claim fields) on the saved
+call.
+
+Root cause: the form always sends a `products[]` array whose entries carry only the
+identity columns (manufacturer, model, serial, type, install date) and **omit** the
+narrative/claim fields. On `POST /api/service-calls`, `createServiceCall` stored the
+description correctly, but saving Product 1 then triggered `syncLegacyFromProduct()`,
+which copied **all** of Product 1's columns — including `issue_description = NULL` —
+back onto the parent `service_calls` row, overwriting the text the user just typed.
+Older calls (created before the form began sending `products[]`) were unaffected
+because they went through the server's `else` branch, which built Product 1 *with*
+the narrative fields.
+
+Fix (server-only, `server/routes.ts`): the `POST /api/service-calls` if-branch now
+merges the call-level narrative/claim fields (`issueDescription`, `diagnosis`,
+`resolution`, `claim*`) onto Product 1 before saving, so `syncLegacyFromProduct`
+writes back the same values `createServiceCall` already stored instead of NULL. The
+operation is idempotent and does not change `syncLegacyFromProduct` itself, so the
+product editor is unaffected. Because the fix is server-side it also covers the
+offline-sync replay path and any direct API caller posting identity-only products.
+
+`npm run check` and `npm run build` pass. **Data cleanup pending:** real calls
+**#41, #85, #86** were created through the buggy path and have blank descriptions
+that must be **manually re-entered** (text is unrecoverable). **Hardening
+recommended:** make `syncLegacyFromProduct` non-destructive (never overwrite a
+populated field with an empty one), define a single source of truth for the
+description, and add a regression test for the `products[]` create path.
+
 ## [2026-06-24] — Assign Technician on service calls (dropdown, editable, prominent)
 
 Adds a first-class **assigned technician** to service calls. A technician can
