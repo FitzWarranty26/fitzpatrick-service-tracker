@@ -692,10 +692,32 @@ export function registerRoutes(httpServer: Server, app: Express) {
       try {
         const bodyProducts = Array.isArray(req.body.products) ? req.body.products : [];
         if (bodyProducts.length > 0) {
-          for (const p of bodyProducts) {
-            const productData = insertServiceCallProductSchema.parse({ ...p, serviceCallId: call.id });
+          bodyProducts.forEach((p: any, i: number) => {
+            // Product 1 is mirrored back onto the legacy service_calls columns by
+            // storage.syncLegacyFromProduct(). The New Service Call form sends only
+            // per-product identity fields (manufacturer/model/serial/type/install
+            // date), so without merging the call-level narrative/claim fields into
+            // the first product here, that sync overwrites issue_description /
+            // diagnosis / resolution / claim_* with NULL — wiping the description
+            // the user just entered. Mirror what the single-product else-branch does.
+            const merged = i === 0
+              ? {
+                  ...p,
+                  issueDescription: p.issueDescription ?? data.issueDescription ?? null,
+                  diagnosis: p.diagnosis ?? data.diagnosis ?? null,
+                  resolution: p.resolution ?? data.resolution ?? null,
+                  claimStatus: p.claimStatus ?? data.claimStatus ?? "Not Filed",
+                  claimNumber: p.claimNumber ?? data.claimNumber ?? null,
+                  claimNotes: p.claimNotes ?? data.claimNotes ?? null,
+                  partsCost: p.partsCost ?? data.partsCost ?? null,
+                  laborCost: p.laborCost ?? data.laborCost ?? null,
+                  otherCost: p.otherCost ?? data.otherCost ?? null,
+                  claimAmount: p.claimAmount ?? data.claimAmount ?? null,
+                }
+              : p;
+            const productData = insertServiceCallProductSchema.parse({ ...merged, serviceCallId: call.id });
             storage.createServiceCallProduct(productData);
-          }
+          });
         } else {
           storage.createServiceCallProduct({
             serviceCallId: call.id,
