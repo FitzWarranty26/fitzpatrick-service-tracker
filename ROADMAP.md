@@ -26,6 +26,7 @@
 ## Architecture decisions in force
 
 - **ADR-0001:** Launch on **Render + Supabase** (Postgres, RLS, Storage, Auth). Express app and business logic stay intact. AWS documented as the future scale-up target.
+- **ADR-0002 (2026-07-17):** **Stripe** is the payments/billing provider for both revenue streams — Stripe Billing for DROVE subscriptions (#11) and **Stripe Connect Standard accounts + application fees** for tenant invoice payments with a platform take-rate (#24). Take-rate priced in the Jobber/Housecall Pro/ServiceM8 band (~0.2%–1% over Stripe cost; finalized with #28). Mobile: invoice payments are Apple-IAP-exempt (Guideline 3.1.3(e)); subscriptions sold on the web only (#29). Re-evaluate a buy-rate payfac (Rainforest) if platform volume passes ~$5M/yr.
 - **Postgres migration (Issue #7) decisions (2026-06-12):** convert TEXT-stored fields to proper types (`numeric`, `timestamp`, `boolean`); move photos from base64-in-DB to Supabase Storage during the migration; test via local throwaway Postgres → Supabase US-region test project → production cutover; multi-tenant RLS is a separate, later step.
 
 ---
@@ -77,7 +78,7 @@ Ordered so each step de-risks the next. Review-finding IDs refer to `docs/CODE-R
 
 ## Phase 2 — Billing & onboarding (Issues #11, #12, #28, #29)
 
-- [ ] **#11** Stripe subscription billing, trial, plan enforcement · **#12** company onboarding wizard · **#28** pricing/packaging final · **#29** app-store billing policy.
+- [ ] **#11** Stripe subscription billing, trial, plan enforcement (per ADR-0002) · **#12** company onboarding wizard · **#28** pricing/packaging final (includes take-rate pricing per ADR-0002) · **#29** app-store billing policy (posture decided in ADR-0002: web-only subscription sales; in-app invoice payments IAP-exempt).
 
 ## Phase 3 — Tenant configuration (Issues #13, #14, #25)
 
@@ -90,6 +91,9 @@ Ordered so each step de-risks the next. Review-finding IDs refer to `docs/CODE-R
 ## Phase 4 — Field-service features (Issues #15–#19)
 
 - [ ] **#15** navigation reorg · **#16** dispatch board · **#17** mobile technician workflow · **#18** estimates & quote approval · **#19** customer notifications. (April feature-plan PDF remains the design reference for these.)
+- **Field ↔ office sync architecture (note):** DROVE is server-authoritative — phones/iPads (Capacitor apps, Phase 5) and office browsers are the *same* React client talking to the *same* API and database, so there is no device-to-device sync and no second data store. What field techs do is visible to the office as soon as the office view refetches. Work items to make this feel live and field-proof:
+  - [ ] Harden the existing offline queue (`client/src/lib/offline-queue.ts`, `sync-service.ts`) for no-signal jobsites: replay ordering, retry/backoff, conflict handling via the existing If-Unmodified-Since/409 guard, and photo background upload. (Rolls into #17.)
+  - [ ] Live office updates: short-interval React Query refetch on dispatch/list views now; evaluate Supabase Realtime (Postgres change streams) after the Phase 1 migration for push-style updates on the dispatch board (#16).
 
 ## Phase 5 — Launch prep & mobile (Issues #20–#23, #30–#35)
 
@@ -97,7 +101,7 @@ Ordered so each step de-risks the next. Review-finding IDs refer to `docs/CODE-R
 
 ## Phase 6 — Payments & operator tooling (Issues #24, #26)
 
-- [ ] **#24** Stripe Connect invoice payments · **#26** operator admin dashboard (tenants, MRR, churn).
+- [ ] **#24** Stripe Connect invoice payments — **Connect Standard hosted onboarding + application fees** per ADR-0002 · **#26** operator admin dashboard (tenants, MRR, churn).
 
 ---
 
