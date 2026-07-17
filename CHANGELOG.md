@@ -6,7 +6,40 @@ in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2026-07-17] — Fix photo uploads rejected with 413 (body-limit override)
+
+Deployed to production 2026-07-17 (commit `52b38de`, merge of PR #67, fix
+commit `7704191`). No schema change, no migration. Post-deploy verified live
+via oversized-body probe (pre-deploy 413 → post-deploy 401 auth-gate response).
+
+### Fixed — Photo uploads rejected with 413 (global 1MB body limit overrode photo route's 20MB limit)
+
+Service techs saw `413: {"message":"Internal Server Error"}` ("X uploaded, Y
+failed") when uploading detail-heavy photos. Root cause: `server/index.ts`
+registered a **global** `express.json({ limit: "1mb" })` body parser that ran
+before the photo upload route's own `express.json({ limit: "20mb" })` in
+`server/routes.ts`. The global parser threw `PayloadTooLargeError` (status 413,
+masked as "Internal Server Error" by the production error handler) for any body
+over 1MB — and a compressed photo (1600px / JPEG q0.7) can reach ~1MB binary →
+~1.4MB base64, exceeding the cap. The route-level 20MB parser never ran.
+
+Fix (server, `server/index.ts` + new `server/photo-upload-path.ts`): the global
+1MB JSON parser now **skips** `POST /api/service-calls/:id/photos` via the
+`isPhotoUploadRequest` predicate, so the route's own 20MB parser is the real
+limit. The route's existing 10MB-per-photo cap (400 "Photo too large") is
+unchanged.
+
+Fix (client): photo-upload failures now map 413 (and the server's 400 "Photo too
+large") to a friendly "<file> is too large to upload. Try a smaller photo."
+message via a shared `photoUploadErrorMessage` helper in
+`client/src/lib/image-utils.ts`, applied across all three upload paths
+(`ServiceCallDetail` review + save flows, `NewServiceCall` create flow).
+
+### Added — Regression tests for the body-limit skip predicate
+
+- 2 tests in `server/storage.test.ts` covering `isPhotoUploadRequest` (matches
+  the POST upload route only; ignores GET, reorder, delete, and other routes).
+- `npm run check`, `npm run build`, and `npm run test` all pass.
 
 ### Added — Full code review + consolidated ROADMAP.md (docs only, no code change)
 

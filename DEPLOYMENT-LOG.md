@@ -26,6 +26,38 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-07-17 — Fix photo uploads rejected with 413 (body-limit override)
+
+- **Date:**            2026-07-17 12:38 (America/Denver, MDT)
+- **Commit:**          `52b38de` (merge of PR #67, fix commit `7704191`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run test — 6/6 PASS (`server/storage.test.ts`, incl.
+                       2 new `isPhotoUploadRequest` regression tests);
+                       npm run check (tsc) — PASS; npm run build — PASS;
+                       post-deploy probe: oversized (2MB) unauthenticated POST to
+                       `/api/service-calls/:id/photos` returned **413 pre-deploy →
+                       401 post-deploy** (body now parsed, auth gate reached) —
+                       confirms the fix is live.
+- **Rollback point:**  prior production deploy = `69dae783` (merge of PR #65).
+                       Known-good tags: `known-good-2026-06-12` → `e28492b`,
+                       baseline `known-good-2026-06-05` → `44e91ce`.
+- **Notes:**           No schema change, no migration. Root cause: global
+                       `express.json({ limit: "1mb" })` in `server/index.ts` ran
+                       before the photo route's own 20MB parser (`server/routes.ts`),
+                       rejecting any photo whose base64 body exceeded 1MB with a 413
+                       masked as "Internal Server Error". Latent since the 2026-04-04
+                       request-size hardening (`b1d2268`); surfaced with detail-heavy
+                       tech photos (~1MB binary → ~1.4MB base64 at 1600px/q0.7).
+                       Fix: global parser skips `POST /api/service-calls/:id/photos`
+                       (new `server/photo-upload-path.ts` predicate); route-level
+                       20MB parser + existing 10MB-per-photo cap now govern. Client
+                       maps 413/400-too-large to a friendly toast via
+                       `photoUploadErrorMessage` in all 3 upload paths. There is NO
+                       photo-count limit — the reported "max 5 photos" was
+                       coincidental photo size, not count. Follow-up: none pending.
+
 ### 2026-07-16 — Harden legacy sync: non-destructive fill-only merge (permanent description-wipe fix)
 
 - **Date:**            2026-07-16 (America/Denver, MDT)
