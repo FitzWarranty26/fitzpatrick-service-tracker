@@ -6,7 +6,11 @@ in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2026-07-17] — Fix photo uploads rejected with 413 (body-limit override)
+
+Deployed to production 2026-07-17 (commit `52b38de`, merge of PR #67, fix
+commit `7704191`). No schema change, no migration. Post-deploy verified live
+via oversized-body probe (pre-deploy 413 → post-deploy 401 auth-gate response).
 
 ### Fixed — Photo uploads rejected with 413 (global 1MB body limit overrode photo route's 20MB limit)
 
