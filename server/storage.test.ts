@@ -128,3 +128,24 @@ test("fill-only guard applies to all synced narrative/claim fields", () => {
   // A real identity value that WAS provided should still mirror through.
   assert.equal(after?.productModel, "WH-40");
 });
+
+// ─── Regression: photo-upload body-limit skip predicate (#413 fix) ──────────────
+// The global 1mb express.json parser in server/index.ts must SKIP the photo
+// upload route so the route-level 20mb parser in routes.ts actually runs.
+// isPhotoUploadRequest is the predicate that decides which requests to skip.
+import { isPhotoUploadRequest } from "./photo-upload-path.ts";
+
+test("isPhotoUploadRequest: matches POST photo upload route only", () => {
+  assert.equal(isPhotoUploadRequest("POST", "/api/service-calls/123/photos"), true);
+  assert.equal(isPhotoUploadRequest("POST", "/api/service-calls/abc/photos"), true);
+});
+
+test("isPhotoUploadRequest: ignores other methods and routes", () => {
+  // GET on the same path must still use the global parser
+  assert.equal(isPhotoUploadRequest("GET", "/api/service-calls/123/photos"), false);
+  // reorder / nested paths are not the upload route
+  assert.equal(isPhotoUploadRequest("POST", "/api/service-calls/123/photos/reorder"), false);
+  assert.equal(isPhotoUploadRequest("DELETE", "/api/photos/5"), false);
+  assert.equal(isPhotoUploadRequest("POST", "/api/service-calls/123"), false);
+  assert.equal(isPhotoUploadRequest("POST", "/api/service-calls"), false);
+});
