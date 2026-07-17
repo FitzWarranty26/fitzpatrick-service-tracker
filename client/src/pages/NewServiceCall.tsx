@@ -419,12 +419,19 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
     },
     onSuccess: async (newCall) => {
       // Upload photos
+      const { photoUploadErrorMessage } = await import("@/lib/image-utils");
+      let photoError: string | null = null;
       for (const photo of photos) {
-        await apiRequest("POST", `/api/service-calls/${newCall.id}/photos`, {
-          photoUrl: photo.photoUrl,
-          caption: photo.caption,
-          photoType: photo.photoType,
-        });
+        try {
+          await apiRequest("POST", `/api/service-calls/${newCall.id}/photos`, {
+            photoUrl: photo.photoUrl,
+            caption: photo.caption,
+            photoType: photo.photoType,
+          });
+        } catch (err: any) {
+          photoError = photoUploadErrorMessage(err);
+          console.error("Failed to upload photo:", err);
+        }
       }
       // Upload parts
       for (const part of parts) {
@@ -442,7 +449,11 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent"] });
       // Successful save — wipe the draft so it doesn't reappear next time.
       clearDraft();
-      toast({ title: "Service call created", description: `Call #${newCall.id} saved.` });
+      if (photoError) {
+        toast({ title: `Call #${newCall.id} saved, but a photo didn't upload`, description: photoError, variant: "destructive" });
+      } else {
+        toast({ title: "Service call created", description: `Call #${newCall.id} saved.` });
+      }
       navigate(`/calls/${newCall.id}`);
     },
     onError: (e: any) => {

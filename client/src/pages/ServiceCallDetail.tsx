@@ -450,8 +450,15 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       return res.json();
     },
     onSuccess: async () => {
+      const { photoUploadErrorMessage } = await import("@/lib/image-utils");
+      let photoError: string | null = null;
       for (const p of newPhotoFiles) {
-        await apiRequest("POST", `/api/service-calls/${callId}/photos`, p);
+        try {
+          await apiRequest("POST", `/api/service-calls/${callId}/photos`, p);
+        } catch (err: any) {
+          photoError = photoUploadErrorMessage(err);
+          console.error("Failed to upload photo:", err);
+        }
       }
       setNewPhotoFiles([]);
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
@@ -459,7 +466,11 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent"] });
       setIsEditing(false);
-      toast({ title: "Saved", description: "Service call updated." });
+      if (photoError) {
+        toast({ title: "Saved, but a photo didn't upload", description: photoError, variant: "destructive" });
+      } else {
+        toast({ title: "Saved", description: "Service call updated." });
+      }
     },
     onError: (e: any) => {
       // 409 means someone else saved this call in parallel. Refresh the
@@ -1081,6 +1092,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     let uploaded = 0;
     let failed = 0;
     let lastError: string | null = null;
+    const { photoUploadErrorMessage } = await import("@/lib/image-utils");
     for (const d of reviewDrafts) {
       try {
         await apiRequest("POST", `/api/service-calls/${call.id}/photos`, {
@@ -1091,7 +1103,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         uploaded++;
       } catch (err: any) {
         failed++;
-        lastError = `Couldn't upload ${d.fileName}: ${err?.message ?? "unknown error"}`;
+        lastError = photoUploadErrorMessage(err, d.fileName);
         console.error("Failed to upload photo:", err);
       }
     }

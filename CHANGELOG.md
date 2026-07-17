@@ -8,6 +8,35 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed — Photo uploads rejected with 413 (global 1MB body limit overrode photo route's 20MB limit)
+
+Service techs saw `413: {"message":"Internal Server Error"}` ("X uploaded, Y
+failed") when uploading detail-heavy photos. Root cause: `server/index.ts`
+registered a **global** `express.json({ limit: "1mb" })` body parser that ran
+before the photo upload route's own `express.json({ limit: "20mb" })` in
+`server/routes.ts`. The global parser threw `PayloadTooLargeError` (status 413,
+masked as "Internal Server Error" by the production error handler) for any body
+over 1MB — and a compressed photo (1600px / JPEG q0.7) can reach ~1MB binary →
+~1.4MB base64, exceeding the cap. The route-level 20MB parser never ran.
+
+Fix (server, `server/index.ts` + new `server/photo-upload-path.ts`): the global
+1MB JSON parser now **skips** `POST /api/service-calls/:id/photos` via the
+`isPhotoUploadRequest` predicate, so the route's own 20MB parser is the real
+limit. The route's existing 10MB-per-photo cap (400 "Photo too large") is
+unchanged.
+
+Fix (client): photo-upload failures now map 413 (and the server's 400 "Photo too
+large") to a friendly "<file> is too large to upload. Try a smaller photo."
+message via a shared `photoUploadErrorMessage` helper in
+`client/src/lib/image-utils.ts`, applied across all three upload paths
+(`ServiceCallDetail` review + save flows, `NewServiceCall` create flow).
+
+### Added — Regression tests for the body-limit skip predicate
+
+- 2 tests in `server/storage.test.ts` covering `isPhotoUploadRequest` (matches
+  the POST upload route only; ignores GET, reorder, delete, and other routes).
+- `npm run check`, `npm run build`, and `npm run test` all pass.
+
 ## [2026-07-16b] — Harden legacy sync: non-destructive fill-only merge
 
 Deployed to production via PR #65 (merge commit `69dae783`, fix commit

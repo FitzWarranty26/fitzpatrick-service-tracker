@@ -25,6 +25,22 @@ export class UnsupportedImageError extends Error {
   }
 }
 
+/**
+ * Turn a photo-upload failure into a user-friendly message. apiRequest throws
+ * `Error("<status>: <body>")`, so an oversized photo surfaces as `413: ...`
+ * (request body exceeded the server limit) or `400: ... Photo too large ...`
+ * (the route's per-photo cap). Both map to a friendly "too large" message;
+ * anything else falls back to the raw error text.
+ */
+export function photoUploadErrorMessage(err: unknown, fileName?: string): string {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  const label = fileName ? `${fileName}` : "This photo";
+  if (raw.startsWith("413:") || raw.includes("Photo too large")) {
+    return `${label} is too large to upload. Try a smaller photo.`;
+  }
+  return `Couldn't upload ${fileName ?? "photo"}: ${raw || "unknown error"}`;
+}
+
 export async function compressImage(
   file: File,
   maxDimension = 1600,
