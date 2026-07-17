@@ -27,6 +27,7 @@
 
 - **ADR-0001:** Launch on **Render + Supabase** (Postgres, RLS, Storage, Auth). Express app and business logic stay intact. AWS documented as the future scale-up target.
 - **ADR-0002 (2026-07-17):** **Stripe** is the payments/billing provider for both revenue streams — Stripe Billing for DROVE subscriptions (#11) and **Stripe Connect Standard accounts + application fees** for tenant invoice payments with a platform take-rate (#24). Take-rate priced in the Jobber/Housecall Pro/ServiceM8 band (~0.2%–1% over Stripe cost; finalized with #28). Mobile: invoice payments are Apple-IAP-exempt (Guideline 3.1.3(e)); subscriptions sold on the web only (#29). Re-evaluate a buy-rate payfac (Rainforest) if platform volume passes ~$5M/yr.
+- **ADR-0003 (2026-07-17):** Mobile apps are built with **React Native + Expo** — Capacitor is dropped. Scope is a purpose-built **Technician App** (~8–12 screens: today's jobs, call detail, photos, parts, invoicing, payment collection, offline queue); the browser app remains the office/admin product. Shared core package (types, zod schemas, API client, query functions) consumed by both clients. Chosen because Tap to Pay is strategic and only React Native has the official first-party Stripe Terminal SDK; same stack as Jobber/ServiceTitan. Apply for Apple's Tap to Pay entitlement early.
 - **Postgres migration (Issue #7) decisions (2026-06-12):** convert TEXT-stored fields to proper types (`numeric`, `timestamp`, `boolean`); move photos from base64-in-DB to Supabase Storage during the migration; test via local throwaway Postgres → Supabase US-region test project → production cutover; multi-tenant RLS is a separate, later step.
 
 ---
@@ -91,13 +92,14 @@ Ordered so each step de-risks the next. Review-finding IDs refer to `docs/CODE-R
 ## Phase 4 — Field-service features (Issues #15–#19)
 
 - [ ] **#15** navigation reorg · **#16** dispatch board · **#17** mobile technician workflow · **#18** estimates & quote approval · **#19** customer notifications. (April feature-plan PDF remains the design reference for these.)
-- **Field ↔ office sync architecture (note):** DROVE is server-authoritative — phones/iPads (Capacitor apps, Phase 5) and office browsers are the *same* React client talking to the *same* API and database, so there is no device-to-device sync and no second data store. What field techs do is visible to the office as soon as the office view refetches. Work items to make this feel live and field-proof:
-  - [ ] Harden the existing offline queue (`client/src/lib/offline-queue.ts`, `sync-service.ts`) for no-signal jobsites: replay ordering, retry/backoff, conflict handling via the existing If-Unmodified-Since/409 guard, and photo background upload. (Rolls into #17.)
+- **Field ↔ office sync architecture (note):** DROVE is server-authoritative — the phone/iPad Technician App (Expo React Native, Phase 5, per ADR-0003) and office browsers are both clients of the *same* API and database, so there is no device-to-device sync and no second data store. What field techs do is visible to the office as soon as the office view refetches. Work items to make this feel live and field-proof:
+  - [ ] Offline queue for no-signal jobsites (web today: `client/src/lib/offline-queue.ts`, `sync-service.ts`; RN equivalent in the Technician App): replay ordering, retry/backoff, conflict handling via the existing If-Unmodified-Since/409 guard, and photo background upload. (Rolls into #17.)
   - [ ] Live office updates: short-interval React Query refetch on dispatch/list views now; evaluate Supabase Realtime (Postgres change streams) after the Phase 1 migration for push-style updates on the dispatch board (#16).
+  - [ ] Extract the shared core package (`@drove/core`: domain types, zod schemas, API client, TanStack Query functions, money/date utilities) consumed by web + Technician App (per ADR-0003). Pairs naturally with hardening item S8 (zod boundaries).
 
 ## Phase 5 — Launch prep & mobile (Issues #20–#23, #30–#35)
 
-- [ ] **#20** monitoring/error tracking/alerts · **#21** help center · **#22** legal docs · **#23** marketing site · **#30–#35** Capacitor iOS/Android, store releases, permissions, account deletion, TestFlight/Play testing.
+- [ ] **#20** monitoring/error tracking/alerts · **#21** help center · **#22** legal docs · **#23** marketing site · **#30–#35** **Expo React Native Technician App** (per ADR-0003), store releases, permissions, account deletion, TestFlight/Play testing · Apple **Tap to Pay entitlement application** early in this phase (lead time: form + demo video).
 
 ## Phase 6 — Payments & operator tooling (Issues #24, #26)
 
