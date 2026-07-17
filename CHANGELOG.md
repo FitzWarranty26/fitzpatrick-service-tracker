@@ -41,6 +41,19 @@ message via a shared `photoUploadErrorMessage` helper in
   the POST upload route only; ignores GET, reorder, delete, and other routes).
 - `npm run check`, `npm run build`, and `npm run test` all pass.
 
+### Added — Full code review + consolidated ROADMAP.md (docs only, no code change)
+
+- `docs/CODE-REVIEW-2026-07-17.md`: two-pass (server + client) severity-ranked
+  code review with file:line evidence, triggered by the 2026-07-16
+  description-wipe incident and 2026-07-17 photo 413. Headline: solid
+  single-tenant codebase; multi-tenant readiness blocked by tenant scoping,
+  client-computed invoice totals, non-transactional deletes, unenforced FKs,
+  in-memory sessions, and thin test coverage.
+- `ROADMAP.md`: new single working roadmap. Supersedes the April 2026 launch
+  roadmap PDF (retired). Consolidates the June phase issues (#7–#36), ADR-0001,
+  Issue #64, open loose ends (PR #62, blank-description data cleanup for calls
+  #41/#85/#86), and adds Phase 0.5 hardening with the 2026-07-18/19 weekend plan.
+
 ## [2026-07-16b] — Harden legacy sync: non-destructive fill-only merge
 
 Deployed to production via PR #65 (merge commit `69dae783`, fix commit
