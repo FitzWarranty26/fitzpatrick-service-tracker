@@ -6,6 +6,18 @@ in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — ADR-0002: payments & billing provider (docs only, no code change)
+
+- `docs/adr/0002-payments-provider.md`: Stripe selected for both revenue
+  streams — Stripe Billing for subscriptions (#11) and Stripe Connect
+  (Standard accounts + application fees) for tenant invoice payments with a
+  platform take-rate (#24). Based on a source-cited comparison of ten
+  providers (2026-07-17). ROADMAP.md updated: ADR-0002 added to
+  decisions-in-force, Phases 2/6 annotated, and field↔office sync
+  architecture note added to Phase 4/5 mobile scope.
+
 ## [2026-07-17] — Fix photo uploads rejected with 413 (body-limit override)
 
 Deployed to production 2026-07-17 (commit `52b38de`, merge of PR #67, fix
