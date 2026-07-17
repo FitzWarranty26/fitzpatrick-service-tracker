@@ -8,6 +8,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added — ADR-0003: mobile framework — React Native + Expo (docs only, no code change)
+
+- `docs/adr/0003-mobile-framework.md`: mobile apps switch from Capacitor to
+  **Expo React Native**, scoped as a purpose-built Technician App with a
+  shared core package; decided because Tap to Pay is strategic and only RN
+  has the official first-party Stripe Terminal SDK (Jobber/ServiceTitan
+  precedent). ROADMAP.md updated (decisions-in-force, Phase 4 sync note,
+  Phase 5 scope); issue #30 re-scoped from Capacitor to Expo RN.
+
 ### Added — ADR-0002: payments & billing provider (docs only, no code change)
 
 - `docs/adr/0002-payments-provider.md`: Stripe selected for both revenue
