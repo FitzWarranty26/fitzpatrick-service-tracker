@@ -1,7 +1,8 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile, copyFile, mkdir } from "fs/promises";
+import { rm, readFile, copyFile, mkdir, readdir } from "fs/promises";
 import { existsSync } from "fs";
+import { join } from "path";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -74,6 +75,18 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  // Copy versioned migration SQL into dist so the bundled server can find them
+  // even if the process cwd differs from the repo root (see server/migrate.ts).
+  if (existsSync("migrations")) {
+    await mkdir("dist/migrations", { recursive: true });
+    for (const f of await readdir("migrations")) {
+      if (f.endsWith(".sql")) {
+        await copyFile(join("migrations", f), join("dist/migrations", f));
+      }
+    }
+    console.log("copied migrations to dist/migrations");
+  }
 }
 
 buildAll().catch((err) => {

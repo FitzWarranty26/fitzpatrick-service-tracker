@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test": "tsx --test server/*.test.ts",
+    "seed": "tsx script/seed.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
