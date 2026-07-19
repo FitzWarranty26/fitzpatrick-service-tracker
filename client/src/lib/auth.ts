@@ -30,6 +30,14 @@ export function setAuth(token: string, user: AuthUser) {
   _user = user;
 }
 
+// Restore auth from an httpOnly session cookie after a page reload: the token
+// itself is not readable by JS (httpOnly), so we only have the user object from
+// /api/auth/verify. The cookie is sent automatically (same-origin) on every
+// request, so no in-memory bearer token is needed.
+export function setUser(user: AuthUser) {
+  _user = user;
+}
+
 // Keep backward compat
 export function setToken(token: string) {
   _token = token;
@@ -41,7 +49,7 @@ export function clearToken() {
 }
 
 export function isAuthenticated(): boolean {
-  return _token !== null;
+  return _user !== null;
 }
 
 export function isManager(): boolean {

@@ -6,7 +6,7 @@ import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { AppLayout } from "@/components/Layout";
 import { LoginScreen } from "@/components/LoginScreen";
-import { setAuth, isAuthenticated, getUser } from "@/lib/auth";
+import { setAuth, setUser, getUser } from "@/lib/auth";
 import Dashboard from "@/pages/Dashboard";
 import ServiceCallList from "@/pages/ServiceCallList";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -171,8 +171,30 @@ function App() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    setChecking(false);
-    setAuthed(isAuthenticated());
+    // Restore auth from the httpOnly session cookie (client H1). The token is
+    // not JS-readable, so we ask the server who we are; the cookie rides along
+    // automatically (same-origin). This is what makes a session survive a page
+    // reload now that the server persists sessions across restarts.
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/verify`, { credentials: "same-origin" });
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          if (data.authenticated && data.user && !data.user.mustChangePassword) {
+            setUser(data.user);
+            setAuthed(true);
+          }
+        }
+      } catch {
+        // Offline or server unreachable — fall back to the login screen.
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleLogin = async (username: string, password: string): Promise<{ success: boolean; mustChangePassword?: boolean; error?: string }> => {
