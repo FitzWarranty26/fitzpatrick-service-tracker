@@ -14,9 +14,6 @@ import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 // Lazy-load heavy pages — keeps initial bundle small for fast first load
 const NewServiceCall = lazy(() => import("@/pages/NewServiceCall"));
 const ServiceCallDetail = lazy(() => import("@/pages/ServiceCallDetail"));
-const ServiceCallDetailLegacy = lazy(() => import("@/pages/ServiceCallDetail.legacy"));
-const ServiceCallListLegacy = lazy(() => import("@/pages/ServiceCallList.legacy"));
-const NewServiceCallLegacy = lazy(() => import("@/pages/NewServiceCall.legacy"));
 const ContactDetail = lazy(() => import("@/pages/ContactDetail"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const ServiceMap = lazy(() => import("@/pages/ServiceMap"));
@@ -52,13 +49,6 @@ function AppRouter() {
         <Route path="/calls/filter/:preset">
           {(params) => <ServiceCallList preset={params.preset} />}
         </Route>
-        <Route path="/calls/list/legacy">
-          {() => (
-            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
-              <ServiceCallListLegacy />
-            </Suspense>
-          )}
-        </Route>
         <Route path="/scheduled">{() => <ServiceCallList preset="scheduled" />}</Route>
         <Route path="/new">
           {() => (
@@ -71,13 +61,6 @@ function AppRouter() {
           {(params) => (
             <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
               <NewServiceCall followUpId={params.parentId} />
-            </Suspense>
-          )}
-        </Route>
-        <Route path="/new/legacy">
-          {() => (
-            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
-              <NewServiceCallLegacy />
             </Suspense>
           )}
         </Route>
@@ -155,13 +138,6 @@ function AppRouter() {
           {(params) => (
             <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
               <ServiceCallDetail id={params.id} />
-            </Suspense>
-          )}
-        </Route>
-        <Route path="/calls/legacy/:id">
-          {(params) => (
-            <Suspense fallback={<div className="p-6 text-center text-muted-foreground text-sm">Loading...</div>}>
-              <ServiceCallDetailLegacy id={params.id} />
             </Suspense>
           )}
         </Route>
