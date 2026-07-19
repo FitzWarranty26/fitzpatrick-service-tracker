@@ -207,6 +207,29 @@ export interface IStorage {
   }): Promise<Contact | null>;
 }
 
+// The 16 legacy single-product columns that service_calls duplicates on the
+// product_index=1 row. Camel-case keys shared by both InsertServiceCall and
+// InsertServiceCallProduct. Kept in sync with syncLegacyFromProduct and with
+// scripts/audit-legacy-divergence.mjs (which uses the snake_case equivalents).
+const LEGACY_PRODUCT_FIELDS = [
+  "manufacturer",
+  "manufacturerOther",
+  "productModel",
+  "productSerial",
+  "productType",
+  "installationDate",
+  "issueDescription",
+  "diagnosis",
+  "resolution",
+  "claimStatus",
+  "claimNumber",
+  "claimNotes",
+  "partsCost",
+  "laborCost",
+  "otherCost",
+  "claimAmount",
+] as const;
+
 export class SQLiteStorage implements IStorage {
   // ─── Service Calls ──────────────────────────────────────────────────────────
 
@@ -460,7 +483,60 @@ export class SQLiteStorage implements IStorage {
         ).run(updated.scheduledDate, updated.scheduledTime, activeApp.id);
       }
     }
+
+    // Write-through (A2 step 1): the detail-page edit path historically wrote
+    // ONLY the legacy service_calls columns, leaving product_index=1 stale.
+    // Now, whenever any of the 16 legacy fields is part of this PATCH, mirror
+    // the resulting values onto the Product 1 row so the two sources converge.
+    // Values are copied verbatim from the freshly-updated row (including
+    // intentional clears), which makes replayed/offline PATCHes idempotent.
+    if (updated) {
+      this.writeThroughLegacyToProduct1(
+        updated,
+        LEGACY_PRODUCT_FIELDS.filter((f) => Object.prototype.hasOwnProperty.call(call, f)),
+      );
+    }
     return updated;
+  }
+
+  // Mirror the legacy columns just written on service_calls onto the call's
+  // product_index=1 (voided=0) row. If that row does not exist yet, create it
+  // by backfilling ALL 16 fields from the call (matching migration-33 backfill
+  // semantics: product_index=1, voided=0, timestamps now) — the same shape the
+  // multi-product code and equipment search expect.
+  private writeThroughLegacyToProduct1(
+    call: ServiceCall,
+    changedFields: readonly (typeof LEGACY_PRODUCT_FIELDS)[number][],
+  ): void {
+    if (changedFields.length === 0) return;
+
+    const now = new Date().toISOString();
+    const product1 = sqlite
+      .prepare(
+        `SELECT id FROM service_call_products WHERE service_call_id = ? AND product_index = 1 AND voided = 0 ORDER BY id LIMIT 1`,
+      )
+      .get(call.id) as { id: number } | undefined;
+
+    if (product1) {
+      const patch: Record<string, unknown> = { updatedAt: now };
+      for (const f of changedFields) patch[f] = (call as any)[f];
+      db.update(serviceCallProducts).set(patch as any).where(eq(serviceCallProducts.id, product1.id)).run();
+      return;
+    }
+
+    // No Product 1 row — create a complete one from the current legacy columns.
+    const values: Record<string, unknown> = {
+      serviceCallId: call.id,
+      productIndex: 1,
+      voided: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    for (const f of LEGACY_PRODUCT_FIELDS) values[f] = (call as any)[f];
+    // manufacturer is NOT NULL on the product table; service_calls.manufacturer
+    // is likewise NOT NULL, so this is always populated, but guard anyway.
+    if (values.manufacturer == null || values.manufacturer === "") values.manufacturer = "Other";
+    db.insert(serviceCallProducts).values(values as any).run();
   }
 
   async deleteServiceCall(id: number): Promise<void> {
