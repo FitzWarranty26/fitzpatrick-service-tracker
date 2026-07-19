@@ -631,7 +631,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   }
 
   const { data: appointments } = useQuery<AppointmentEntry[]>({
-    queryKey: [`/api/service-calls/${callId}/appointments`],
+    queryKey: ["/api/service-calls", callId, "appointments"],
     queryFn: async () => (await apiRequest("GET", `/api/service-calls/${callId}/appointments`)).json(),
     enabled: !!callId,
   });
@@ -642,9 +642,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   // /upcoming-week, /watchlist, /recent, /stats, /trend, /follow-ups,
   // /activity — causing the tech dashboard to show the stale old time.
   const invalidateSchedulingSurfaces = () => {
-    queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/appointments`] });
-    queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}`] });
-    queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/visits`] });
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId, "appointments"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId, "visits"] });
     queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
     queryClient.invalidateQueries({ queryKey: ["/api/calendar"] });
     // Hit every dashboard endpoint that surfaces a scheduled date or time

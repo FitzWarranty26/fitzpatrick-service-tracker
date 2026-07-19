@@ -7,6 +7,13 @@ const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 // dozens of times when a wave of parallel queries all return 401 at once.
 let expiredHandled = false;
 
+// Reset the guard when a new session begins (client L1). Without this, once a
+// session expired in this tab the flag stayed true, so a later expiry in a
+// fresh login never re-fired the toast/redirect. Called on successful login.
+export function resetExpiredHandled() {
+  expiredHandled = false;
+}
+
 /**
  * Centralized 401-handling. The session token is invalid or expired. Clear
  * local auth, set a flag the login page can read so it shows the right

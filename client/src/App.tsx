@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { Switch, Route, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, resetExpiredHandled } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { AppLayout } from "@/components/Layout";
 import { LoginScreen } from "@/components/LoginScreen";
@@ -183,6 +183,7 @@ function App() {
           const data = await res.json();
           if (data.authenticated && data.user && !data.user.mustChangePassword) {
             setUser(data.user);
+            resetExpiredHandled();
             setAuthed(true);
           }
         }
@@ -207,6 +208,7 @@ function App() {
       const data = await res.json();
       if (data.success && data.token && data.user) {
         setAuth(data.token, data.user);
+        resetExpiredHandled();
         if (data.user.mustChangePassword) {
           return { success: true, mustChangePassword: true };
         }
