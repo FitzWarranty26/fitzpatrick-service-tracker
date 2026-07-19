@@ -494,6 +494,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
     },
+    onError: (e: any) => toast({ title: "Could not delete photo", description: e.message, variant: "destructive" }),
   });
 
   const deleteCallMutation = useMutation({
@@ -505,6 +506,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       toast({ title: "Deleted", description: "Service call deleted." });
       navigate("/calls");
     },
+    onError: (e: any) => toast({ title: "Could not delete service call", description: e.message, variant: "destructive" }),
   });
 
   // Toggle the internal-only follow-up flag. Server records who/what/when in
@@ -608,6 +610,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
     },
+    onError: (e: any) => toast({ title: "Could not delete activity", description: e.message, variant: "destructive" }),
   });
 
   // Fix 2: Add Part state and mutations
@@ -719,6 +722,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
     },
+    onError: (e: any) => toast({ title: "Could not reorder photos", description: e.message, variant: "destructive" }),
   });
 
   // ─── Return Visits ──────────────────────────────────────────────────────────
