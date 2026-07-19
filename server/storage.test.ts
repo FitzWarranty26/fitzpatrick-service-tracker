@@ -20,8 +20,8 @@ process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), "fst-storage-test-")), "te
 
 const { storage } = await import("./storage.ts");
 
-function newCall(overrides: Record<string, unknown> = {}) {
-  return storage.createServiceCall({
+async function newCall(overrides: Record<string, unknown> = {}) {
+  return await storage.createServiceCall({
     callDate: "2026-01-01",
     manufacturer: "Acme",
     issueDescription: "Water heater leaking from the base",
@@ -32,11 +32,11 @@ function newCall(overrides: Record<string, unknown> = {}) {
 // The original bug: Product 1 arrives WITHOUT issue_description (identity-only,
 // as the New Service Call form / offline replay sends it). The parent value must
 // survive.
-test("create via products[] path: Product 1 without issue_description preserves parent", () => {
-  const call = newCall();
+test("create via products[] path: Product 1 without issue_description preserves parent", async () => {
+  const call = await newCall();
   assert.equal(call.issueDescription, "Water heater leaking from the base");
 
-  storage.createServiceCallProduct({
+  await storage.createServiceCallProduct({
     serviceCallId: call.id,
     productIndex: 1,
     manufacturer: "Acme",
@@ -45,35 +45,35 @@ test("create via products[] path: Product 1 without issue_description preserves 
     // NOTE: no issueDescription/diagnosis/resolution — the crux of the bug.
   } as any);
 
-  const after = storage.getServiceCallById(call.id);
+  const after = await storage.getServiceCallById(call.id);
   assert.equal(after?.issueDescription, "Water heater leaking from the base");
 });
 
 // A genuine non-empty edit on Product 1 must still propagate to the parent.
-test("genuine non-empty product value still overwrites the parent", () => {
-  const call = newCall({ issueDescription: "original text" });
+test("genuine non-empty product value still overwrites the parent", async () => {
+  const call = await newCall({ issueDescription: "original text" });
 
-  const product = storage.createServiceCallProduct({
+  const product = await storage.createServiceCallProduct({
     serviceCallId: call.id,
     productIndex: 1,
     manufacturer: "Acme",
     issueDescription: "original text",
   } as any);
 
-  storage.updateServiceCallProduct(product.id, {
+  await storage.updateServiceCallProduct(product.id, {
     issueDescription: "updated diagnosis: replaced thermocouple",
   } as any);
 
-  const after = storage.getServiceCallById(call.id);
+  const after = await storage.getServiceCallById(call.id);
   assert.equal(after?.issueDescription, "updated diagnosis: replaced thermocouple");
 });
 
 // An already-populated parent field must NOT be clobbered by a later sync that
 // carries an empty/whitespace-only value.
-test("subsequent sync with empty/whitespace value does not clobber populated parent", () => {
-  const call = newCall({ issueDescription: "populated description", diagnosis: "bad valve" });
+test("subsequent sync with empty/whitespace value does not clobber populated parent", async () => {
+  const call = await newCall({ issueDescription: "populated description", diagnosis: "bad valve" });
 
-  const product = storage.createServiceCallProduct({
+  const product = await storage.createServiceCallProduct({
     serviceCallId: call.id,
     productIndex: 1,
     manufacturer: "Acme",
@@ -83,19 +83,19 @@ test("subsequent sync with empty/whitespace value does not clobber populated par
 
   // Simulate a sync driven by a product row whose narrative fields are blanked:
   // empty string for one field, whitespace-only for another.
-  storage.updateServiceCallProduct(product.id, {
+  await storage.updateServiceCallProduct(product.id, {
     issueDescription: "",
     diagnosis: "   ",
   } as any);
 
-  const after = storage.getServiceCallById(call.id);
+  const after = await storage.getServiceCallById(call.id);
   assert.equal(after?.issueDescription, "populated description");
   assert.equal(after?.diagnosis, "bad valve");
 });
 
 // Multi-field guard applies uniformly across all synced narrative/claim fields.
-test("fill-only guard applies to all synced narrative/claim fields", () => {
-  const call = newCall({
+test("fill-only guard applies to all synced narrative/claim fields", async () => {
+  const call = await newCall({
     issueDescription: "desc",
     diagnosis: "diag",
     resolution: "res",
@@ -107,7 +107,7 @@ test("fill-only guard applies to all synced narrative/claim fields", () => {
     claimAmount: "35.00",
   });
 
-  storage.createServiceCallProduct({
+  await storage.createServiceCallProduct({
     serviceCallId: call.id,
     productIndex: 1,
     manufacturer: "Acme",
@@ -115,7 +115,7 @@ test("fill-only guard applies to all synced narrative/claim fields", () => {
     // all narrative/claim fields intentionally omitted
   } as any);
 
-  const after = storage.getServiceCallById(call.id);
+  const after = await storage.getServiceCallById(call.id);
   assert.equal(after?.issueDescription, "desc");
   assert.equal(after?.diagnosis, "diag");
   assert.equal(after?.resolution, "res");

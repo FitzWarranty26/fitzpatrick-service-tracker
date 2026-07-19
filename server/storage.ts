@@ -154,49 +154,49 @@ export interface IStorage {
     dateFrom?: string;
     dateTo?: string;
     flaggedOnly?: boolean;
-  }): ServiceCallWithCounts[];
-  getServiceCallById(id: number): ServiceCallFull | undefined;
-  createServiceCall(call: InsertServiceCall): ServiceCall;
-  updateServiceCall(id: number, call: Partial<InsertServiceCall>): ServiceCall | undefined;
-  deleteServiceCall(id: number): void;
+  }): Promise<ServiceCallWithCounts[]>;
+  getServiceCallById(id: number): Promise<ServiceCallFull | undefined>;
+  createServiceCall(call: InsertServiceCall): Promise<ServiceCall>;
+  updateServiceCall(id: number, call: Partial<InsertServiceCall>): Promise<ServiceCall | undefined>;
+  deleteServiceCall(id: number): Promise<void>;
 
   // Photos
-  getPhotosByServiceCallId(serviceCallId: number): Photo[];
-  createPhoto(photo: InsertPhoto): Photo;
-  deletePhoto(id: number): void;
+  getPhotosByServiceCallId(serviceCallId: number): Promise<Photo[]>;
+  createPhoto(photo: InsertPhoto): Promise<Photo>;
+  deletePhoto(id: number): Promise<void>;
 
   // Photo label presets (custom labels users save for reuse)
-  getPhotoLabelPresets(): PhotoLabelPreset[];
-  getMergedPhotoLabels(): string[];
-  createPhotoLabelPreset(label: string, userId: number | null): PhotoLabelPreset | null;
-  deletePhotoLabelPreset(id: number): void;
+  getPhotoLabelPresets(): Promise<PhotoLabelPreset[]>;
+  getMergedPhotoLabels(): Promise<string[]>;
+  createPhotoLabelPreset(label: string, userId: number | null): Promise<PhotoLabelPreset | null>;
+  deletePhotoLabelPreset(id: number): Promise<void>;
 
   // Parts
-  getPartsByServiceCallId(serviceCallId: number): Part[];
-  createPart(part: InsertPart): Part;
-  updatePart(id: number, part: Partial<InsertPart>): Part | undefined;
-  deletePart(id: number): void;
+  getPartsByServiceCallId(serviceCallId: number): Promise<Part[]>;
+  createPart(part: InsertPart): Promise<Part>;
+  updatePart(id: number, part: Partial<InsertPart>): Promise<Part | undefined>;
+  deletePart(id: number): Promise<void>;
 
   // Service Call Products (multi-product)
-  getProductsByServiceCallId(serviceCallId: number): ServiceCallProduct[];
-  createServiceCallProduct(data: InsertServiceCallProduct): ServiceCallProduct;
-  updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): ServiceCallProduct | undefined;
-  voidServiceCallProduct(id: number): { voided: boolean; reason?: string };
+  getProductsByServiceCallId(serviceCallId: number): Promise<ServiceCallProduct[]>;
+  createServiceCallProduct(data: InsertServiceCallProduct): Promise<ServiceCallProduct>;
+  updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): Promise<ServiceCallProduct | undefined>;
+  voidServiceCallProduct(id: number): Promise<{ voided: boolean; reason?: string }>;
 
   // Dashboard
-  getDashboardStats(): DashboardStats;
-  getRecentServiceCalls(limit: number): ServiceCallWithCounts[];
+  getDashboardStats(): Promise<DashboardStats>;
+  getRecentServiceCalls(limit: number): Promise<ServiceCallWithCounts[]>;
 
   // Related Calls
-  getRelatedCalls(callId: number): ServiceCall[];
+  getRelatedCalls(callId: number): Promise<ServiceCall[]>;
 
   // Contacts
-  getAllContacts(filters?: { type?: string; search?: string }): Contact[];
-  getContactById(id: number): Contact | undefined;
-  createContact(contact: InsertContact): Contact;
-  updateContact(id: number, contact: Partial<InsertContact>): Contact | undefined;
-  deleteContact(id: number): void;
-  suggestContacts(type: string, query: string): Contact[];
+  getAllContacts(filters?: { type?: string; search?: string }): Promise<Contact[]>;
+  getContactById(id: number): Promise<Contact | undefined>;
+  createContact(contact: InsertContact): Promise<Contact>;
+  updateContact(id: number, contact: Partial<InsertContact>): Promise<Contact | undefined>;
+  deleteContact(id: number): Promise<void>;
+  suggestContacts(type: string, query: string): Promise<Contact[]>;
   findOrCreateContact(type: string, contactName: string, extra?: {
     companyName?: string | null;
     phone?: string | null;
@@ -204,13 +204,13 @@ export interface IStorage {
     address?: string | null;
     city?: string | null;
     state?: string | null;
-  }): Contact | null;
+  }): Promise<Contact | null>;
 }
 
 export class SQLiteStorage implements IStorage {
   // ─── Service Calls ──────────────────────────────────────────────────────────
 
-  getAllServiceCalls(filters?: {
+  async getAllServiceCalls(filters?: {
     manufacturer?: string;
     status?: string;
     claimStatus?: string;
@@ -220,7 +220,7 @@ export class SQLiteStorage implements IStorage {
     dateFrom?: string;
     dateTo?: string;
     flaggedOnly?: boolean;
-  }): ServiceCallWithCounts[] {
+  }): Promise<ServiceCallWithCounts[]> {
     // Build WHERE conditions to push filtering into SQL
     const conditions: any[] = [];
     const params: any[] = [];
@@ -399,16 +399,16 @@ export class SQLiteStorage implements IStorage {
     }));
   }
 
-  getServiceCallById(id: number): ServiceCallFull | undefined {
+  async getServiceCallById(id: number): Promise<ServiceCallFull | undefined> {
     const call = db.select().from(serviceCalls).where(eq(serviceCalls.id, id)).get();
     if (!call) return undefined;
     // Photos grouped chronologically by visit (Visit 1 first, then Visit 2,
     // etc.). Routes through getPhotosByServiceCallId so the sort lives in one
     // place.
-    const callPhotos = this.getPhotosByServiceCallId(id);
+    const callPhotos = await this.getPhotosByServiceCallId(id);
     const callParts = db.select().from(partsUsed).where(eq(partsUsed.serviceCallId, id)).all();
     const callActivities = db.select().from(activityLog).where(eq(activityLog.serviceCallId, id)).all();
-    const callProducts = this.getProductsByServiceCallId(id);
+    const callProducts = await this.getProductsByServiceCallId(id);
     // Resolve the creator's display name (if the call has a creator and that
     // user still exists). Surfaces "Created by …" on the detail page header.
     let createdByName: string | null = null;
@@ -421,12 +421,12 @@ export class SQLiteStorage implements IStorage {
     return { ...call, createdByName, photos: callPhotos, parts: callParts, activities: callActivities, products: callProducts };
   }
 
-  createServiceCall(call: InsertServiceCall, createdBy?: number | null): ServiceCall {
+  async createServiceCall(call: InsertServiceCall, createdBy?: number | null): Promise<ServiceCall> {
     const now = new Date().toISOString();
     return db.insert(serviceCalls).values({ ...call, createdBy: createdBy ?? null, createdAt: now } as any).returning().get();
   }
 
-  updateServiceCall(id: number, call: Partial<InsertServiceCall>): ServiceCall | undefined {
+  async updateServiceCall(id: number, call: Partial<InsertServiceCall>): Promise<ServiceCall | undefined> {
     // Always bump updated_at so optimistic concurrency works.
     const withTs = { ...call, updatedAt: new Date().toISOString() } as any;
 
@@ -463,7 +463,7 @@ export class SQLiteStorage implements IStorage {
     return updated;
   }
 
-  deleteServiceCall(id: number): void {
+  async deleteServiceCall(id: number): Promise<void> {
     // Delete the call and every row that references it, atomically. All eight
     // statements run inside a single transaction so a failure midway can never
     // leave the DB half-deleted (e.g. call gone but visits/photos remain).
@@ -489,7 +489,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Photos ─────────────────────────────────────────────────────────────────
 
-  getPhotosByServiceCallId(serviceCallId: number): Photo[] {
+  async getPhotosByServiceCallId(serviceCallId: number): Promise<Photo[]> {
     // Group by visit chronologically: Visit 1 photos first, then Visit 2,
     // etc., with each visit's photos in the order the tech arranged them.
     // Tie-break on id so new uploads always land at the end of their visit.
@@ -501,7 +501,7 @@ export class SQLiteStorage implements IStorage {
       .all();
   }
 
-  createPhoto(photo: InsertPhoto): Photo {
+  async createPhoto(photo: InsertPhoto): Promise<Photo> {
     // Auto-assign visit_number based on latest visit for this service call
     const latest = sqlite.prepare(
       `SELECT COALESCE(MAX(visit_number), 1) as latest FROM service_call_visits WHERE service_call_id = ?`
@@ -510,11 +510,11 @@ export class SQLiteStorage implements IStorage {
     return db.insert(photos).values({ ...photo, visitNumber }).returning().get();
   }
 
-  deletePhoto(id: number): void {
+  async deletePhoto(id: number): Promise<void> {
     db.delete(photos).where(eq(photos.id, id)).run();
   }
 
-  updatePhotoSortOrder(photoId: number, sortOrder: number): void {
+  async updatePhotoSortOrder(photoId: number, sortOrder: number): Promise<void> {
     sqlite.prepare("UPDATE photos SET sort_order = ? WHERE id = ?").run(sortOrder, photoId);
   }
 
@@ -524,7 +524,7 @@ export class SQLiteStorage implements IStorage {
   // labels. We expose the merged list so the client doesn't have to know
   // about the split.
 
-  getPhotoLabelPresets(): PhotoLabelPreset[] {
+  async getPhotoLabelPresets(): Promise<PhotoLabelPreset[]> {
     return sqlite
       .prepare(`SELECT id, label, created_by_user_id, created_at FROM photo_label_presets ORDER BY label ASC`)
       .all()
@@ -537,8 +537,8 @@ export class SQLiteStorage implements IStorage {
   }
 
   /** Get the full list of labels the picker should show — built-in first, then saved. */
-  getMergedPhotoLabels(): string[] {
-    const saved = this.getPhotoLabelPresets().map(p => p.label);
+  async getMergedPhotoLabels(): Promise<string[]> {
+    const saved = (await this.getPhotoLabelPresets()).map(p => p.label);
     const seen = new Set<string>();
     const out: string[] = [];
     for (const l of [...PHOTO_TYPES, ...saved]) {
@@ -549,7 +549,7 @@ export class SQLiteStorage implements IStorage {
 
   /** Save a custom label. Idempotent — if the label already exists (built-in
    *  or saved), just returns the existing row (or null for built-ins). */
-  createPhotoLabelPreset(label: string, userId: number | null): PhotoLabelPreset | null {
+  async createPhotoLabelPreset(label: string, userId: number | null): Promise<PhotoLabelPreset | null> {
     const trimmed = label.trim();
     if (!trimmed) return null;
     // Don't re-save built-ins.
@@ -575,31 +575,31 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  deletePhotoLabelPreset(id: number): void {
+  async deletePhotoLabelPreset(id: number): Promise<void> {
     sqlite.prepare(`DELETE FROM photo_label_presets WHERE id = ?`).run(id);
   }
 
   // ─── Parts ──────────────────────────────────────────────────────────────────
 
-  getPartsByServiceCallId(serviceCallId: number): Part[] {
+  async getPartsByServiceCallId(serviceCallId: number): Promise<Part[]> {
     return db.select().from(partsUsed).where(eq(partsUsed.serviceCallId, serviceCallId)).all();
   }
 
-  createPart(part: InsertPart): Part {
+  async createPart(part: InsertPart): Promise<Part> {
     return db.insert(partsUsed).values(part).returning().get();
   }
 
-  updatePart(id: number, part: Partial<InsertPart>): Part | undefined {
+  async updatePart(id: number, part: Partial<InsertPart>): Promise<Part | undefined> {
     return db.update(partsUsed).set(part).where(eq(partsUsed.id, id)).returning().get();
   }
 
-  deletePart(id: number): void {
+  async deletePart(id: number): Promise<void> {
     db.delete(partsUsed).where(eq(partsUsed.id, id)).run();
   }
 
   // ─── Service Call Products (multi-product) ────────────────────────────────────
 
-  getProductsByServiceCallId(serviceCallId: number): ServiceCallProduct[] {
+  async getProductsByServiceCallId(serviceCallId: number): Promise<ServiceCallProduct[]> {
     return db
       .select()
       .from(serviceCallProducts)
@@ -608,7 +608,7 @@ export class SQLiteStorage implements IStorage {
       .all();
   }
 
-  createServiceCallProduct(data: InsertServiceCallProduct): ServiceCallProduct {
+  async createServiceCallProduct(data: InsertServiceCallProduct): Promise<ServiceCallProduct> {
     const now = new Date().toISOString();
     // Auto-assign productIndex = MAX(product_index)+1 for this call (min 1).
     const maxRow = sqlite.prepare(
@@ -626,7 +626,7 @@ export class SQLiteStorage implements IStorage {
     return created;
   }
 
-  updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): ServiceCallProduct | undefined {
+  async updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): Promise<ServiceCallProduct | undefined> {
     const updated = db
       .update(serviceCallProducts)
       .set({ ...data, updatedAt: new Date().toISOString() } as any)
@@ -639,7 +639,7 @@ export class SQLiteStorage implements IStorage {
     return updated;
   }
 
-  voidServiceCallProduct(id: number): { voided: boolean; reason?: string } {
+  async voidServiceCallProduct(id: number): Promise<{ voided: boolean; reason?: string }> {
     const product = db.select().from(serviceCallProducts).where(eq(serviceCallProducts.id, id)).get();
     if (!product) return { voided: false, reason: "not_found" };
     // A call must always retain >=1 active product. Refuse to void the last one.
@@ -709,7 +709,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Dashboard ──────────────────────────────────────────────────────────────
 
-  getDashboardStats(): DashboardStats {
+  async getDashboardStats(): Promise<DashboardStats> {
     // All dates computed in the business timezone (default America/Denver).
     // Previously this used server-local (UTC on Render) which caused the
     // month-start to roll over ~6 hours early.
@@ -791,7 +791,7 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  getDashboardToday(): DashboardTodayData {
+  async getDashboardToday(): Promise<DashboardTodayData> {
     const today = todayLocalISO();
 
     // Pull every call whose schedule lands on today — either via the parent
@@ -911,7 +911,7 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  getDashboardActivity(limit: number = 10): DashboardActivityEntry[] {
+  async getDashboardActivity(limit: number = 10): Promise<DashboardActivityEntry[]> {
     const rows = sqlite.prepare(`
       SELECT id, username, action, entity_type, entity_id, details, created_at
       FROM audit_log_system
@@ -930,7 +930,7 @@ export class SQLiteStorage implements IStorage {
     }));
   }
 
-  getRecentServiceCalls(limit: number): ServiceCallWithCounts[] {
+  async getRecentServiceCalls(limit: number): Promise<ServiceCallWithCounts[]> {
     const rows = sqlite.prepare(`
       SELECT sc.*,
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
@@ -1019,7 +1019,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Related Calls (Follow-up chain) ─────────────────────────────────────
 
-  getRelatedCalls(callId: number): ServiceCall[] {
+  async getRelatedCalls(callId: number): Promise<ServiceCall[]> {
     // Find the root call by walking up parent_call_id
     let currentId = callId;
     for (let i = 0; i < 100; i++) {
@@ -1119,7 +1119,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Contacts ──────────────────────────────────────────────────────────────
 
-  getAllContacts(filters?: { type?: string; search?: string }): Contact[] {
+  async getAllContacts(filters?: { type?: string; search?: string }): Promise<Contact[]> {
     const conditions: string[] = [];
     const params: any[] = [];
 
@@ -1152,32 +1152,32 @@ export class SQLiteStorage implements IStorage {
     }));
   }
 
-  getContactById(id: number): Contact | undefined {
+  async getContactById(id: number): Promise<Contact | undefined> {
     return db.select().from(contacts).where(eq(contacts.id, id)).get();
   }
 
-  createContact(contact: InsertContact): Contact {
+  async createContact(contact: InsertContact): Promise<Contact> {
     const now = new Date().toISOString();
     return db.insert(contacts).values({ ...contact, createdAt: now }).returning().get();
   }
 
-  updateContact(id: number, contact: Partial<InsertContact>): Contact | undefined {
+  async updateContact(id: number, contact: Partial<InsertContact>): Promise<Contact | undefined> {
     return db.update(contacts).set(contact).where(eq(contacts.id, id)).returning().get();
   }
 
-  deleteContact(id: number): void {
+  async deleteContact(id: number): Promise<void> {
     db.delete(contacts).where(eq(contacts.id, id)).run();
   }
 
   // Find existing contact by type + name, or create a new one
-  findOrCreateContact(type: string, contactName: string, extra?: {
+  async findOrCreateContact(type: string, contactName: string, extra?: {
     companyName?: string | null;
     phone?: string | null;
     email?: string | null;
     address?: string | null;
     city?: string | null;
     state?: string | null;
-  }): Contact | null {
+  }): Promise<Contact | null> {
     if (!contactName || !contactName.trim()) return null;
     const name = contactName.trim();
     // Check if a contact with the same type and name already exists
@@ -1200,7 +1200,7 @@ export class SQLiteStorage implements IStorage {
       return existing;
     }
     // Create new
-    return this.createContact({
+    return await this.createContact({
       contactType: type,
       contactName: name,
       companyName: extra?.companyName ?? null,
@@ -1213,7 +1213,7 @@ export class SQLiteStorage implements IStorage {
     });
   }
 
-  suggestContacts(type: string, query: string): Contact[] {
+  async suggestContacts(type: string, query: string): Promise<Contact[]> {
     const s = `%${query.toLowerCase()}%`;
     const rows = sqlite.prepare(
       `SELECT * FROM contacts WHERE contact_type = ? AND (LOWER(company_name) LIKE ? OR LOWER(contact_name) LIKE ?) ORDER BY contact_name ASC LIMIT 5`
@@ -1237,7 +1237,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Follow-ups Due ────────────────────────────────────────────────────────
 
-  getFollowUpsDue(): ServiceCallWithCounts[] {
+  async getFollowUpsDue(): Promise<ServiceCallWithCounts[]> {
     const today = todayLocalISO();
     const rows = sqlite.prepare(`
       SELECT sc.*,
@@ -1322,11 +1322,11 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Global Search ────────────────────────────────────────────────────────
 
-  globalSearch(query: string): {
+  async globalSearch(query: string): Promise<{
     calls: Array<{ id: number; callDate: string; customerName: string | null; manufacturer: string; productModel: string | null; status: string }>;
     contacts: Array<{ id: number; contactType: string; contactName: string; companyName: string | null; phone: string | null }>;
     activities: Array<{ id: number; serviceCallId: number; note: string; createdAt: string }>;
-  } {
+  }> {
     const q = `%${query.toLowerCase()}%`;
 
     const calls = sqlite.prepare(`
@@ -1382,22 +1382,22 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Activity Log ──────────────────────────────────────────────────────────
 
-  getActivitiesByServiceCallId(serviceCallId: number): ActivityLog[] {
+  async getActivitiesByServiceCallId(serviceCallId: number): Promise<ActivityLog[]> {
     return db.select().from(activityLog).where(eq(activityLog.serviceCallId, serviceCallId)).all();
   }
 
-  createActivity(data: InsertActivityLog): ActivityLog {
+  async createActivity(data: InsertActivityLog): Promise<ActivityLog> {
     const now = new Date().toISOString();
     return db.insert(activityLog).values({ ...data, createdAt: now }).returning().get();
   }
 
-  deleteActivity(id: number): void {
+  async deleteActivity(id: number): Promise<void> {
     db.delete(activityLog).where(eq(activityLog.id, id)).run();
   }
 
   // ─── Users ──────────────────────────────────────────────────────────────────
 
-  getAllUsers(): Omit<User, "password">[] {
+  async getAllUsers(): Promise<Omit<User, "password">[]> {
     const rows = sqlite.prepare(`SELECT id, username, display_name, email, role, active, must_change_password, created_at FROM users ORDER BY created_at ASC`).all() as any[];
     return rows.map(r => ({
       id: r.id, username: r.username, displayName: r.display_name, email: r.email,
@@ -1405,19 +1405,19 @@ export class SQLiteStorage implements IStorage {
     }));
   }
 
-  getUserById(id: number): User | undefined {
+  async getUserById(id: number): Promise<User | undefined> {
     const row = sqlite.prepare(`SELECT * FROM users WHERE id = ?`).get(id) as any;
     if (!row) return undefined;
     return { id: row.id, username: row.username, password: row.password, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
   }
 
-  getUserByUsername(username: string): User | undefined {
+  async getUserByUsername(username: string): Promise<User | undefined> {
     const row = sqlite.prepare(`SELECT * FROM users WHERE LOWER(username) = LOWER(?)`).get(username) as any;
     if (!row) return undefined;
     return { id: row.id, username: row.username, password: row.password, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
   }
 
-  createUser(data: { username: string; password: string; displayName: string; email?: string; role: string }): Omit<User, "password"> {
+  async createUser(data: { username: string; password: string; displayName: string; email?: string; role: string }): Promise<Omit<User, "password">> {
     const hashed = bcrypt.hashSync(data.password, 12);
     const now = new Date().toISOString();
     const row = sqlite.prepare(
@@ -1426,14 +1426,14 @@ export class SQLiteStorage implements IStorage {
     return { id: row.id, username: row.username, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
   }
 
-  deleteUser(id: number): void {
+  async deleteUser(id: number): Promise<void> {
     // Nullify references so history is preserved
     sqlite.prepare(`UPDATE audit_log_system SET user_id = NULL WHERE user_id = ?`).run(id);
     sqlite.prepare(`UPDATE service_call_visits SET technician_id = NULL WHERE technician_id = ?`).run(id);
     sqlite.prepare(`DELETE FROM users WHERE id = ?`).run(id);
   }
 
-  updateUser(id: number, data: { displayName?: string; email?: string; role?: string; active?: number; password?: string; mustChangePassword?: number }): Omit<User, "password"> | undefined {
+  async updateUser(id: number, data: { displayName?: string; email?: string; role?: string; active?: number; password?: string; mustChangePassword?: number }): Promise<Omit<User, "password"> | undefined> {
     const updates: string[] = [];
     const params: any[] = [];
     if (data.displayName !== undefined) { updates.push("display_name = ?"); params.push(data.displayName); }
@@ -1445,7 +1445,7 @@ export class SQLiteStorage implements IStorage {
       updates.push("must_change_password = 1");
     }
     if (data.mustChangePassword !== undefined) { updates.push("must_change_password = ?"); params.push(data.mustChangePassword); }
-    if (updates.length === 0) return this.getUserById(id) as any;
+    if (updates.length === 0) return (await this.getUserById(id)) as any;
     params.push(id);
     const row = sqlite.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ? RETURNING *`).get(...params) as any;
     if (!row) return undefined;
@@ -1458,7 +1458,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── System Audit Log ─────────────────────────────────────────────────────
 
-  createAuditEntry(data: { userId: number | null; username: string; action: string; entityType?: string; entityId?: number; details?: string }): void {
+  async createAuditEntry(data: { userId: number | null; username: string; action: string; entityType?: string; entityId?: number; details?: string }): Promise<void> {
     sqlite.prepare(
       `INSERT INTO audit_log_system (user_id, username, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(data.userId, data.username, data.action, data.entityType || null, data.entityId || null, data.details || null, new Date().toISOString());
@@ -1466,7 +1466,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Invoices ───────────────────────────────────────────────────────────
 
-  generateInvoiceNumber(): string {
+  async generateInvoiceNumber(): Promise<string> {
     // Collision-safe: use MAX of the existing sequence numbers (not COUNT)
     // and never return a number that already exists. COUNT can collide if
     // an invoice was deleted, two requests arrive concurrently, or the
@@ -1514,7 +1514,7 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  getAllInvoices(filters?: { status?: string; billToType?: string; search?: string }): (Invoice & { itemCount: number })[] {
+  async getAllInvoices(filters?: { status?: string; billToType?: string; search?: string }): Promise<(Invoice & { itemCount: number })[]> {
     const conditions: string[] = [];
     const params: any[] = [];
     if (filters?.status) { conditions.push("status = ?"); params.push(filters.status); }
@@ -1531,19 +1531,19 @@ export class SQLiteStorage implements IStorage {
     return rows.map(r => ({ ...this.mapInvoiceRow(r), itemCount: r.item_count }));
   }
 
-  getInvoiceById(id: number): (Invoice & { items: InvoiceItem[] }) | undefined {
+  async getInvoiceById(id: number): Promise<(Invoice & { items: InvoiceItem[] }) | undefined> {
     const row = sqlite.prepare(`SELECT * FROM invoices WHERE id = ?`).get(id) as any;
     if (!row) return undefined;
     const items = sqlite.prepare(`SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sort_order ASC`).all(id) as any[];
     return { ...this.mapInvoiceRow(row), items: items.map(i => this.mapItemRow(i)) };
   }
 
-  getInvoicesByServiceCallId(serviceCallId: number): Invoice[] {
+  async getInvoicesByServiceCallId(serviceCallId: number): Promise<Invoice[]> {
     const rows = sqlite.prepare(`SELECT * FROM invoices WHERE service_call_id = ? ORDER BY created_at DESC`).all(serviceCallId) as any[];
     return rows.map(r => this.mapInvoiceRow(r));
   }
 
-  createInvoice(data: InsertInvoice): Invoice {
+  async createInvoice(data: InsertInvoice): Promise<Invoice> {
     const now = new Date().toISOString();
     const row = sqlite.prepare(`
       INSERT INTO invoices (invoice_number, service_call_id, bill_to_type, bill_to_name,
@@ -1564,7 +1564,7 @@ export class SQLiteStorage implements IStorage {
     return this.mapInvoiceRow(row);
   }
 
-  updateInvoice(id: number, data: Partial<InsertInvoice>): Invoice | undefined {
+  async updateInvoice(id: number, data: Partial<InsertInvoice>): Promise<Invoice | undefined> {
     const now = new Date().toISOString();
     const allowed = ["billToType","billToName","billToAddress","billToCity","billToState",
       "billToEmail","billToPhone","issueDate","dueDate","paymentTerms","status",
@@ -1586,20 +1586,20 @@ export class SQLiteStorage implements IStorage {
     return row ? this.mapInvoiceRow(row) : undefined;
   }
 
-  deleteInvoice(id: number): void {
+  async deleteInvoice(id: number): Promise<void> {
     sqlite.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(id);
     sqlite.prepare(`DELETE FROM invoices WHERE id = ?`).run(id);
   }
 
   // Mark any Sent invoice whose due_date < today as Overdue
-  markOverdueInvoices(today: string): void {
+  async markOverdueInvoices(today: string): Promise<void> {
     sqlite.prepare(
       `UPDATE invoices SET status = 'Overdue', updated_at = ? WHERE status = 'Sent' AND due_date IS NOT NULL AND due_date < ?`
     ).run(new Date().toISOString(), today);
   }
 
   // Invoice items
-  createInvoiceItem(data: InsertInvoiceItem): InvoiceItem {
+  async createInvoiceItem(data: InsertInvoiceItem): Promise<InvoiceItem> {
     const row = sqlite.prepare(`
       INSERT INTO invoice_items (invoice_id, type, description, quantity, unit_price, amount, sort_order, visit_number)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
@@ -1607,7 +1607,7 @@ export class SQLiteStorage implements IStorage {
     return this.mapItemRow(row);
   }
 
-  updateInvoiceItem(id: number, data: Partial<InsertInvoiceItem>): InvoiceItem | undefined {
+  async updateInvoiceItem(id: number, data: Partial<InsertInvoiceItem>): Promise<InvoiceItem | undefined> {
     const allowed = ["type","description","quantity","unitPrice","amount","sortOrder","visitNumber"];
     const colMap: Record<string,string> = { type:"type", description:"description", quantity:"quantity", unitPrice:"unit_price", amount:"amount", sortOrder:"sort_order", visitNumber:"visit_number" };
     const updates: string[] = [];
@@ -1621,13 +1621,17 @@ export class SQLiteStorage implements IStorage {
     return row ? this.mapItemRow(row) : undefined;
   }
 
-  deleteInvoiceItem(id: number): void {
+  async deleteInvoiceItem(id: number): Promise<void> {
     sqlite.prepare(`DELETE FROM invoice_items WHERE id = ?`).run(id);
   }
 
-  replaceInvoiceItems(invoiceId: number, items: InsertInvoiceItem[]): InvoiceItem[] {
+  async replaceInvoiceItems(invoiceId: number, items: InsertInvoiceItem[]): Promise<InvoiceItem[]> {
     sqlite.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(invoiceId);
-    return items.map((item, idx) => this.createInvoiceItem({ ...item, invoiceId, sortOrder: idx }));
+    const created: InvoiceItem[] = [];
+    for (let idx = 0; idx < items.length; idx++) {
+      created.push(await this.createInvoiceItem({ ...items[idx], invoiceId, sortOrder: idx }));
+    }
+    return created;
   }
 
   // ─── Service Call Visits (Return Visits) ──────────────────────────────────
@@ -1648,14 +1652,14 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  getVisitsForCall(serviceCallId: number): ServiceCallVisit[] {
+  async getVisitsForCall(serviceCallId: number): Promise<ServiceCallVisit[]> {
     const rows = sqlite.prepare(
       `SELECT * FROM service_call_visits WHERE service_call_id = ? ORDER BY visit_number ASC`
     ).all(serviceCallId) as any[];
     return rows.map(r => this.mapVisitRow(r));
   }
 
-  createVisit(data: InsertServiceCallVisit & { hoursOnJob?: string; milesTraveled?: string }): ServiceCallVisit {
+  async createVisit(data: InsertServiceCallVisit & { hoursOnJob?: string; milesTraveled?: string }): Promise<ServiceCallVisit> {
     const nextNum = (sqlite.prepare(
       `SELECT COALESCE(MAX(visit_number), 1) + 1 AS next_num FROM service_call_visits WHERE service_call_id = ?`
     ).get(data.serviceCallId) as any).next_num;
@@ -1673,7 +1677,7 @@ export class SQLiteStorage implements IStorage {
     return this.mapVisitRow(row);
   }
 
-  updateVisit(id: number, data: Partial<Pick<ServiceCallVisit, 'visitDate' | 'technicianId' | 'notes' | 'status' | 'hoursOnJob' | 'milesTraveled'>>): ServiceCallVisit | undefined {
+  async updateVisit(id: number, data: Partial<Pick<ServiceCallVisit, 'visitDate' | 'technicianId' | 'notes' | 'status' | 'hoursOnJob' | 'milesTraveled'>>): Promise<ServiceCallVisit | undefined> {
     const allowed = ["visitDate", "technicianId", "notes", "status", "hoursOnJob", "milesTraveled"];
     const colMap: Record<string, string> = {
       visitDate: "visit_date", technicianId: "technician_id", notes: "notes", status: "status",
@@ -1694,16 +1698,16 @@ export class SQLiteStorage implements IStorage {
     return row ? this.mapVisitRow(row) : undefined;
   }
 
-  deleteVisit(id: number): void {
+  async deleteVisit(id: number): Promise<void> {
     sqlite.prepare(`DELETE FROM service_call_visits WHERE id = ?`).run(id);
   }
 
-  getVisitById(id: number): ServiceCallVisit | undefined {
+  async getVisitById(id: number): Promise<ServiceCallVisit | undefined> {
     const row = sqlite.prepare(`SELECT * FROM service_call_visits WHERE id = ?`).get(id) as any;
     return row ? this.mapVisitRow(row) : undefined;
   }
 
-  getAuditLog(filters?: { userId?: number; action?: string; entityType?: string; limit?: number; offset?: number }): { entries: AuditLogEntry[]; total: number } {
+  async getAuditLog(filters?: { userId?: number; action?: string; entityType?: string; limit?: number; offset?: number }): Promise<{ entries: AuditLogEntry[]; total: number }> {
     const conditions: string[] = [];
     const params: any[] = [];
     if (filters?.userId) { conditions.push("user_id = ?"); params.push(filters.userId); }
@@ -1722,7 +1726,7 @@ export class SQLiteStorage implements IStorage {
   }
 
   // ─── Executive Briefing ────────────────────────────────────────────────────
-  getExecutiveBriefing(): any {
+  async getExecutiveBriefing(): Promise<any> {
     // All dates computed in business timezone, not server-UTC. Previous
     // implementation used now.getFullYear()/getMonth() which run in the
     // server's local timezone — UTC on Render — causing the month
@@ -1862,7 +1866,7 @@ export class SQLiteStorage implements IStorage {
   }
 
   // ─── 90-Day Trend ──────────────────────────────────────────────────────────
-  getDashboardTrend90Days(): Array<{ date: string; calls: number; revenue: number; completed: number }> {
+  async getDashboardTrend90Days(): Promise<Array<{ date: string; calls: number; revenue: number; completed: number }>> {
     const now = new Date();
     const start = new Date(now.getTime() - 89 * 86400000);
     const startStr = start.toISOString().split("T")[0];
@@ -1906,7 +1910,7 @@ export class SQLiteStorage implements IStorage {
   }
 
   // ─── Watchlist ──────────────────────────────────────────────────────────
-  getDashboardWatchlist(): Array<{ kind: string; severity: string; title: string; subtitle: string; href: string; amount?: number; days?: number }> {
+  async getDashboardWatchlist(): Promise<Array<{ kind: string; severity: string; title: string; subtitle: string; href: string; amount?: number; days?: number }>> {
     const today = todayLocalISO();
     const out: Array<any> = [];
 

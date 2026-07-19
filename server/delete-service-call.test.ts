@@ -21,8 +21,8 @@ process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), "fst-delete-test-")), "tes
 const { storage, sqlite } = await import("./storage.ts");
 const { auditOrphans, hasOrphans } = await import("./orphan-audit.ts");
 
-test("deleteServiceCall removes all children including invoice_items — no orphans", () => {
-  const call = storage.createServiceCall({
+test("deleteServiceCall removes all children including invoice_items — no orphans", async () => {
+  const call = await storage.createServiceCall({
     callDate: "2026-01-01",
     manufacturer: "Acme",
     issueDescription: "Water heater leaking",
@@ -60,7 +60,7 @@ test("deleteServiceCall removes all children including invoice_items — no orph
   const itemCountBefore = (sqlite.prepare(`SELECT COUNT(*) AS n FROM invoice_items WHERE invoice_id = ?`).get(inv.id) as { n: number }).n;
   assert.equal(itemCountBefore, 2);
 
-  storage.deleteServiceCall(call.id);
+  await storage.deleteServiceCall(call.id);
 
   const count = (table: string, col: string, val: number) =>
     (sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${col} = ?`).get(val) as { n: number }).n;

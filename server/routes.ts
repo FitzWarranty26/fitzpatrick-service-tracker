@@ -225,7 +225,7 @@ async function geocodeAddress(address: string, city: string, state: string): Pro
 export function registerRoutes(httpServer: Server, app: Express) {
   // ─── Authentication ─────────────────────────────────────────────────────────
 
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     try {
       const ip = getClientIP(req);
 
@@ -241,23 +241,23 @@ export function registerRoutes(httpServer: Server, app: Express) {
         return res.status(400).json({ success: false, error: "Username and password required" });
       }
 
-      const user = storage.getUserByUsername(username);
+      const user = await storage.getUserByUsername(username);
       if (!user || !user.active) {
         recordFailedLogin(ip);
-        storage.createAuditEntry({ userId: null, username: username, action: "login_failed", details: "Unknown user or inactive" });
+        await storage.createAuditEntry({ userId: null, username: username, action: "login_failed", details: "Unknown user or inactive" });
         return res.status(401).json({ success: false, error: "Invalid username or password" });
       }
 
       if (!storage.verifyPassword(password, user.password)) {
         recordFailedLogin(ip);
-        storage.createAuditEntry({ userId: user.id, username: user.username, action: "login_failed", details: "Wrong password" });
+        await storage.createAuditEntry({ userId: user.id, username: user.username, action: "login_failed", details: "Wrong password" });
         return res.status(401).json({ success: false, error: "Invalid username or password" });
       }
 
       clearFailedLogins(ip);
       const token = createSessionToken(ip, { id: user.id, username: user.username, role: user.role });
       setSessionCookie(res, token);
-      storage.createAuditEntry({ userId: user.id, username: user.username, action: "login" });
+      await storage.createAuditEntry({ userId: user.id, username: user.username, action: "login" });
       return res.json({
         success: true,
         token,
@@ -274,7 +274,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
     try {
       const token = getRequestToken(req);
       if (token) sessionStore.destroy(token);
@@ -285,14 +285,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/auth/verify", (req, res) => {
+  app.get("/api/auth/verify", async (req, res) => {
     try {
       const token = getRequestToken(req);
       const session = token ? getSessionUser(token) : null;
       if (session) {
         // Look up the live user so a page reload can fully restore client auth
         // state (displayName, mustChangePassword) from the httpOnly cookie.
-        const user = storage.getUserById(session.userId);
+        const user = await storage.getUserById(session.userId);
         if (!user || !user.active) {
           sessionStore.destroy(token);
           clearSessionCookie(res);
@@ -331,9 +331,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // auth boundary is unit-testable; imported at the top of this file.
 
   // Helper to log audit entries from route handlers
-  function logAudit(req: any, action: string, entityType?: string, entityId?: number, details?: string) {
+  async function logAudit(req: any, action: string, entityType?: string, entityId?: number, details?: string) {
     try {
-      storage.createAuditEntry({
+      await storage.createAuditEntry({
         userId: req.user?.id || null,
         username: req.user?.username || "system",
         action,
@@ -360,7 +360,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ─── Password Change ──────────────────────────────────────────────────────
-  app.post("/api/auth/change-password", requireAuth, (req: any, res: any) => {
+  app.post("/api/auth/change-password", requireAuth, async (req: any, res: any) => {
     try {
       const { currentPassword, newPassword } = req.body;
       if (!currentPassword || !newPassword) {
@@ -369,12 +369,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (newPassword.length < 8) {
         return res.status(400).json({ error: "Password must be at least 8 characters" });
       }
-      const user = storage.getUserById(req.user.id);
+      const user = await storage.getUserById(req.user.id);
       if (!user) return res.status(404).json({ error: "User not found" });
       if (!storage.verifyPassword(currentPassword, user.password)) {
         return res.status(401).json({ error: "Current password is incorrect" });
       }
-      storage.updateUser(user.id, { password: newPassword, mustChangePassword: 0 });
+      await storage.updateUser(user.id, { password: newPassword, mustChangePassword: 0 });
       logAudit(req, "password_changed", "user", user.id);
       return res.json({ success: true });
     } catch (e: any) {
@@ -385,23 +385,23 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // ─── User Management (Manager Only) ───────────────────────────────────────
 
   // Lightweight names list — any authenticated user can read (used for dropdowns)
-  app.get("/api/users/names", (req: any, res: any) => {
+  app.get("/api/users/names", async (req: any, res: any) => {
     try {
-      const rows = storage.getAllUsers().filter((u: any) => u.active);
+      const rows = (await storage.getAllUsers()).filter((u: any) => u.active);
       res.json(rows.map((u: any) => ({ id: u.id, displayName: u.displayName, role: u.role })));
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.get("/api/users", requireManager, (_req, res) => {
+  app.get("/api/users", requireManager, async (_req, res) => {
     try {
-      const users = storage.getAllUsers();
+      const users = await storage.getAllUsers();
       res.json(users);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.post("/api/users", requireManager, validate(createUserSchema), (req, res) => {
+  app.post("/api/users", requireManager, validate(createUserSchema), async (req, res) => {
     try {
       const { username, password, displayName, email, role } = req.body;
       if (!username || !password || !displayName || !role) {
@@ -413,9 +413,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (!["manager", "tech", "sales", "staff"].includes(role)) {
         return res.status(400).json({ error: "Role must be manager, tech, sales, or staff" });
       }
-      const existing = storage.getUserByUsername(username);
+      const existing = await storage.getUserByUsername(username);
       if (existing) return res.status(409).json({ error: "Username already exists" });
-      const user = storage.createUser({ username, password, displayName, email, role });
+      const user = await storage.createUser({ username, password, displayName, email, role });
       logAudit(req, "created_user", "user", user.id, JSON.stringify({ username, displayName, role }));
       res.status(201).json(user);
     } catch (e: any) {
@@ -423,7 +423,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.patch("/api/users/:id", requireManager, validate(updateUserSchema), (req, res) => {
+  app.patch("/api/users/:id", requireManager, validate(updateUserSchema), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -442,7 +442,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters" });
         updates.password = password;
       }
-      const user = storage.updateUser(id, updates);
+      const user = await storage.updateUser(id, updates);
       if (!user) return res.status(404).json({ error: "User not found" });
       const action = active === 0 ? "deactivated_user" : "edited_user";
       logAudit(req, action, "user", id, JSON.stringify(updates));
@@ -456,7 +456,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/users/:id", requireManager, (req: any, res: any) => {
+  app.delete("/api/users/:id", requireManager, async (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -466,12 +466,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
         return res.status(400).json({ error: "You cannot delete your own account" });
       }
 
-      const target = storage.getUserById(id);
+      const target = await storage.getUserById(id);
       if (!target) return res.status(404).json({ error: "User not found" });
 
       // Cannot delete the last active manager
       if (target.role === "manager") {
-        const allUsers = storage.getAllUsers();
+        const allUsers = await storage.getAllUsers();
         const activeManagers = allUsers.filter((u: any) => u.role === "manager" && u.active && u.id !== id);
         if (activeManagers.length === 0) {
           return res.status(400).json({ error: "Cannot delete the last manager account" });
@@ -482,7 +482,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       sessionStore.destroyByUser(id);
 
       logAudit(req, "deleted_user", "user", id, JSON.stringify({ username: target.username, displayName: target.displayName, role: target.role }));
-      storage.deleteUser(id);
+      await storage.deleteUser(id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -491,7 +491,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── System Audit Log (Manager Only) ──────────────────────────────────────
 
-  app.get("/api/audit-log", requireManager, (req, res) => {
+  app.get("/api/audit-log", requireManager, async (req, res) => {
     try {
       const filters: any = {};
       if (req.query.userId) filters.userId = parseInt(req.query.userId as string);
@@ -499,7 +499,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (req.query.entityType) filters.entityType = req.query.entityType;
       if (req.query.limit) filters.limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
       if (req.query.offset) filters.offset = parseInt(req.query.offset as string) || 0;
-      const result = storage.getAuditLog(filters);
+      const result = await storage.getAuditLog(filters);
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -508,36 +508,36 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Dashboard ──────────────────────────────────────────────────────────────
 
-  app.get("/api/dashboard/stats", (_req, res) => {
+  app.get("/api/dashboard/stats", async (_req, res) => {
     try {
-      const stats = storage.getDashboardStats();
+      const stats = await storage.getDashboardStats();
       res.json(stats);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.get("/api/dashboard/follow-ups", (_req, res) => {
+  app.get("/api/dashboard/follow-ups", async (_req, res) => {
     try {
-      const calls = storage.getFollowUpsDue();
+      const calls = await storage.getFollowUpsDue();
       res.json(calls);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.get("/api/dashboard/recent", (_req, res) => {
+  app.get("/api/dashboard/recent", async (_req, res) => {
     try {
-      const calls = storage.getRecentServiceCalls(10);
+      const calls = await storage.getRecentServiceCalls(10);
       res.json(calls);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.get("/api/dashboard/today", (_req, res) => {
+  app.get("/api/dashboard/today", async (_req, res) => {
     try {
-      const data = storage.getDashboardToday();
+      const data = await storage.getDashboardToday();
       res.json(data);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -548,9 +548,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // edits, with usernames). The full /api/audit-log is already manager-gated;
   // this was an accidental side door that exposed the same data to any
   // authenticated user.
-  app.get("/api/dashboard/activity", requireManager, (_req, res) => {
+  app.get("/api/dashboard/activity", requireManager, async (_req, res) => {
     try {
-      const activity = storage.getDashboardActivity(10);
+      const activity = await storage.getDashboardActivity(10);
       res.json(activity);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -558,12 +558,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ── Executive Briefing ── KPIs with MoM deltas + sparkline data
-  app.get("/api/dashboard/briefing", (_req, res) => {
+  app.get("/api/dashboard/briefing", async (_req, res) => {
     try {
       const sqliteHandle: any = (storage as any).sqliteHandle ?? null;
       const sql = sqliteHandle || (storage as any)["db"]?.session?.client || null;
       // Use the storage helper for consistency
-      const briefing = (storage as any).getExecutiveBriefing?.() ?? null;
+      const briefing = (await (storage as any).getExecutiveBriefing?.()) ?? null;
       if (briefing) return res.json(briefing);
       // Fallback: empty
       res.json({});
@@ -573,9 +573,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ── 90-day trend data ── daily counts and revenue
-  app.get("/api/dashboard/trend", (_req, res) => {
+  app.get("/api/dashboard/trend", async (_req, res) => {
     try {
-      const trend = (storage as any).getDashboardTrend90Days?.() ?? [];
+      const trend = (await (storage as any).getDashboardTrend90Days?.()) ?? [];
       res.json(trend);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -583,9 +583,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ── Watchlist ── prioritized list of items needing attention
-  app.get("/api/dashboard/watchlist", (_req, res) => {
+  app.get("/api/dashboard/watchlist", async (_req, res) => {
     try {
-      const watch = (storage as any).getDashboardWatchlist?.() ?? [];
+      const watch = (await (storage as any).getDashboardWatchlist?.()) ?? [];
       res.json(watch);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -594,7 +594,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
 
   // My Calls — calls created by the current user
-  app.get("/api/dashboard/my-calls", (req: any, res: any) => {
+  app.get("/api/dashboard/my-calls", async (req: any, res: any) => {
     try {
       const userId = req.user?.id;
       if (!userId) return res.json([]);
@@ -617,7 +617,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // Upcoming Week — calls scheduled in the next 7 days
-  app.get("/api/dashboard/upcoming-week", (req: any, res: any) => {
+  app.get("/api/dashboard/upcoming-week", async (req: any, res: any) => {
     try {
       const today = todayLocalISO();
       const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
@@ -642,13 +642,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Global Search ──────────────────────────────────────────────────────────
 
-  app.get("/api/search", (req, res) => {
+  app.get("/api/search", async (req, res) => {
     try {
       const q = req.query.q as string;
       if (!q || q.length < 2) return res.json({ calls: [], contacts: [], activities: [] });
       // Cap search length to prevent expensive LIKE queries
       if (q.length > 200) return res.status(400).json({ error: "Search query too long" });
-      const results = storage.globalSearch(q);
+      const results = await storage.globalSearch(q);
       res.json(results);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -657,7 +657,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Service Calls ──────────────────────────────────────────────────────────
 
-  app.get("/api/service-calls", (req, res) => {
+  app.get("/api/service-calls", async (req, res) => {
     try {
       const filters: any = {
         manufacturer: req.query.manufacturer as string | undefined,
@@ -678,18 +678,18 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (req.query.flagged === "1" || req.query.flagged === "true") {
         filters.flaggedOnly = true;
       }
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
+      const calls = await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined);
       res.json(calls);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.get("/api/service-calls/:id", (req, res) => {
+  app.get("/api/service-calls/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const call = storage.getServiceCallById(id);
+      const call = await storage.getServiceCallById(id);
       if (!call) return res.status(404).json({ error: "Not found" });
       res.json(call);
     } catch (e: any) {
@@ -697,11 +697,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/service-calls", requireEditor, (req: any, res) => {
+  app.post("/api/service-calls", requireEditor, async (req: any, res) => {
     try {
       const data = insertServiceCallSchema.parse(req.body);
       // Stamp the creator from the authenticated session (never trust the body).
-      const call = storage.createServiceCall(data, req.user?.id ?? null);
+      const call = await storage.createServiceCall(data, req.user?.id ?? null);
 
       // Multi-product: if the client sent a `products` array, persist each as a
       // product row (productIndex assigned sequentially by storage). Otherwise
@@ -710,7 +710,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       try {
         const bodyProducts = Array.isArray(req.body.products) ? req.body.products : [];
         if (bodyProducts.length > 0) {
-          bodyProducts.forEach((p: any, i: number) => {
+          for (let i = 0; i < bodyProducts.length; i++) {
+            const p: any = bodyProducts[i];
             // Product 1 is mirrored back onto the legacy service_calls columns by
             // storage.syncLegacyFromProduct(). The New Service Call form sends only
             // per-product identity fields (manufacturer/model/serial/type/install
@@ -734,10 +735,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 }
               : p;
             const productData = insertServiceCallProductSchema.parse({ ...merged, serviceCallId: call.id });
-            storage.createServiceCallProduct(productData);
-          });
+            await storage.createServiceCallProduct(productData);
+          }
         } else {
-          storage.createServiceCallProduct({
+          await storage.createServiceCallProduct({
             serviceCallId: call.id,
             productIndex: 1,
             manufacturer: data.manufacturer || "Other",
@@ -785,7 +786,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       try {
         // Customer
         if (data.customerName) {
-          storage.findOrCreateContact("customer", data.customerName, {
+          await storage.findOrCreateContact("customer", data.customerName, {
             address: data.jobSiteAddress,
             city: data.jobSiteCity,
             state: data.jobSiteState,
@@ -793,14 +794,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }
         // Installing Contractor
         if (data.contactName) {
-          storage.findOrCreateContact("contractor", data.contactName, {
+          await storage.findOrCreateContact("contractor", data.contactName, {
             phone: data.contactPhone,
             email: data.contactEmail,
           });
         }
         // On-Site Contact
         if (data.siteContactName) {
-          storage.findOrCreateContact("site_contact", data.siteContactName, {
+          await storage.findOrCreateContact("site_contact", data.siteContactName, {
             phone: data.siteContactPhone,
             email: data.siteContactEmail,
           });
@@ -811,9 +812,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
 
       // Geocode in background (don't block the response)
-      geocodeAddress(data.jobSiteAddress || "", data.jobSiteCity || "", data.jobSiteState || "").then(coords => {
+      geocodeAddress(data.jobSiteAddress || "", data.jobSiteCity || "", data.jobSiteState || "").then(async coords => {
         if (coords) {
-          storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
+          await storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
         }
       });
       logAudit(req, "created_call", "service_call", call.id, `${data.customerName || ""} - ${data.manufacturer}`);
@@ -826,7 +827,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.patch("/api/service-calls/:id", requireEditor, (req, res) => {
+  app.patch("/api/service-calls/:id", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -837,7 +838,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       // so older clients still work.
       const ifUnmodified = req.header("If-Unmodified-Since");
       if (ifUnmodified) {
-        const existing = storage.getServiceCallById(id);
+        const existing = await storage.getServiceCallById(id);
         if (!existing) return res.status(404).json({ error: "Not found" });
         const currentTs = (existing as any).updatedAt || (existing as any).createdAt;
         // Both timestamps are ISO strings produced by Date.toISOString(); a
@@ -876,7 +877,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       // Detect an address change so we can re-geocode in the background. Compare
       // against the existing row before the update is applied. Skip rows whose
       // coordinates were manually placed (coords_locked).
-      const existingForGeo = storage.getServiceCallById(id);
+      const existingForGeo = await storage.getServiceCallById(id);
       const addressChanged =
         existingForGeo != null &&
         !(existingForGeo as any).coordsLocked &&
@@ -884,7 +885,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           (data.jobSiteCity !== undefined && data.jobSiteCity !== existingForGeo.jobSiteCity) ||
           (data.jobSiteState !== undefined && data.jobSiteState !== existingForGeo.jobSiteState));
 
-      const call = storage.updateServiceCall(id, data);
+      const call = await storage.updateServiceCall(id, data);
       if (!call) return res.status(404).json({ error: "Not found" });
 
       // Re-geocode in the background when the address changed. Clear stale
@@ -894,12 +895,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
         const addr = data.jobSiteAddress ?? existingForGeo!.jobSiteAddress ?? "";
         const city = data.jobSiteCity ?? existingForGeo!.jobSiteCity ?? "";
         const state = data.jobSiteState ?? existingForGeo!.jobSiteState ?? "";
-        storage.updateServiceCall(id, { latitude: null, longitude: null } as any);
-        geocodeAddress(addr, city, state).then(coords => {
+        await storage.updateServiceCall(id, { latitude: null, longitude: null } as any);
+        geocodeAddress(addr, city, state).then(async coords => {
           if (coords) {
-            const fresh = storage.getServiceCallById(id);
+            const fresh = await storage.getServiceCallById(id);
             if (fresh && !(fresh as any).coordsLocked) {
-              storage.updateServiceCall(id, { latitude: coords.lat, longitude: coords.lng } as any);
+              await storage.updateServiceCall(id, { latitude: coords.lat, longitude: coords.lng } as any);
             }
           }
         });
@@ -922,11 +923,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // Manager-gated: deleting a call triggers a high-blast-radius, irreversible
   // cascade (invoices, visits, photos, parts, appointments). Techs must not be
   // able to destroy financial/history data. Soft-delete is out of scope for now.
-  app.delete("/api/service-calls/:id", requireManager, (req, res) => {
+  app.delete("/api/service-calls/:id", requireManager, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      storage.deleteServiceCall(id);
+      await storage.deleteServiceCall(id);
       logAudit(req, "deleted_call", "service_call", id);
       res.json({ success: true });
     } catch (e: any) {
@@ -936,11 +937,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Related Calls (Follow-up chain) ────────────────────────────────────────
 
-  app.get("/api/service-calls/:id/related", (req, res) => {
+  app.get("/api/service-calls/:id/related", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const related = storage.getRelatedCalls(id);
+      const related = await storage.getRelatedCalls(id);
       res.json(related);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -949,36 +950,36 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Contacts ──────────────────────────────────────────────────────────────
 
-  app.get("/api/contacts/suggest", (req, res) => {
+  app.get("/api/contacts/suggest", async (req, res) => {
     try {
       const type = req.query.type as string;
       const q = req.query.q as string;
       if (!type || !q) return res.json([]);
-      const results = storage.suggestContacts(type, q);
+      const results = await storage.suggestContacts(type, q);
       res.json(results);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.get("/api/contacts", (req, res) => {
+  app.get("/api/contacts", async (req, res) => {
     try {
       const filters: { type?: string; search?: string } = {};
       if (req.query.type) filters.type = req.query.type as string;
       if (req.query.search) filters.search = req.query.search as string;
-      const contactsList = storage.getAllContacts(Object.keys(filters).length ? filters : undefined);
+      const contactsList = await storage.getAllContacts(Object.keys(filters).length ? filters : undefined);
       res.json(contactsList);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.get("/api/contacts/export", (req, res) => {
+  app.get("/api/contacts/export", async (req, res) => {
     try {
       const filters: { type?: string; search?: string } = {};
       if (req.query.type) filters.type = req.query.type as string;
       if (req.query.search) filters.search = req.query.search as string;
-      const contactsList = storage.getAllContacts(Object.keys(filters).length ? filters : undefined);
+      const contactsList = await storage.getAllContacts(Object.keys(filters).length ? filters : undefined);
 
       const headers = ["Type", "Company Name", "Contact Name", "Phone", "Email", "Address", "City", "State", "Notes"];
       // CSV-injection safe escaper: prefix any cell that starts with =, +, -, @,
@@ -1012,11 +1013,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/contacts/:id", (req, res) => {
+  app.get("/api/contacts/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const contact = storage.getContactById(id);
+      const contact = await storage.getContactById(id);
       if (!contact) return res.status(404).json({ error: "Not found" });
       res.json(contact);
     } catch (e: any) {
@@ -1025,11 +1026,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // Get all service calls related to a contact (by company, phone, or email)
-  app.get("/api/contacts/:id/calls", (req, res) => {
+  app.get("/api/contacts/:id/calls", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const contact = storage.getContactById(id);
+      const contact = await storage.getContactById(id);
       if (!contact) return res.status(404).json({ error: "Not found" });
       // Match calls by company name (most reliable identifier)
       const company = contact.companyName || contact.contactName || "";
@@ -1068,10 +1069,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/contacts", requireEditor, (req, res) => {
+  app.post("/api/contacts", requireEditor, async (req, res) => {
     try {
       const data = insertContactSchema.parse(req.body);
-      const contact = storage.createContact(data);
+      const contact = await storage.createContact(data);
       logAudit(req, "created_contact", "contact", contact.id, data.contactName);
       res.status(201).json(contact);
     } catch (e: any) {
@@ -1080,12 +1081,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.patch("/api/contacts/:id", requireEditor, (req, res) => {
+  app.patch("/api/contacts/:id", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const data = insertContactSchema.partial().parse(req.body);
-      const contact = storage.updateContact(id, data);
+      const contact = await storage.updateContact(id, data);
       if (!contact) return res.status(404).json({ error: "Not found" });
       res.json(contact);
     } catch (e: any) {
@@ -1094,11 +1095,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/contacts/:id", requireManager, (req, res) => {
+  app.delete("/api/contacts/:id", requireManager, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      storage.deleteContact(id);
+      await storage.deleteContact(id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -1107,18 +1108,18 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Photos ─────────────────────────────────────────────────────────────────
 
-  app.get("/api/service-calls/:id/photos", (req, res) => {
+  app.get("/api/service-calls/:id/photos", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const callPhotos = storage.getPhotosByServiceCallId(id);
+      const callPhotos = await storage.getPhotosByServiceCallId(id);
       res.json(callPhotos);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.post("/api/service-calls/:id/photos", express.json({ limit: "20mb" }), requireEditor, (req, res) => {
+  app.post("/api/service-calls/:id/photos", express.json({ limit: "20mb" }), requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -1131,7 +1132,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (data.photoUrl.length > 10 * 1024 * 1024 * 1.37) {
         return res.status(400).json({ error: "Photo too large (max 10MB)" });
       }
-      const photo = storage.createPhoto(data);
+      const photo = await storage.createPhoto(data);
       logAudit(req, "added_photo", "service_call", id, data.photoType);
       res.status(201).json(photo);
     } catch (e: any) {
@@ -1142,7 +1143,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.put("/api/service-calls/:id/photos/reorder", requireEditor, (req, res) => {
+  app.put("/api/service-calls/:id/photos/reorder", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -1154,7 +1155,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         if (!Number.isFinite(pid) || !Number.isInteger(pid) || pid < 1) {
           return res.status(400).json({ error: "photoIds must contain positive integers" });
         }
-        storage.updatePhotoSortOrder(pid, i);
+        await storage.updatePhotoSortOrder(pid, i);
       }
       res.json({ success: true });
     } catch (e: any) {
@@ -1162,11 +1163,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/photos/:id", requireEditor, (req, res) => {
+  app.delete("/api/photos/:id", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      storage.deletePhoto(id);
+      await storage.deletePhoto(id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -1179,21 +1180,21 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // picker doesn't need to know about the split. POST saves a custom label
   // for reuse. DELETE removes a saved preset (built-ins can't be deleted).
 
-  app.get("/api/photo-label-presets", (_req, res) => {
+  app.get("/api/photo-label-presets", async (_req, res) => {
     try {
       // Return merged labels + raw saved presets so the client can render
       // them differently if it wants (e.g. show a delete icon next to saved
       // ones).
       res.json({
-        labels: storage.getMergedPhotoLabels(),
-        saved: storage.getPhotoLabelPresets(),
+        labels: await storage.getMergedPhotoLabels(),
+        saved: await storage.getPhotoLabelPresets(),
       });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.post("/api/photo-label-presets", requireEditor, (req: any, res) => {
+  app.post("/api/photo-label-presets", requireEditor, async (req: any, res) => {
     try {
       const { label } = req.body || {};
       if (typeof label !== "string" || !label.trim()) {
@@ -1202,7 +1203,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (label.length > 64) {
         return res.status(400).json({ error: "label too long (max 64 chars)" });
       }
-      const preset = storage.createPhotoLabelPreset(label, req.user?.id ?? null);
+      const preset = await storage.createPhotoLabelPreset(label, req.user?.id ?? null);
       if (!preset) {
         // built-in or empty — not an error, just nothing to save
         return res.json({ success: true, preset: null });
@@ -1214,11 +1215,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/photo-label-presets/:id", requireEditor, (req, res) => {
+  app.delete("/api/photo-label-presets/:id", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      storage.deletePhotoLabelPreset(id);
+      await storage.deletePhotoLabelPreset(id);
       logAudit(req, "deleted_photo_label", "photo_label_preset", id);
       res.json({ success: true });
     } catch (e: any) {
@@ -1228,23 +1229,23 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Parts ──────────────────────────────────────────────────────────────────
 
-  app.get("/api/service-calls/:id/parts", (req, res) => {
+  app.get("/api/service-calls/:id/parts", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const parts = storage.getPartsByServiceCallId(id);
+      const parts = await storage.getPartsByServiceCallId(id);
       res.json(parts);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.post("/api/service-calls/:id/parts", requireEditor, (req, res) => {
+  app.post("/api/service-calls/:id/parts", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const data = insertPartSchema.parse({ ...req.body, serviceCallId: id });
-      const part = storage.createPart(data);
+      const part = await storage.createPart(data);
       logAudit(req, "added_part", "service_call", id, data.partNumber);
       res.status(201).json(part);
     } catch (e: any) {
@@ -1255,12 +1256,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.patch("/api/parts/:id", requireEditor, (req, res) => {
+  app.patch("/api/parts/:id", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const data = insertPartSchema.partial().parse(req.body);
-      const part = storage.updatePart(id, data);
+      const part = await storage.updatePart(id, data);
       if (!part) return res.status(404).json({ error: "Not found" });
       res.json(part);
     } catch (e: any) {
@@ -1268,11 +1269,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/parts/:id", requireEditor, (req, res) => {
+  app.delete("/api/parts/:id", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      storage.deletePart(id);
+      await storage.deletePart(id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -1281,23 +1282,23 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Service Call Products (multi-product) ───────────────────────────────────
 
-  app.get("/api/service-calls/:id/products", (req, res) => {
+  app.get("/api/service-calls/:id/products", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const products = storage.getProductsByServiceCallId(id);
+      const products = await storage.getProductsByServiceCallId(id);
       res.json(products);
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
     }
   });
 
-  app.post("/api/service-calls/:id/products", requireEditor, (req, res) => {
+  app.post("/api/service-calls/:id/products", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const data = insertServiceCallProductSchema.parse({ ...req.body, serviceCallId: id });
-      const product = storage.createServiceCallProduct(data);
+      const product = await storage.createServiceCallProduct(data);
       logAudit(req, "added_product", "service_call", id, `${data.productModel || ""} ${data.productSerial || ""}`.trim());
       res.status(201).json(product);
     } catch (e: any) {
@@ -1308,12 +1309,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.patch("/api/products/:id", requireEditor, (req, res) => {
+  app.patch("/api/products/:id", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const data = insertServiceCallProductSchema.partial().parse(req.body);
-      const product = storage.updateServiceCallProduct(id, data);
+      const product = await storage.updateServiceCallProduct(id, data);
       if (!product) return res.status(404).json({ error: "Not found" });
       logAudit(req, "updated_product", "service_call", product.serviceCallId, `${product.productModel || ""} ${product.productSerial || ""}`.trim());
       res.json(product);
@@ -1325,11 +1326,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/products/:id", requireEditor, (req, res) => {
+  app.delete("/api/products/:id", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const result = storage.voidServiceCallProduct(id);
+      const result = await storage.voidServiceCallProduct(id);
       if (!result.voided) {
         if (result.reason === "not_found") return res.status(404).json({ error: "Not found" });
         return res.status(400).json({ error: "Cannot remove the only product on a call" });
@@ -1343,7 +1344,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Activity Log ──────────────────────────────────────────────────────────
 
-  app.post("/api/service-calls/:id/activities", requireEditor, (req, res) => {
+  app.post("/api/service-calls/:id/activities", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -1354,7 +1355,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (note.length > 10000) {
         return res.status(400).json({ error: "Note too long (max 10,000 characters)" });
       }
-      const activity = storage.createActivity({ serviceCallId: id, note: note.trim() });
+      const activity = await storage.createActivity({ serviceCallId: id, note: note.trim() });
       logAudit(req, "added_note", "service_call", id, note.trim().substring(0, 100));
       res.status(201).json(activity);
     } catch (e: any) {
@@ -1362,11 +1363,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/activities/:id", requireManager, (req, res) => {
+  app.delete("/api/activities/:id", requireManager, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      storage.deleteActivity(id);
+      await storage.deleteActivity(id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -1375,7 +1376,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Analytics Dashboard (consolidated) ─────────────────────────────────────
 
-  app.get("/api/analytics/dashboard", (req: any, res: any) => {
+  app.get("/api/analytics/dashboard", async (req: any, res: any) => {
     // Role-based field filtering: revenue, team workload, payment speed are manager-only
     const isManager = req.user?.role === "manager";
     const isEditor = req.user?.role !== "staff";
@@ -1412,7 +1413,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const collectedByMonth = Array.from(allMonths).sort().map(m => ({ month: m, amount: Math.round((collectedByMonthMap.get(m) || 0) * 100) / 100 }));
 
       // ── Service calls in date range (exclude test calls) ───────────────
-      const calls = storage.getAllServiceCalls({ dateFrom, dateTo }).filter(
+      const calls = (await storage.getAllServiceCalls({ dateFrom, dateTo })).filter(
         (c: any) => !c.isTest || c.isTest === 0
       );
 
@@ -1720,14 +1721,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Analytics (legacy) ────────────────────────────────────────────────────
 
-  app.get("/api/analytics/summary", (req, res) => {
+  app.get("/api/analytics/summary", async (req, res) => {
     try {
       const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
       const filters: any = {};
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+      const calls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
         .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const totalByStatus: Record<string, number> = {};
@@ -1801,14 +1802,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/analytics/by-manufacturer", (req, res) => {
+  app.get("/api/analytics/by-manufacturer", async (req, res) => {
     try {
       const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
       const filters: any = {};
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+      const calls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
         .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const mfgMap = new Map<string, { count: number; models: Map<string, number> }>();
@@ -1834,14 +1835,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/analytics/by-model", (req, res) => {
+  app.get("/api/analytics/by-model", async (req, res) => {
     try {
       const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
       const filters: any = {};
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+      const calls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
         .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const modelMap = new Map<string, {
@@ -1886,14 +1887,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/analytics/trends", (req, res) => {
+  app.get("/api/analytics/trends", async (req, res) => {
     try {
       const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
       const filters: any = {};
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+      const calls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
         .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const monthMap = new Map<string, { count: number; completed: number; open: number }>();
@@ -1921,14 +1922,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/analytics/repeat-failures", (req, res) => {
+  app.get("/api/analytics/repeat-failures", async (req, res) => {
     try {
       const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
       const filters: any = {};
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+      const calls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
         .filter((c: any) => !c.isTest || c.isTest === 0);
 
       const modelMap = new Map<string, {
@@ -1969,14 +1970,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/analytics/export", (req, res) => {
+  app.get("/api/analytics/export", async (req, res) => {
     try {
       const { dateFrom, dateTo, manufacturer } = req.query as { dateFrom?: string; dateTo?: string; manufacturer?: string };
       const filters: any = {};
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+      const calls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
         .filter((c: any) => !c.isTest || c.isTest === 0);
 
       // Build CSV — fetch parts in bulk to avoid N+1 queries
@@ -2006,7 +2007,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       // Pre-fetch all parts grouped by service call ID to avoid N+1
       const allParts = calls.length > 0
-        ? calls.map(c => ({ id: c.id, parts: storage.getPartsByServiceCallId(c.id) }))
+        ? await Promise.all(calls.map(async c => ({ id: c.id, parts: await storage.getPartsByServiceCallId(c.id) })))
         : [];
       const partsMap = new Map(allParts.map(p => [p.id, p.parts]));
 
@@ -2039,14 +2040,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Backfill contacts from existing service calls ─────────────────────────
 
-  app.post("/api/contacts/backfill", requireManager, (_req, res) => {
+  app.post("/api/contacts/backfill", requireManager, async (_req, res) => {
     try {
-      const calls = storage.getAllServiceCalls();
+      const calls = await storage.getAllServiceCalls();
       let created = 0;
       for (const call of calls) {
         // Customer
         if (call.customerName) {
-          const c = storage.findOrCreateContact("customer", call.customerName, {
+          const c = await storage.findOrCreateContact("customer", call.customerName, {
             address: call.jobSiteAddress,
             city: call.jobSiteCity,
             state: call.jobSiteState,
@@ -2055,7 +2056,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }
         // Installing Contractor
         if (call.contactName) {
-          const c = storage.findOrCreateContact("contractor", call.contactName, {
+          const c = await storage.findOrCreateContact("contractor", call.contactName, {
             phone: call.contactPhone,
             email: call.contactEmail,
           });
@@ -2063,7 +2064,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }
         // On-Site Contact
         if (call.siteContactName) {
-          const c = storage.findOrCreateContact("site_contact", call.siteContactName, {
+          const c = await storage.findOrCreateContact("site_contact", call.siteContactName, {
             phone: call.siteContactPhone,
             email: call.siteContactEmail,
           });
@@ -2097,7 +2098,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     geocodeJob.startedAt = new Date().toISOString();
     geocodeJob.finishedAt = null;
     try {
-      const calls = storage.getAllServiceCalls();
+      const calls = await storage.getAllServiceCalls();
       // Only rows missing coords, with an address, and not manually locked.
       const pending = calls.filter(
         (c: any) => !c.latitude && c.jobSiteAddress && !c.coordsLocked
@@ -2105,11 +2106,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
       geocodeJob.total = pending.length;
       for (const call of pending) {
         // Re-check the lock at processing time in case it changed mid-run.
-        const fresh = storage.getServiceCallById(call.id);
+        const fresh = await storage.getServiceCallById(call.id);
         if (fresh && !(fresh as any).coordsLocked) {
           const coords = await geocodeAddress(call.jobSiteAddress || "", call.jobSiteCity || "", call.jobSiteState || "");
           if (coords) {
-            storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
+            await storage.updateServiceCall(call.id, { latitude: coords.lat, longitude: coords.lng } as any);
             geocodeJob.geocoded++;
           }
           // Respect Nominatim rate limit: 1 request per second
@@ -2128,7 +2129,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // Start the background geocode-all job. Returns 202 + initial status, or 409
   // if a job is already running. The loop runs detached so a large backfill
   // never risks a gateway timeout.
-  app.post("/api/geocode-all", requireManager, (req, res) => {
+  app.post("/api/geocode-all", requireManager, async (req, res) => {
     try {
       if (geocodeJob.running) {
         return res.status(409).json({ error: "Geocoding job already running", ...geocodeJob });
@@ -2141,15 +2142,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/geocode-all/status", requireManager, (_req, res) => {
+  app.get("/api/geocode-all/status", requireManager, async (_req, res) => {
     res.json(geocodeJob);
   });
 
   // Calls that have an address but are missing coordinates (excluding test
   // rows). Surfaced in the map UI so a user can retry them individually.
-  app.get("/api/analytics/needs-geocoding", requireEditor, (_req, res) => {
+  app.get("/api/analytics/needs-geocoding", requireEditor, async (_req, res) => {
     try {
-      const calls = storage.getAllServiceCalls()
+      const calls = (await storage.getAllServiceCalls())
         .filter((c: any) => !c.isTest || c.isTest === 0)
         .filter((c: any) => c.jobSiteAddress && (!c.latitude || !c.longitude))
         .map((c: any) => ({
@@ -2173,7 +2174,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const call = storage.getServiceCallById(id);
+      const call = await storage.getServiceCallById(id);
       if (!call) return res.status(404).json({ error: "Not found" });
       if ((call as any).coordsLocked) {
         return res.status(409).json({ error: "Coordinates are manually locked for this call" });
@@ -2185,7 +2186,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (!coords) {
         return res.status(404).json({ error: "No coordinates found for this address" });
       }
-      storage.updateServiceCall(id, { latitude: coords.lat, longitude: coords.lng } as any);
+      await storage.updateServiceCall(id, { latitude: coords.lat, longitude: coords.lng } as any);
       logAudit(req, "geocoded_call", "service_call", id);
       res.json({ id, latitude: coords.lat, longitude: coords.lng });
     } catch (e: any) {
@@ -2195,7 +2196,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // Manually set a call's coordinates (pin drag-to-correct). Locks the row so
   // background geocoding won't overwrite the manual placement.
-  app.post("/api/service-calls/:id/coords", requireEditor, (req, res) => {
+  app.post("/api/service-calls/:id/coords", requireEditor, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -2204,7 +2205,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
         return res.status(400).json({ error: "Invalid coordinates" });
       }
-      const call = storage.updateServiceCall(id, {
+      const call = await storage.updateServiceCall(id, {
         latitude: String(lat),
         longitude: String(lng),
         coordsLocked: 1,
@@ -2217,7 +2218,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/analytics/map-data", (req, res) => {
+  app.get("/api/analytics/map-data", async (req, res) => {
     try {
       const { dateFrom, dateTo, manufacturer, status } = req.query as {
         dateFrom?: string;
@@ -2230,7 +2231,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (dateTo) filters.dateTo = dateTo;
       if (manufacturer) filters.manufacturer = manufacturer;
       if (status) filters.status = status;
-      const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+      const calls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
         .filter((c: any) => !c.isTest || c.isTest === 0);
       const mapData = calls
         .filter(c => c.latitude && c.longitude)
@@ -2256,7 +2257,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Reports ────────────────────────────────────────────────────────────────
 
-  app.get("/api/reports/:type", (req, res) => {
+  app.get("/api/reports/:type", async (req, res) => {
     try {
       const reportType = req.params.type;
       const { dateFrom, dateTo, manufacturer, customer, claimStatus, minCount } = req.query as Record<string, string | undefined>;
@@ -2267,7 +2268,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           const filters: any = { manufacturer };
           if (dateFrom) filters.dateFrom = dateFrom;
           if (dateTo) filters.dateTo = dateTo;
-          const calls = storage.getAllServiceCalls(filters)
+          const calls = (await storage.getAllServiceCalls(filters))
             .filter((c: any) => !c.isTest || c.isTest === 0);
 
           const models = new Set<string>();
@@ -2315,7 +2316,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           const filters: any = {};
           if (dateFrom) filters.dateFrom = dateFrom;
           if (dateTo) filters.dateTo = dateTo;
-          const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+          const calls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
             .filter((c: any) => !c.isTest || c.isTest === 0);
 
           const monthMap = new Map<string, {
@@ -2385,7 +2386,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           if (dateFrom) filters.dateFrom = dateFrom;
           if (dateTo) filters.dateTo = dateTo;
           // Get all calls, then filter by exact customer name
-          const allCalls = storage.getAllServiceCalls(Object.keys(filters).length > 1 ? { dateFrom, dateTo } as any : undefined)
+          const allCalls = (await storage.getAllServiceCalls(Object.keys(filters).length > 1 ? { dateFrom, dateTo } as any : undefined))
             .filter((c: any) => !c.isTest || c.isTest === 0);
           const calls = allCalls.filter(c => (c.customerName || "").toLowerCase() === customer.toLowerCase());
 
@@ -2397,7 +2398,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           }
 
           // Try to find contact info
-          const contactResults = storage.getAllContacts({ type: "customer", search: customer });
+          const contactResults = await storage.getAllContacts({ type: "customer", search: customer });
           const contact = contactResults.find(c => c.contactName.toLowerCase() === customer.toLowerCase()) || contactResults[0] || null;
 
           return res.json({
@@ -2440,7 +2441,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           if (dateTo) filters.dateTo = dateTo;
           if (manufacturer) filters.manufacturer = manufacturer;
           if (claimStatus && claimStatus !== "__all__") filters.claimStatus = claimStatus;
-          const allCalls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+          const allCalls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
             .filter((c: any) => !c.isTest || c.isTest === 0);
 
           // Default: show Submitted + Pending Review unless a specific status is requested or __all__
@@ -2492,7 +2493,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           if (dateFrom) filters.dateFrom = dateFrom;
           if (dateTo) filters.dateTo = dateTo;
           if (manufacturer) filters.manufacturer = manufacturer;
-          const calls = storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined)
+          const calls = (await storage.getAllServiceCalls(Object.keys(filters).length ? filters : undefined))
             .filter((c: any) => !c.isTest || c.isTest === 0);
 
           const min = parseInt(minCount || "2") || 2;
@@ -2598,45 +2599,45 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // ─── Invoices ───────────────────────────────────────────────────────────────
 
   // Generate next invoice number — must be BEFORE /api/invoices/:id to avoid route collision
-  app.get("/api/invoices/next-number", (req: any, res: any) => {
+  app.get("/api/invoices/next-number", async (req: any, res: any) => {
     try {
-      res.json({ invoiceNumber: storage.generateInvoiceNumber() });
+      res.json({ invoiceNumber: await storage.generateInvoiceNumber() });
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.get("/api/invoices", (req: any, res: any) => {
+  app.get("/api/invoices", async (req: any, res: any) => {
     try {
       // Auto-mark overdue: any Sent invoice past its due date becomes Overdue
       const today = todayLocalISO();
-      storage.markOverdueInvoices(today);
+      await storage.markOverdueInvoices(today);
 
       const filters: any = {};
       if (req.query.status) filters.status = req.query.status;
       if (req.query.billToType) filters.billToType = req.query.billToType;
       if (req.query.search) filters.search = req.query.search;
-      res.json(storage.getAllInvoices(Object.keys(filters).length ? filters : undefined));
+      res.json(await storage.getAllInvoices(Object.keys(filters).length ? filters : undefined));
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.get("/api/invoices/:id", (req: any, res: any) => {
+  app.get("/api/invoices/:id", async (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const invoice = storage.getInvoiceById(id);
+      const invoice = await storage.getInvoiceById(id);
       if (!invoice) return res.status(404).json({ error: "Not found" });
       res.json(invoice);
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.get("/api/service-calls/:id/invoices", (req: any, res: any) => {
+  app.get("/api/service-calls/:id/invoices", async (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      res.json(storage.getInvoicesByServiceCallId(id));
+      res.json(await storage.getInvoicesByServiceCallId(id));
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.post("/api/invoices", requireEditor, validate(createInvoiceSchema), (req: any, res: any) => {
+  app.post("/api/invoices", requireEditor, validate(createInvoiceSchema), async (req: any, res: any) => {
     try {
       const data = req.body;
       if (!data.billToName || !data.issueDate) {
@@ -2659,8 +2660,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       let lastErr: any = null;
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
-          data.invoiceNumber = data.invoiceNumber || storage.generateInvoiceNumber();
-          invoice = storage.createInvoice(data);
+          data.invoiceNumber = data.invoiceNumber || await storage.generateInvoiceNumber();
+          invoice = await storage.createInvoice(data);
           break;
         } catch (err: any) {
           lastErr = err;
@@ -2678,14 +2679,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
 
       if (items.length) {
-        storage.replaceInvoiceItems(invoice.id, items.map((item: any) => ({ ...item, invoiceId: invoice.id })));
+        await storage.replaceInvoiceItems(invoice.id, items.map((item: any) => ({ ...item, invoiceId: invoice.id })));
       }
       logAudit(req, "created_invoice", "invoice", invoice.id, `${invoice.invoiceNumber} - ${invoice.billToName}`);
-      res.status(201).json(storage.getInvoiceById(invoice.id));
+      res.status(201).json(await storage.getInvoiceById(invoice.id));
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.patch("/api/invoices/:id", requireEditor, validate(updateInvoiceSchema), (req: any, res: any) => {
+  app.patch("/api/invoices/:id", requireEditor, validate(updateInvoiceSchema), async (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -2694,33 +2695,33 @@ export function registerRoutes(httpServer: Server, app: Express) {
       // client-supplied totals (client C1). When the client sends items we
       // recompute from those; a status-only patch (no items) recomputes from the
       // items already persisted so the stored totals stay consistent.
-      const existing = storage.getInvoiceById(id);
+      const existing = await storage.getInvoiceById(id);
       if (!existing) return res.status(404).json({ error: "Not found" });
       const effectiveItems = items !== undefined ? items : existing.items;
       const totals = computeInvoiceTotals(effectiveItems);
       data.subtotal = totals.subtotal;
       data.total = totals.total;
-      const invoice = storage.updateInvoice(id, data);
+      const invoice = await storage.updateInvoice(id, data);
       if (!invoice) return res.status(404).json({ error: "Not found" });
       if (items !== undefined) {
-        storage.replaceInvoiceItems(id, totals.items.map((item: any) => ({ ...item, invoiceId: id })));
+        await storage.replaceInvoiceItems(id, totals.items.map((item: any) => ({ ...item, invoiceId: id })));
       }
       // Auto-set paid_date when status changes to Paid
       if (data.status === "Paid" && !invoice.paidDate) {
-        storage.updateInvoice(id, { paidDate: todayLocalISO() });
+        await storage.updateInvoice(id, { paidDate: todayLocalISO() });
       }
       logAudit(req, "edited_invoice", "invoice", id, data.status ? `Status: ${data.status}` : undefined);
-      res.json(storage.getInvoiceById(id));
+      res.json(await storage.getInvoiceById(id));
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.delete("/api/invoices/:id", requireManager, (req: any, res: any) => {
+  app.delete("/api/invoices/:id", requireManager, async (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      const invoice = storage.getInvoiceById(id);
+      const invoice = await storage.getInvoiceById(id);
       if (!invoice) return res.status(404).json({ error: "Not found" });
-      storage.deleteInvoice(id);
+      await storage.deleteInvoice(id);
       logAudit(req, "deleted_invoice", "invoice", id, invoice.invoiceNumber);
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
@@ -2728,15 +2729,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Service Call Visits (Return Visits) ──────────────────────────────────
 
-  app.get("/api/service-calls/:id/visits", (req: any, res: any) => {
+  app.get("/api/service-calls/:id/visits", async (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-      res.json(storage.getVisitsForCall(id));
+      res.json(await storage.getVisitsForCall(id));
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.post("/api/service-calls/:id/visits", requireEditor, validate(createVisitSchema), (req: any, res: any) => {
+  app.post("/api/service-calls/:id/visits", requireEditor, validate(createVisitSchema), async (req: any, res: any) => {
     try {
       const callId = parseInt(req.params.id);
       if (isNaN(callId)) return res.status(400).json({ error: "Invalid ID" });
@@ -2754,7 +2755,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         hoursOnJob: hoursOnJob || null,
         milesTraveled: milesTraveled || null,
       };
-      const visit = storage.createVisit(visitData);
+      const visit = await storage.createVisit(visitData);
 
       // Propagate visit status + date to parent service call so it surfaces on
       // dashboard/scheduled/calendar — BUT only when this visit's date is on
@@ -2792,14 +2793,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
         // Now sync the parent. updateServiceCall will also try to sync the
         // active appointment, but since we just created the new active row
         // with the same date, that's a no-op.
-        storage.updateServiceCall(callId, { status: visitData.status, scheduledDate: visitData.visitDate });
+        await storage.updateServiceCall(callId, { status: visitData.status, scheduledDate: visitData.visitDate });
       }
       logAudit(req, "create_visit", "service_call", callId, `Visit ${visit.visitNumber} added to call #${callId}`);
       res.status(201).json(visit);
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.put("/api/service-calls/:id/visits/:vid", requireEditor, validate(updateVisitSchema), (req: any, res: any) => {
+  app.put("/api/service-calls/:id/visits/:vid", requireEditor, validate(updateVisitSchema), async (req: any, res: any) => {
     try {
       const callId = parseInt(req.params.id);
       const vid = parseInt(req.params.vid);
@@ -2812,7 +2813,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       if (technicianId !== undefined) data.technicianId = technicianId;
       if (hoursOnJob !== undefined) data.hoursOnJob = hoursOnJob;
       if (milesTraveled !== undefined) data.milesTraveled = milesTraveled;
-      const visit = storage.updateVisit(vid, data);
+      const visit = await storage.updateVisit(vid, data);
       if (!visit) return res.status(404).json({ error: "Visit not found" });
 
       // Propagate visit status + date to parent service call — BUT only when
@@ -2829,7 +2830,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         if (statusesToPropagate.includes(status) && dragsForward) {
           const updatePayload: any = { status };
           if (visitDate !== undefined) updatePayload.scheduledDate = visitDate;
-          storage.updateServiceCall(callId, updatePayload);
+          await storage.updateServiceCall(callId, updatePayload);
         }
       }
       // Log a concise audit entry naming which fields changed; surfaces in the
@@ -2843,14 +2844,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.delete("/api/service-calls/:id/visits/:vid", requireManager, (req: any, res: any) => {
+  app.delete("/api/service-calls/:id/visits/:vid", requireManager, async (req: any, res: any) => {
     try {
       const callId = parseInt(req.params.id);
       const vid = parseInt(req.params.vid);
       if (isNaN(vid)) return res.status(400).json({ error: "Invalid visit ID" });
-      const visit = storage.getVisitById(vid);
+      const visit = await storage.getVisitById(vid);
       if (!visit) return res.status(404).json({ error: "Visit not found" });
-      storage.deleteVisit(vid);
+      await storage.deleteVisit(vid);
       logAudit(req, "delete_visit", "service_call", callId, `Visit ${visit.visitNumber} deleted from call #${callId}`);
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
@@ -2859,7 +2860,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     // ─── Schedule History ─────────────────────────────────────────────────────
 
   // GET all scheduled appointments for a call
-  app.get("/api/service-calls/:id/appointments", (req: any, res: any) => {
+  app.get("/api/service-calls/:id/appointments", async (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       const rows = sqliteHandle.prepare(`
@@ -2884,7 +2885,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // POST reschedule — marks current active as Rescheduled, creates a new active. Reason REQUIRED.
-  app.post("/api/service-calls/:id/appointments/reschedule", requireEditor, validate(rescheduleAppointmentSchema), (req: any, res: any) => {
+  app.post("/api/service-calls/:id/appointments/reschedule", requireEditor, validate(rescheduleAppointmentSchema), async (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       const { scheduledDate, scheduledTime, reason } = req.body || {};
@@ -2966,7 +2967,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // PUT inline edit of the active appointment (typo fix). No reason, no new history entry.
-  app.put("/api/service-calls/:id/appointments/active", requireEditor, validate(editActiveAppointmentSchema), (req: any, res: any) => {
+  app.put("/api/service-calls/:id/appointments/active", requireEditor, validate(editActiveAppointmentSchema), async (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       const { scheduledDate, scheduledTime } = req.body || {};
@@ -3001,7 +3002,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
 // ─── Calendar ───────────────────────────────────────────────────────────────
 
-  app.get("/api/calendar", (req, res) => {
+  app.get("/api/calendar", async (req, res) => {
     try {
       const from = req.query.from as string;
       const to = req.query.to as string;
@@ -3113,7 +3114,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // Lightweight history lookups for the New Service Call sidebar.
   // /api/calls/by-customer?name=...   → recent calls matching customer/job/contact name
   // /api/calls/by-serial?serial=...   → all prior calls on this exact serial
-  app.get("/api/calls/by-customer", (req: any, res: any) => {
+  app.get("/api/calls/by-customer", async (req: any, res: any) => {
     try {
       const name = ((req.query.name as string) || "").trim();
       if (name.length < 2) return res.json([]);
@@ -3147,7 +3148,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/calls/by-serial", (req: any, res: any) => {
+  app.get("/api/calls/by-serial", async (req: any, res: any) => {
     try {
       const serial = ((req.query.serial as string) || "").trim();
       if (serial.length < 3) return res.json([]);
@@ -3185,7 +3186,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/equipment/search", (req: any, res: any) => {
+  app.get("/api/equipment/search", async (req: any, res: any) => {
     try {
       const q = (req.query.q as string || "").trim();
       if (q.length < 2) return res.json([]);
@@ -3344,7 +3345,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.get("/api/backup/status", requireBackupAuth, (_req, res) => {
+  app.get("/api/backup/status", requireBackupAuth, async (_req, res) => {
     try {
       const dbDir = path.dirname(path.resolve(DB_PATH));
       const backupFiles = [
@@ -3387,18 +3388,18 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ─── Seed Data (development only) ────────────────────────────────────────────
 
-  app.post("/api/seed", requireManager, (_req, res) => {
+  app.post("/api/seed", requireManager, async (_req, res) => {
     // Disabled in production — no sample data injection
     if (process.env.NODE_ENV === "production") {
       return res.status(404).json({ error: "Not found" });
     }
     try {
-      const calls = storage.getAllServiceCalls();
+      const calls = await storage.getAllServiceCalls();
       if (calls.length > 0) {
         return res.json({ message: "Already seeded" });
       }
       // Seed a couple sample calls
-      const call1 = storage.createServiceCall({
+      const call1 = await storage.createServiceCall({
         callDate: "2026-03-20",
         manufacturer: "A.O. Smith Water Heaters",
         customerName: "Mountain West Plumbing Supply",
@@ -3420,7 +3421,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         techNotes: "Unit is in a tight mechanical room. Access panel rusted — owner should address.",
       });
 
-      const call2 = storage.createServiceCall({
+      const call2 = await storage.createServiceCall({
         callDate: "2026-03-22",
         manufacturer: "Watts Water Technologies",
         customerName: "Hansen Plumbing LLC",
@@ -3442,7 +3443,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         techNotes: "Replacement union kit on order. Estimated 3-5 day lead time from Utah Pipe & Supply.",
       });
 
-      storage.createServiceCall({
+      await storage.createServiceCall({
         callDate: "2026-03-24",
         manufacturer: "State Water Heaters",
         customerName: "Desert Sun Construction",
@@ -3465,11 +3466,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
       });
 
       // Add parts to call 1
-      storage.createPart({ serviceCallId: call1.id, partNumber: "9004450005", partDescription: "Thermocouple Assembly, 24\"", quantity: 1, source: "A.O. Smith Parts Warehouse" });
-      storage.createPart({ serviceCallId: call1.id, partNumber: "9004454005", partDescription: "Pilot Assembly Kit", quantity: 1, source: "A.O. Smith Parts Warehouse" });
+      await storage.createPart({ serviceCallId: call1.id, partNumber: "9004450005", partDescription: "Thermocouple Assembly, 24\"", quantity: 1, source: "A.O. Smith Parts Warehouse" });
+      await storage.createPart({ serviceCallId: call1.id, partNumber: "9004454005", partDescription: "Pilot Assembly Kit", quantity: 1, source: "A.O. Smith Parts Warehouse" });
 
       // Add parts to call 2
-      storage.createPart({ serviceCallId: call2.id, partNumber: "RV-M12-UK", partDescription: "Union Kit with Gasket Set", quantity: 1, source: "Utah Pipe & Supply — On Order" });
+      await storage.createPart({ serviceCallId: call2.id, partNumber: "RV-M12-UK", partDescription: "Union Kit with Gasket Set", quantity: 1, source: "Utah Pipe & Supply — On Order" });
 
       res.json({ message: "Seeded successfully", count: 3 });
     } catch (e: any) {
