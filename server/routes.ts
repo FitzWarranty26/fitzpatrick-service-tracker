@@ -5,6 +5,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { storage, sqlite as sqliteHandle, DB_PATH } from "./storage";
+import { requireManager, requireEditor } from "./auth-guards";
 import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema, insertServiceCallProductSchema, getWarrantyStatus } from "@shared/schema";
 import { z } from "zod";
 import { todayLocalISO, parseMoney, safeDivide } from "@shared/datetime";
@@ -292,21 +293,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
     return res.status(401).json({ error: "Unauthorized" });
   };
 
-  // Manager-only middleware
-  const requireManager = (req: any, res: any, next: any) => {
-    if (req.user?.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
-    return next();
-  };
-
-  // Manager or Tech middleware (not staff)
-  const requireEditor = (req: any, res: any, next: any) => {
-    if (req.user?.role === "staff") {
-      return res.status(403).json({ error: "Edit access required" });
-    }
-    return next();
-  };
+  // Role guards (requireManager / requireEditor) live in ./auth-guards so the
+  // auth boundary is unit-testable; imported at the top of this file.
 
   // Helper to log audit entries from route handlers
   function logAudit(req: any, action: string, entityType?: string, entityId?: number, details?: string) {
@@ -901,7 +889,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.delete("/api/service-calls/:id", requireEditor, (req, res) => {
+  // Manager-gated: deleting a call triggers a high-blast-radius, irreversible
+  // cascade (invoices, visits, photos, parts, appointments). Techs must not be
+  // able to destroy financial/history data. Soft-delete is out of scope for now.
+  app.delete("/api/service-calls/:id", requireManager, (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
