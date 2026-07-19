@@ -6,7 +6,7 @@
 > the issue tracker — is the source of truth. Update this file whenever phases,
 > priorities, or scope change.
 
-**Last updated:** 2026-07-19 · **Owner:** Kevin Withers
+**Last updated:** 2026-07-19 (Issue #64 closed — single source of truth landed) · **Owner:** Kevin Withers
 **Companion docs:** [`docs/CODE-REVIEW-2026-07-17.md`](docs/CODE-REVIEW-2026-07-17.md) (full findings) ·
 [`docs/adr/0001-commercial-hosting-platform.md`](docs/adr/0001-commercial-hosting-platform.md) ·
 `COMMERCIAL-READINESS-CHECKLIST.md` · `RECOVERY-INDEX.md`
@@ -21,7 +21,7 @@
 - **Open loose ends:**
   - [x] PR #62 (read-only blank-description blast-radius diagnostic) — reviewed and **closed** 2026-07-19 (S7); the fixes it scoped (#61/#65) are live, script preserved on its branch.
   - [x] Data cleanup: service calls **#41, #85, #86** had blank descriptions from the buggy path — **done 2026-07-19** (Kevin re-entered from field knowledge).
-  - [ ] Issue #64 open: remove legacy dual-storage + `syncLegacyFromProduct` (folded into Phase 1 below).
+  - [x] Issue #64: remove legacy dual-storage + `syncLegacyFromProduct` — **done 2026-07-19** (Product 1 is now the single source of truth; PRs #94–#98). Legacy columns kept as a live mirror, dropped later with the Postgres migration (Issue #7).
 
 ## Architecture decisions in force
 
@@ -62,7 +62,7 @@ Ordered so each step de-risks the next. Review-finding IDs refer to `docs/CODE-R
 
 - [x] **Sessions + rate limits to a shared store** (server C2, M–L): SQLite-backed session store + shared rate-limit store; fixes deploy-logout and lays the groundwork for multi-instance. Paired with client H1 (session survives reload). Pre-migration batch Item 1, PR #90, merge `18b740d`, deployed + prod HTTP 200 verified 2026-07-19.
 - [x] **Versioned migrations** (server H5, L): SQL migration files + a startup migration runner with baselining (existing/production DB marks the baseline applied WITHOUT executing; fresh DB builds the schema); seed logic moved out of `storage.ts` into `server/seed.ts` + explicit `npm run seed` (S6 seeded-admin hardening preserved for empty DBs, still auto at startup). Runs at startup (not a Render pre-deploy step — the persistent disk is unmounted then). Pre-migration batch Item 3, PR #92, merge `f61681e`, deployed + prod HTTP 200 verified 2026-07-19.
-- [ ] **Issue #64 — remove dual-storage + `syncLegacyFromProduct`** (L): single source of truth for narrative fields; migrate readers (reports, equipment search); schema migration with tested rollback. *Deferred — sequenced with Issue #7 (Postgres) so the new schema is born clean, without the legacy columns; intentionally NOT part of the pre-migration batch.*
+- [x] **Issue #64 — remove dual-storage + `syncLegacyFromProduct`** (L): **done 2026-07-19** — Product 1 (`product_index=1, voided=0`) is now the single source of truth for the 16 legacy fields. Shipped as five sequenced PRs: Stage A async-storage prep (PR #94), a read-only divergence audit (PR #95, production run = 15/76 diverged, 1 missing a Product 1 row), a write-through so detail-page edits keep Product 1 in sync (PR #96), a gated one-time reconcile script that archives-before-writing (PR #97 — Kevin applied it in production 2026-07-19 ~5:25 PM MDT: 15 updates + 1 create, re-audit 0 diverged), and the reader repoint + `syncLegacyFromProduct` removal (PR #98). All readers (list/detail/reports/analytics/equipment search) resolve from Product 1 with legacy fallback; `globalSearch` fix also cleared a latent stale-equipment-search bug. **Legacy columns are NOT dropped** — kept as a live mirror and removed later with the Postgres migration (Issue #7 / Stage B) so the new schema is born clean.
 - [x] Reconcile `SERVICE_STATUSES` enum vs SQL (`'Needs Return Visit'`) (server M6, S). Pre-migration batch Item 2, PR #91, merge `0a1c6ce`, deployed 2026-07-19.
 - [x] Standardize React Query keys; reset `expiredHandled` on login (client M5/L1, S). Pre-migration batch Item 2, PR #91, merge `0a1c6ce`, deployed 2026-07-19.
 

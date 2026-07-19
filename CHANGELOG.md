@@ -8,6 +8,87 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Phase 1 prep — Stage A (async storage) + A2 single source of truth for the legacy fields (2026-07-19, all deployed to production) — closes Issue #64
+
+Five sequenced PRs that finish the long-standing dual-storage problem: the 16
+"legacy" single-product columns on `service_calls` were duplicated on the
+`service_call_products` Product 1 row (`product_index=1, voided=0`) and could
+drift apart, because the detail-page edit path wrote only the legacy columns
+while the product-form path wrote only the product row. This work makes **Product
+1 the single source of truth** and removes `syncLegacyFromProduct`. Same workflow
+as the S-items: each its own branch → `npm run check` + `npm run test` +
+`npm run build` → PR → merge to `master` (Render auto-deploy) → post-deploy prod
+HTTP 200 verified before the next. Merges: Stage A `c253bf7` (PR #94) →
+audit `aab9518` (PR #95) → A2-1 `1ac8023` (PR #96) → A2-2 `8f12eba` (PR #97) →
+A2-3 `d49fc48` (PR #98). Rollback anchor before Stage A: `6662465`. The legacy
+columns are **NOT dropped** — they are kept as a live mirror and will be removed
+later with the Postgres migration (Issue #7, Stage B). Test suite grew **56 → 84**
+across these PRs.
+
+#### Changed — Stage A: storage interface made async (Phase 1 prep, PR #94)
+
+- The ~50 `IStorage` methods are now promise-based, 123 call sites `await` them,
+  and 88 route handlers became `async`, so the storage layer can swap to an async
+  driver (Postgres, Issue #7) without touching callers. `verifyPassword` is
+  **deliberately kept synchronous** as an auth-safety measure. Pure interface
+  reshape — the underlying better-sqlite3 behavior is unchanged. Rollback anchor
+  before this change: `6662465`.
+
+#### Added — Read-only legacy→Product 1 divergence audit script (PR #95)
+
+- `scripts/audit-legacy-divergence.mjs` — opens the DB `readonly` and reports,
+  per diverged call, the legacy value a reconcile would keep vs the stale Product
+  1 value it would overwrite, plus a `REVIEW: possible deliberate clear` flag,
+  calls with no Product 1 row, and summary counts. No customer names/addresses
+  printed; makes no changes. **Production audit (Kevin, Render Shell): 76 calls,
+  15 diverged, 0 review flags, 1 call missing a Product 1 row.**
+
+#### Changed — A2 step 1: write-through keeps Product 1 in sync (server, PR #96)
+
+- `PATCH /api/service-calls/:id` → `storage.updateServiceCall` now also writes the
+  16 legacy fields onto the Product 1 row (creating that row if missing), so a
+  detail-page edit can no longer leave Product 1 stale. Idempotent, so the
+  offline-sync replay path is unaffected. 6 tests in
+  `server/write-through-product1.test.ts`.
+
+#### Added — A2 step 2: gated one-time reconcile script (PR #97)
+
+- `scripts/reconcile-legacy-product1.mjs`, run from the Render Shell. Dry-run by
+  default (opens the DB `readonly`, prints the COMPLETE untruncated before/after
+  for every field it would change plus any Product 1 row it would create, writes
+  nothing). `--apply` **first** writes a timestamped JSON archive of every
+  overwritten value plus the full plan to `/var/data/reconcile-archive-<ISO>.json`
+  (aborts before any write if the archive can't be written), then applies all
+  changes in a **single transaction**, then re-verifies 0 divergence. Idempotent
+  (a second `--apply` is a no-op). Touches no reader and no
+  `syncLegacyFromProduct`. 9 tests in `server/reconcile-legacy-product1.test.ts`;
+  runbook added to `RECOVERY-INDEX.md`.
+- **Kevin ran it in production 2026-07-19 ~5:25 PM MDT:** manual backup taken
+  (`manual-backup-*.db`), 15 updates + 1 create applied, archive written
+  (`reconcile-archive-2026-07-19T23-24-30.256Z.json`), post-apply verification
+  and the follow-up re-audit both reported **0 diverged**.
+
+#### Changed — A2 step 3: single source of truth — readers repointed, sync removed (server, PR #98) — closes Issue #64
+
+- Every reader of the 16 legacy fields now resolves them from Product 1 with a
+  fallback to the legacy column when the Product 1 field is missing/empty, via a
+  `pickProduct1()` helper + a batched `overlayProduct1()` applied in
+  `getAllServiceCalls`, `getRecentServiceCalls`, `getFollowUpsDue`,
+  `getRelatedCalls`, `getDashboardToday`, and inline in `getServiceCallById`
+  (reports/analytics follow automatically because they consume these readers).
+  `globalSearch` was rewritten to return **and** match product fields from
+  Product 1 via `COALESCE(NULLIF(TRIM(p1.x), ''), sc.x)` — which also fixes a
+  latent stale-equipment-search bug.
+- `syncLegacyFromProduct` and its two call sites are **removed**; the product-form
+  write path now writes only Product 1, and the PR-96 write-through remains the
+  single write path (it still updates both the legacy columns and Product 1, so
+  the legacy columns stay a live mirror and the API response shape is unchanged).
+- On reconciled data (Product 1 == legacy) every reader returns byte-identical
+  output to before, so this was safe to land only **after** the production
+  reconcile + clean re-audit above. 6 parity tests in
+  `server/single-source-parity.test.ts`. Legacy columns kept (dropped later in
+  Stage B / Postgres).
+
 ### Pre-migration batch — Items 1–3 (2026-07-19, all deployed to production)
 
 The "Next 1–2 weeks" hardening items from the ROADMAP, run as the last work
