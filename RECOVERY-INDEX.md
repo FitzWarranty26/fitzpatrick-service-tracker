@@ -133,6 +133,47 @@ plus a `REVIEW: possible deliberate clear` flag (product1 blanked more recently
 than the call), calls with no Product 1 row, and summary counts. No customer
 names/addresses are printed. Exits 0; makes no changes.
 
+## Legacy → Product 1 Reconcile (Issue #64, A2 step 2)
+
+Once the divergence report above has been reviewed, this script makes each
+Product 1 row match its legacy columns (copying diverged fields across and
+creating a Product 1 row for any call missing one). Run it from the **Render
+Shell**, in this order:
+
+1. **Back up first.** Copy the live DB beside itself so you can restore if
+   needed:
+
+   ```bash
+   cp /var/data/warranty_tracker.db /var/data/manual-backup-$(date +%Y%m%dT%H%M%S).db
+   ```
+
+2. **Dry-run (default, read-only).** Opens the DB `readonly`, writes nothing,
+   and prints the COMPLETE untruncated before/after for every field it would
+   change plus the full field set of any Product 1 row it would create:
+
+   ```bash
+   node scripts/reconcile-legacy-product1.mjs
+   ```
+
+3. **Apply.** Opens the DB writable. FIRST writes a timestamped JSON archive of
+   every value about to be overwritten plus the full plan to
+   `/var/data/reconcile-archive-<ISO>.json` (aborts before any write if the
+   archive can't be written), then applies all changes in a single transaction
+   and re-verifies 0 divergence:
+
+   ```bash
+   node scripts/reconcile-legacy-product1.mjs --apply
+   ```
+
+4. **Re-run the audit** to confirm 0 diverged:
+
+   ```bash
+   node scripts/audit-legacy-divergence.mjs
+   ```
+
+It does NOT touch `syncLegacyFromProduct` or any reader, and is idempotent — a
+second `--apply` is a no-op. No customer names/addresses are printed.
+
 ## Recovery Procedure
 
 To reconstruct project state, follow these steps **in order**:
