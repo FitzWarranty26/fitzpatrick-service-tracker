@@ -1116,16 +1116,27 @@ export class SQLiteStorage implements IStorage {
   }
 
   deleteServiceCall(id: number): void {
-    // Clean up all relational rows that reference this call so we don't leave
-    // orphans in the DB (previously: appointments, visits, invoices remained).
-    sqlite.prepare(`DELETE FROM scheduled_appointments WHERE call_id = ?`).run(id);
-    sqlite.prepare(`DELETE FROM service_call_visits WHERE service_call_id = ?`).run(id);
-    sqlite.prepare(`DELETE FROM invoices WHERE service_call_id = ?`).run(id);
-    db.delete(photos).where(eq(photos.serviceCallId, id)).run();
-    db.delete(partsUsed).where(eq(partsUsed.serviceCallId, id)).run();
-    db.delete(activityLog).where(eq(activityLog.serviceCallId, id)).run();
-    sqlite.prepare(`DELETE FROM service_call_products WHERE service_call_id = ?`).run(id);
-    db.delete(serviceCalls).where(eq(serviceCalls.id, id)).run();
+    // Delete the call and every row that references it, atomically. All eight
+    // statements run inside a single transaction so a failure midway can never
+    // leave the DB half-deleted (e.g. call gone but visits/photos remain).
+    //
+    // invoice_items are keyed on invoice_id, not service_call_id, so they must
+    // be deleted via the call's invoices FIRST — a raw `DELETE FROM invoices`
+    // (as before) bypassed deleteInvoice() and orphaned every line item.
+    const tx = sqlite.transaction((callId: number) => {
+      sqlite.prepare(
+        `DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE service_call_id = ?)`
+      ).run(callId);
+      sqlite.prepare(`DELETE FROM invoices WHERE service_call_id = ?`).run(callId);
+      sqlite.prepare(`DELETE FROM scheduled_appointments WHERE call_id = ?`).run(callId);
+      sqlite.prepare(`DELETE FROM service_call_visits WHERE service_call_id = ?`).run(callId);
+      db.delete(photos).where(eq(photos.serviceCallId, callId)).run();
+      db.delete(partsUsed).where(eq(partsUsed.serviceCallId, callId)).run();
+      db.delete(activityLog).where(eq(activityLog.serviceCallId, callId)).run();
+      sqlite.prepare(`DELETE FROM service_call_products WHERE service_call_id = ?`).run(callId);
+      db.delete(serviceCalls).where(eq(serviceCalls.id, callId)).run();
+    });
+    tx(id);
   }
 
   // ─── Photos ─────────────────────────────────────────────────────────────────
