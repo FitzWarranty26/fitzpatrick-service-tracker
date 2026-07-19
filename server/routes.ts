@@ -712,13 +712,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
         if (bodyProducts.length > 0) {
           for (let i = 0; i < bodyProducts.length; i++) {
             const p: any = bodyProducts[i];
-            // Product 1 is mirrored back onto the legacy service_calls columns by
-            // storage.syncLegacyFromProduct(). The New Service Call form sends only
-            // per-product identity fields (manufacturer/model/serial/type/install
-            // date), so without merging the call-level narrative/claim fields into
-            // the first product here, that sync overwrites issue_description /
-            // diagnosis / resolution / claim_* with NULL — wiping the description
-            // the user just entered. Mirror what the single-product else-branch does.
+            // Product 1 is the source of truth for the 16 legacy fields (A2 step 3,
+            // #64), so it must carry the call-level narrative/claim data. The New
+            // Service Call form sends only per-product identity fields
+            // (manufacturer/model/serial/type/install date), so merge the
+            // call-level issue_description / diagnosis / resolution / claim_* into
+            // the first product here — otherwise those would be NULL on the row
+            // readers now source from. Mirror what the single-product else-branch does.
             const merged = i === 0
               ? {
                   ...p,

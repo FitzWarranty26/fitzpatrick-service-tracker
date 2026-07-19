@@ -209,8 +209,8 @@ export interface IStorage {
 
 // The 16 legacy single-product columns that service_calls duplicates on the
 // product_index=1 row. Camel-case keys shared by both InsertServiceCall and
-// InsertServiceCallProduct. Kept in sync with syncLegacyFromProduct and with
-// scripts/audit-legacy-divergence.mjs (which uses the snake_case equivalents).
+// InsertServiceCallProduct. Mirrors scripts/audit-legacy-divergence.mjs (which
+// uses the snake_case equivalents) and the write-through in updateServiceCall.
 const LEGACY_PRODUCT_FIELDS = [
   "manufacturer",
   "manufacturerOther",
@@ -229,6 +229,15 @@ const LEGACY_PRODUCT_FIELDS = [
   "otherCost",
   "claimAmount",
 ] as const;
+
+// A2 step 3 (#64): the Product 1 row (product_index=1, voided=0) is the source
+// of truth for the 16 legacy fields. Readers overlay its value onto the call,
+// falling back to the legacy service_calls column only when Product 1 is missing
+// or empty for that field. On reconciled data (product1 == legacy) this is
+// identical to reading the legacy columns; where they differ, Product 1 wins.
+function pickProduct1(product1Value: unknown, legacyValue: unknown): unknown {
+  return product1Value != null && String(product1Value).trim() !== "" ? product1Value : legacyValue;
+}
 
 export class SQLiteStorage implements IStorage {
   // ─── Service Calls ──────────────────────────────────────────────────────────
@@ -351,7 +360,7 @@ export class SQLiteStorage implements IStorage {
     const rows = sqlite.prepare(query).all(...params) as any[];
 
     // Map snake_case SQL result to camelCase TypeScript types
-    return rows.map(row => ({
+    const mapped = rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -420,6 +429,45 @@ export class SQLiteStorage implements IStorage {
       invoiceTotal: row.invoice_total ?? null,
       invoiceDueDate: row.invoice_due_date ?? null,
     }));
+    return this.overlayProduct1(mapped);
+  }
+
+  // Overlay each call's 16 legacy fields with its Product 1 row (batched: one
+  // query for all ids). Mutates and returns the same array. Used by every reader
+  // that surfaces the legacy fields so they all resolve to the same source.
+  private overlayProduct1<T extends { id: number }>(calls: T[]): T[] {
+    if (calls.length === 0) return calls;
+    const ids = calls.map((c) => c.id);
+    const placeholders = ids.map(() => "?").join(", ");
+    const prodRows = sqlite
+      .prepare(
+        `SELECT * FROM service_call_products WHERE product_index = 1 AND voided = 0 AND service_call_id IN (${placeholders}) ORDER BY id`,
+      )
+      .all(...ids) as any[];
+    const byCall = new Map<number, any>();
+    for (const p of prodRows) if (!byCall.has(p.service_call_id)) byCall.set(p.service_call_id, p);
+
+    for (const call of calls as any[]) {
+      const p = byCall.get(call.id);
+      if (!p) continue;
+      call.manufacturer = pickProduct1(p.manufacturer, call.manufacturer);
+      call.manufacturerOther = pickProduct1(p.manufacturer_other, call.manufacturerOther);
+      call.productModel = pickProduct1(p.product_model, call.productModel);
+      call.productSerial = pickProduct1(p.product_serial, call.productSerial);
+      call.productType = pickProduct1(p.product_type, call.productType);
+      call.installationDate = pickProduct1(p.installation_date, call.installationDate);
+      call.issueDescription = pickProduct1(p.issue_description, call.issueDescription);
+      call.diagnosis = pickProduct1(p.diagnosis, call.diagnosis);
+      call.resolution = pickProduct1(p.resolution, call.resolution);
+      call.claimStatus = pickProduct1(p.claim_status, call.claimStatus);
+      call.claimNumber = pickProduct1(p.claim_number, call.claimNumber);
+      call.claimNotes = pickProduct1(p.claim_notes, call.claimNotes);
+      call.partsCost = pickProduct1(p.parts_cost, call.partsCost);
+      call.laborCost = pickProduct1(p.labor_cost, call.laborCost);
+      call.otherCost = pickProduct1(p.other_cost, call.otherCost);
+      call.claimAmount = pickProduct1(p.claim_amount, call.claimAmount);
+    }
+    return calls;
   }
 
   async getServiceCallById(id: number): Promise<ServiceCallFull | undefined> {
@@ -441,7 +489,15 @@ export class SQLiteStorage implements IStorage {
         .get((call as any).createdBy) as any;
       createdByName = u?.display_name ?? null;
     }
-    return { ...call, createdByName, photos: callPhotos, parts: callParts, activities: callActivities, products: callProducts };
+    // A2 step 3 (#64): source the 16 legacy fields from Product 1 (falling back
+    // to the legacy column when Product 1 is missing/empty for that field), so
+    // the detail payload resolves them from the same source as every list view.
+    const overlaid = { ...call } as any;
+    const p1 = callProducts.find((p) => p.productIndex === 1);
+    if (p1) {
+      for (const f of LEGACY_PRODUCT_FIELDS) overlaid[f] = pickProduct1((p1 as any)[f], (call as any)[f]);
+    }
+    return { ...overlaid, createdByName, photos: callPhotos, parts: callParts, activities: callActivities, products: callProducts };
   }
 
   async createServiceCall(call: InsertServiceCall, createdBy?: number | null): Promise<ServiceCall> {
@@ -696,9 +752,6 @@ export class SQLiteStorage implements IStorage {
       .values({ ...data, productIndex: nextIndex, createdAt: now })
       .returning()
       .get();
-    if (created.productIndex === 1) {
-      this.syncLegacyFromProduct(created);
-    }
     return created;
   }
 
@@ -709,9 +762,6 @@ export class SQLiteStorage implements IStorage {
       .where(eq(serviceCallProducts.id, id))
       .returning()
       .get();
-    if (updated && updated.productIndex === 1) {
-      this.syncLegacyFromProduct(updated);
-    }
     return updated;
   }
 
@@ -730,57 +780,6 @@ export class SQLiteStorage implements IStorage {
       .where(eq(serviceCallProducts.id, id))
       .run();
     return { voided: true };
-  }
-
-  // Keep the legacy single-product columns on service_calls in sync with
-  // product_index=1 so reports/equipment search that still read those columns
-  // stay correct until they migrate to the products table.
-  //
-  // FILL-ONLY / MERGE, NEVER CLOBBER: only mirror a product field back onto the
-  // parent when the incoming value is a real, non-empty value. If a field is
-  // null/undefined/empty-string/whitespace-only we OMIT it from the update so
-  // the existing parent value is preserved. This makes the sync non-destructive:
-  // a Product 1 that omits narrative/claim fields (e.g. the New Service Call
-  // form, offline replay, or a direct API caller posting identity-only products)
-  // can never wipe issue_description / diagnosis / resolution / claim_* that
-  // createServiceCall already stored. Genuine non-empty edits still overwrite.
-  // To intentionally CLEAR a parent field, use the parent update path
-  // (PATCH /api/service-calls/:id → updateServiceCall), not a blank product.
-  private syncLegacyFromProduct(p: ServiceCallProduct): void {
-    const patch: Partial<typeof serviceCalls.$inferInsert> = {};
-    const fillOnly = (
-      key: keyof typeof serviceCalls.$inferInsert,
-      value: string | null | undefined,
-    ): void => {
-      if (typeof value === "string" && value.trim() !== "") {
-        (patch as any)[key] = value;
-      }
-    };
-
-    fillOnly("manufacturer", p.manufacturer);
-    fillOnly("manufacturerOther", p.manufacturerOther);
-    fillOnly("productModel", p.productModel);
-    fillOnly("productSerial", p.productSerial);
-    fillOnly("productType", p.productType);
-    fillOnly("installationDate", p.installationDate);
-    fillOnly("issueDescription", p.issueDescription);
-    fillOnly("diagnosis", p.diagnosis);
-    fillOnly("resolution", p.resolution);
-    fillOnly("claimStatus", p.claimStatus);
-    fillOnly("claimNumber", p.claimNumber);
-    fillOnly("claimNotes", p.claimNotes);
-    fillOnly("partsCost", p.partsCost);
-    fillOnly("laborCost", p.laborCost);
-    fillOnly("otherCost", p.otherCost);
-    fillOnly("claimAmount", p.claimAmount);
-
-    // Nothing meaningful to mirror — leave the parent row untouched.
-    if (Object.keys(patch).length === 0) return;
-
-    db.update(serviceCalls)
-      .set(patch)
-      .where(eq(serviceCalls.id, p.serviceCallId))
-      .run();
   }
 
   // ─── Dashboard ──────────────────────────────────────────────────────────────
@@ -899,7 +898,7 @@ export class SQLiteStorage implements IStorage {
         sc.id ASC
     `).all(today, today, today) as any[];
 
-    const todayScheduled: ServiceCallWithCounts[] = rows.map(row => ({
+    const todayScheduled: ServiceCallWithCounts[] = this.overlayProduct1(rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -967,7 +966,7 @@ export class SQLiteStorage implements IStorage {
       invoiceStatus: null,
       invoiceTotal: null,
       invoiceDueDate: null,
-    }));
+    })));
 
     const inProgressCount = todayScheduled.filter(c => c.status === "In Progress").length;
 
@@ -1022,7 +1021,7 @@ export class SQLiteStorage implements IStorage {
       LIMIT ?
     `).all(limit) as any[];
 
-    return rows.map(row => ({
+    return this.overlayProduct1(rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -1090,7 +1089,7 @@ export class SQLiteStorage implements IStorage {
       invoiceStatus: null,
       invoiceTotal: null,
       invoiceDueDate: null,
-    }));
+    })));
   }
 
   // ─── Related Calls (Follow-up chain) ─────────────────────────────────────
@@ -1134,7 +1133,7 @@ export class SQLiteStorage implements IStorage {
       `SELECT * FROM service_calls WHERE id IN (${placeholders}) ORDER BY call_date ASC, id ASC`
     ).all(...Array.from(ids)) as any[];
 
-    return rows.map(row => ({
+    return this.overlayProduct1(rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -1190,7 +1189,7 @@ export class SQLiteStorage implements IStorage {
       flaggedInternal: !!row.flagged_internal,
       flaggedReason: row.flagged_reason ?? null,
       coordsLocked: row.coords_locked ?? 0,
-    }));
+    })));
   }
 
   // ─── Contacts ──────────────────────────────────────────────────────────────
@@ -1325,7 +1324,7 @@ export class SQLiteStorage implements IStorage {
       ORDER BY sc.follow_up_date ASC
     `).all(today) as any[];
 
-    return rows.map(row => ({
+    return this.overlayProduct1(rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -1393,7 +1392,7 @@ export class SQLiteStorage implements IStorage {
       invoiceStatus: null,
       invoiceTotal: null,
       invoiceDueDate: null,
-    }));
+    })));
   }
 
   // ─── Global Search ────────────────────────────────────────────────────────
@@ -1405,13 +1404,30 @@ export class SQLiteStorage implements IStorage {
   }> {
     const q = `%${query.toLowerCase()}%`;
 
+    // A2 step 3 (#64): the product fields returned AND matched come from the
+    // Product 1 row (falling back to the legacy column when it is missing/empty),
+    // so search resolves equipment/claim terms against the same source as the
+    // list views. On reconciled data this is identical to matching the legacy
+    // columns.
     const calls = sqlite.prepare(`
-      SELECT id, call_date, customer_name, manufacturer, product_model, status
-      FROM service_calls
-      WHERE LOWER(customer_name) LIKE ? OR LOWER(job_site_name) LIKE ? OR LOWER(product_model) LIKE ?
-        OR LOWER(product_serial) LIKE ? OR LOWER(issue_description) LIKE ? OR LOWER(claim_number) LIKE ?
-        OR LOWER(manufacturer) LIKE ?
-      ORDER BY call_date DESC
+      SELECT sc.id AS id, sc.call_date AS call_date, sc.customer_name AS customer_name,
+        COALESCE(NULLIF(TRIM(p1.manufacturer), ''), sc.manufacturer) AS manufacturer,
+        COALESCE(NULLIF(TRIM(p1.product_model), ''), sc.product_model) AS product_model,
+        sc.status AS status
+      FROM service_calls sc
+      LEFT JOIN service_call_products p1
+        ON p1.id = (
+          SELECT s.id FROM service_call_products s
+          WHERE s.service_call_id = sc.id AND s.product_index = 1 AND s.voided = 0
+          ORDER BY s.id LIMIT 1
+        )
+      WHERE LOWER(sc.customer_name) LIKE ? OR LOWER(sc.job_site_name) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.product_model), ''), sc.product_model)) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.product_serial), ''), sc.product_serial)) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.issue_description), ''), sc.issue_description)) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.claim_number), ''), sc.claim_number)) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.manufacturer), ''), sc.manufacturer)) LIKE ?
+      ORDER BY sc.call_date DESC
       LIMIT 5
     `).all(q, q, q, q, q, q, q) as any[];
 
