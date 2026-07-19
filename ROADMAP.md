@@ -54,9 +54,9 @@ Ordered so each step de-risks the next. Review-finding IDs refer to `docs/CODE-R
 
 ### Weekend plan — Sunday 2026-07-19 (boundaries + money)
 
-- [ ] **S8. Zod validation on raw-body routes** (server H1, M): `validate(schema)` middleware using the existing drizzle-zod schemas; apply to users, invoices, visits, appointments routes; 400 on failure.
-- [ ] **S9. Server-derived invoice totals** (client C1, M): server computes `subtotal`/`total` (and line amounts) from persisted line items on create/update; ignore client totals; test with golden values. *This is a billing-integrity prerequisite for any paid tenant.*
-- [ ] **S10. Client error-handling batch** (client M1/M2/H3, each S): try/catch around the NewServiceCall parts loop; `onError` toasts on delete/reorder mutations; 300 ms debounce on service-call search.
+- [x] **S8. Zod validation on raw-body routes** (server H1, M): `validate(schema)` middleware (`server/validate.ts`) + per-route schemas (`server/validation-schemas.ts`) on the users, invoices, visits, and appointment routes; 400 with a field-level error list on failure, unknown keys stripped, offline-sync replay unaffected. 13 tests. PR #86, merge `240ffe8`, deployed + prod HTTP 200 verified 2026-07-19.
+- [x] **S9. Server-derived invoice totals** (client C1, M): server recomputes line amounts + `subtotal`/`total` from persisted line items on create AND update, ignoring client totals; math mirrors the client to the cent (no tax line today). New `server/invoice-totals.ts` + golden-value tests; no backfill; response shape unchanged. PR #87, merge `79cadee`, deployed + prod HTTP 200 verified 2026-07-19.
+- [x] **S10. Client error-handling batch** (client M1/M2/H3, each S): try/catch around the NewServiceCall parts loop (error surfaced in the toast); `onError` toasts on the silent deletePhoto/deleteCall/deleteActivity/reorderPhotos mutations; 300 ms debounce on service-call search. PR #88, merge `25f92d2`, deployed + prod HTTP 200 verified 2026-07-19.
 
 ### Next 1–2 weeks (before/with the Postgres migration)
 

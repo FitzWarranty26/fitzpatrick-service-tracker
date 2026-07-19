@@ -68,6 +68,48 @@ No schema changes, no migrations.
   Shell. Existing production users are untouched (seed only runs on an empty
   users table). Test in `server/seed-admin.test.ts`.
 
+### Phase 0.5 hardening sprint — S8–S10 (2026-07-19, all deployed to production)
+
+Three further sequenced hardening items ("Sunday" batch) from the 2026-07-17
+code review, same workflow as S1–S6: each its own branch → `npm run check` +
+`npm run test` + `npm run build` → PR → merge to `master` (Render auto-deploy)
+→ post-deploy prod HTTP 200 verified before the next item. Merges: S8 `240ffe8`
+(PR #86) → S9 `79cadee` (PR #87) → S10 `25f92d2` (PR #88). No schema changes,
+no migrations.
+
+#### Added — S8: zod request-body validation on the raw-body routes (server H1)
+
+- New `validate(schema)` middleware (`server/validate.ts`): runs the body
+  through a zod schema before the handler — valid input is replaced with the
+  parsed/typed output; invalid input returns 400 with a field-level error list
+  and the handler never runs. Unknown keys are stripped (no `.strict()`), so the
+  web client's harmless extras (`confirmPassword`, spread invoice objects) keep
+  working, and the offline-sync replay path is unaffected.
+- Per-route schemas in `server/validation-schemas.ts` wired onto the users,
+  invoices, service-call-visits, and scheduled-appointment mutating routes
+  (PATCH/PUT schemas are `.partial()`). 13 tests in `server/validate.test.ts`.
+
+#### Fixed — S9: invoice totals computed server-side from line items (client C1)
+
+- On invoice create AND update the server now recomputes each line `amount`
+  (quantity × unit price) and the invoice `subtotal`/`total` from the persisted
+  line items, ignoring any client-supplied totals — a stale or tampered client
+  can no longer store a total that disagrees with its items. Math mirrors the
+  web client to the cent (per-line round then sum; `total == subtotal`, no tax
+  line today). New `server/invoice-totals.ts`; golden-value tests in
+  `server/invoice-totals.test.ts`. No backfill of existing invoices; response
+  shape unchanged.
+
+#### Fixed — S10: client error handling (client M1/M2/H3)
+
+- `NewServiceCall`: the post-save parts upload loop is wrapped in try/catch so a
+  failed part no longer silently aborts the remaining uploads; the error is
+  surfaced in the completion toast alongside photo-upload errors.
+- `ServiceCallDetail`: added `onError` toasts to the previously silent
+  `deletePhoto` / `deleteCall` / `deleteActivity` / `reorderPhotos` mutations.
+- `ServiceCallList`: search term feeding the query is debounced 300ms (mirrors
+  the `EquipmentHistory` pattern); the input still updates instantly.
+
 ### Added — ADR-0003: mobile framework — React Native + Expo (docs only, no code change)
 
 - `docs/adr/0003-mobile-framework.md`: mobile apps switch from Capacitor to

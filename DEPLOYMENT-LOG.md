@@ -26,6 +26,40 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-07-19 — Phase 0.5 hardening sprint S8–S10 (three sequential deploys)
+
+- **Date:**            2026-07-19 (America/Denver, MDT)
+- **Commits:**         S8 `240ffe8` (PR #86) · S9 `79cadee` (PR #87) ·
+                       S10 `25f92d2` (PR #88).
+                       **Current production deploy = `25f92d2`** (S10, last in sequence).
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit), three
+                       merges in order — each verified live (HTTP 200) before the
+                       next item was started.
+- **Checks run:**      Per item: `npm run check` (tsc) PASS, `npm run test` PASS,
+                       `npm run build` PASS, CI `check-and-build` green before
+                       merge, prod HTTP 200 after merge. Test count grew 15 → 41
+                       across the sprint (S8 validate ×13, S9 invoice-totals ×13;
+                       S10 client-only, no test framework client-side).
+- **Rollback point:**  pre-S8 production = **`0cc53bf`** (last commit before S8;
+                       the sprint's rollback anchor). Per-item rollback = the prior
+                       merge in the chain above (S9→`240ffe8`, S10→`79cadee`).
+                       Prior sprint's known-good = `39ae074` (S6).
+- **Notes:**           No schema changes, no migrations in any item.
+                       S8: `validate(schema)` zod middleware (`server/validate.ts`)
+                       + per-route schemas on users/invoices/visits/appointments;
+                       400 with field-level errors, unknown keys stripped,
+                       offline-sync replay unaffected. S9: invoice line amounts +
+                       `subtotal`/`total` recomputed server-side from persisted
+                       items on create AND update, ignoring client totals; math
+                       mirrors the client to the cent (no tax line today); no
+                       backfill, response shape unchanged. S10 (client-only):
+                       try/catch on the NewServiceCall parts loop; `onError` toasts
+                       on the silent deletePhoto/deleteCall/deleteActivity/
+                       reorderPhotos mutations; 300 ms debounce on service-call
+                       search.
+
 ### 2026-07-19 — Phase 0.5 hardening sprint S1–S6 (six sequential deploys)
 
 - **Date:**            2026-07-19 (America/Denver, MDT)
