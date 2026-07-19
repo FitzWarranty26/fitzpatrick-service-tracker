@@ -323,9 +323,15 @@ export const MANUFACTURERS = [
   "Other",
 ] as const;
 
+// Single source of truth for a service call's status (server M6). "Needs Return
+// Visit" was already written to the status column via visit-status propagation
+// (see routes.ts) and filtered on in server SQL, but was missing here — so it
+// never appeared in the status dropdowns. Added to reconcile the enum with the
+// data/SQL. No rows are rewritten; the value already exists in production.
 export const SERVICE_STATUSES = [
   "Scheduled",
   "In Progress",
+  "Needs Return Visit",
   "Completed",
   "Pending Parts",
   "Escalated",
