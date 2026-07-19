@@ -6,6 +6,17 @@ import path from "path";
 import fs from "fs";
 import { storage, sqlite as sqliteHandle, DB_PATH } from "./storage";
 import { requireManager, requireEditor } from "./auth-guards";
+import { validate } from "./validate";
+import {
+  createUserSchema,
+  updateUserSchema,
+  createInvoiceSchema,
+  updateInvoiceSchema,
+  createVisitSchema,
+  updateVisitSchema,
+  rescheduleAppointmentSchema,
+  editActiveAppointmentSchema,
+} from "./validation-schemas";
 import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema, insertServiceCallProductSchema, getWarrantyStatus } from "@shared/schema";
 import { z } from "zod";
 import { todayLocalISO, parseMoney, safeDivide } from "@shared/datetime";
@@ -367,7 +378,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/users", requireManager, (req, res) => {
+  app.post("/api/users", requireManager, validate(createUserSchema), (req, res) => {
     try {
       const { username, password, displayName, email, role } = req.body;
       if (!username || !password || !displayName || !role) {
@@ -389,7 +400,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.patch("/api/users/:id", requireManager, (req, res) => {
+  app.patch("/api/users/:id", requireManager, validate(updateUserSchema), (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -2606,7 +2617,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.post("/api/invoices", requireEditor, (req: any, res: any) => {
+  app.post("/api/invoices", requireEditor, validate(createInvoiceSchema), (req: any, res: any) => {
     try {
       const data = req.body;
       if (!data.billToName || !data.issueDate) {
@@ -2650,7 +2661,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.patch("/api/invoices/:id", requireEditor, (req: any, res: any) => {
+  app.patch("/api/invoices/:id", requireEditor, validate(updateInvoiceSchema), (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -2691,7 +2702,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.post("/api/service-calls/:id/visits", requireEditor, (req: any, res: any) => {
+  app.post("/api/service-calls/:id/visits", requireEditor, validate(createVisitSchema), (req: any, res: any) => {
     try {
       const callId = parseInt(req.params.id);
       if (isNaN(callId)) return res.status(400).json({ error: "Invalid ID" });
@@ -2754,7 +2765,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e: any) { res.status(500).json({ error: safeError(e) }); }
   });
 
-  app.put("/api/service-calls/:id/visits/:vid", requireEditor, (req: any, res: any) => {
+  app.put("/api/service-calls/:id/visits/:vid", requireEditor, validate(updateVisitSchema), (req: any, res: any) => {
     try {
       const callId = parseInt(req.params.id);
       const vid = parseInt(req.params.vid);
@@ -2839,7 +2850,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // POST reschedule — marks current active as Rescheduled, creates a new active. Reason REQUIRED.
-  app.post("/api/service-calls/:id/appointments/reschedule", requireEditor, (req: any, res: any) => {
+  app.post("/api/service-calls/:id/appointments/reschedule", requireEditor, validate(rescheduleAppointmentSchema), (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       const { scheduledDate, scheduledTime, reason } = req.body || {};
@@ -2921,7 +2932,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // PUT inline edit of the active appointment (typo fix). No reason, no new history entry.
-  app.put("/api/service-calls/:id/appointments/active", requireEditor, (req: any, res: any) => {
+  app.put("/api/service-calls/:id/appointments/active", requireEditor, validate(editActiveAppointmentSchema), (req: any, res: any) => {
     try {
       const id = parseInt(req.params.id);
       const { scheduledDate, scheduledTime } = req.body || {};
