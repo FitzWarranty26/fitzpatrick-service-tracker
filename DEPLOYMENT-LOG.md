@@ -26,6 +26,48 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-07-19 — Phase 0.5 hardening sprint S1–S6 (six sequential deploys)
+
+- **Date:**            2026-07-19 (America/Denver, MDT)
+- **Commits:**         S1 `ba5b9bc` (PR #77) · S2 `fc83e41` (PR #78) ·
+                       S3 `b1b27a2` (PR #79) · S4 `b252acd` (PR #80) ·
+                       S5 `b97cae6` (PR #81) · S6 `39ae074` (PR #82).
+                       **Current production deploy = `39ae074`** (S6, last in sequence).
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit), six
+                       merges in order — each verified live (HTTP 200) before the
+                       next item was started.
+- **Checks run:**      Per item: `npm run check` (tsc) PASS, `npm run test` PASS,
+                       `npm run build` PASS, CI `check-and-build` green before
+                       merge, prod HTTP 200 after merge. Test count grew 6 → 15
+                       across the sprint (orphan-audit ×4, delete-service-call ×1,
+                       auth-guards ×3, seed-admin ×1, plus existing suites).
+- **Rollback point:**  pre-sprint production = **`0a164cc`** (PR #76, last commit
+                       before S1). Per-item rollback = the prior merge in the
+                       chain above. Known-good tags: `known-good-2026-06-12` →
+                       `e28492b`, baseline `known-good-2026-06-05` → `44e91ce`.
+- **Notes:**           No schema changes, no migrations in any item.
+                       S1: CI now runs `npm test` (gates all later PRs);
+                       `package.json` `test` widened to `tsx --test server/*.test.ts`.
+                       S2: `foreign_keys = ON` enabled at startup **only** behind a
+                       read-only orphan-audit gate (fail-open if orphans exist);
+                       new `server/orphan-audit.ts` + `scripts/audit-orphans.mjs`
+                       (Render-Shell runnable). S3: `deleteServiceCall` now
+                       transactional and deletes `invoice_items` (was orphaning
+                       them via a raw bypass of `deleteInvoice()`). S4:
+                       `DELETE /api/service-calls/:id` now `requireManager` (was
+                       `requireEditor`); guards extracted to `server/auth-guards.ts`.
+                       S5: removed three `*.legacy.tsx` pages + routes (~4,000
+                       lines), client-only. S6: seeded-admin password now from
+                       `SEED_ADMIN_PASSWORD` or crypto-random, never logged;
+                       existing prod users untouched (seed only on empty DB).
+                       Follow-ups pending (Kevin-only): manual re-entry of blank
+                       descriptions on calls **#41 / #85 / #86**. PR #62
+                       (read-only diagnostic) reviewed and **closed** (S7) — the
+                       fixes it scoped (#61/#65) are already live; script preserved
+                       on its branch if a fresh list is needed.
+
 ### 2026-07-17 — Fix photo uploads rejected with 413 (body-limit override)
 
 - **Date:**            2026-07-17 12:38 (America/Denver, MDT)

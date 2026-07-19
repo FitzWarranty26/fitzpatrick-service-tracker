@@ -8,6 +8,66 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Phase 0.5 hardening sprint — S1–S6 (2026-07-19, all deployed to production)
+
+Six sequenced hardening items from the 2026-07-17 code review, each its own
+branch → `npm run check` + `npm run test` + `npm run build` → PR → merge to
+`master` (Render auto-deploy) → post-deploy prod HTTP 200 verified before the
+next item. Merges: S1 `ba5b9bc` (PR #77) → S2 `fc83e41` (PR #78) → S3 `b1b27a2`
+(PR #79) → S4 `b252acd` (PR #80) → S5 `b97cae6` (PR #81) → S6 `39ae074` (PR #82).
+No schema changes, no migrations.
+
+#### Added — S1: CI runs the test suite (server H2)
+
+- `.github/workflows/ci.yml` now runs `npm test` between the type-check and
+  build steps, so every future PR is gated on tests. `package.json` `test`
+  script widened from a single file to `tsx --test server/*.test.ts` so all
+  suites run.
+
+#### Added — S2: foreign-key enforcement behind an orphan-audit gate (server C4)
+
+- `sqlite.pragma("foreign_keys = ON")` is now enabled at startup, but **only**
+  after a read-only orphan audit confirms the DB is clean. If any orphaned rows
+  exist, enforcement is skipped with a clear warning (fail-open — behavior
+  unchanged) so it can be enabled on the next boot once cleaned.
+- New `server/orphan-audit.ts` (reusable audit of 10 parent/child relationships)
+  and standalone `scripts/audit-orphans.mjs` (read-only, runnable from the
+  Render Shell). 4 tests in `server/orphan-audit.test.ts`.
+
+#### Fixed — S3: `deleteServiceCall` is transactional and cleans invoice_items (server C3)
+
+- The delete now runs in a single `sqlite.transaction(...)` and removes
+  `invoice_items` for the call's invoices, closing the orphan hazard where a
+  call's invoices were deleted with a raw statement that bypassed
+  `deleteInvoice()` and left `invoice_items` behind. Regression test in
+  `server/delete-service-call.test.ts` proves no child row (invoice_items
+  included) survives and the orphan audit is clean.
+
+#### Changed — S4: manager-gate service-call deletion (server H4)
+
+- `DELETE /api/service-calls/:id` now uses `requireManager` (was
+  `requireEditor`), so techs/staff can no longer delete calls. Guards extracted
+  to `server/auth-guards.ts` and unit-tested (`server/auth-guards.test.ts`):
+  non-managers get 403 `{ error: "Manager access required" }`. Soft-delete
+  deferred.
+
+#### Removed — S5: three legacy service-call pages + routes (client H2)
+
+- Deleted `ServiceCallDetail.legacy.tsx`, `NewServiceCall.legacy.tsx`,
+  `ServiceCallList.legacy.tsx` (~4,000 lines of drifted, still-reachable code)
+  and their `/calls/legacy/:id`, `/new/legacy`, `/calls/list/legacy` routes plus
+  now-dead lazy imports in `App.tsx`. Nothing linked to these routes.
+
+#### Security — S6: seeded admin credentials hardened (server H6)
+
+- Removed the hardcoded default admin password (`fitzpatrick2026`) and its
+  plaintext log line. On a fresh/empty DB the seeded `admin` password now comes
+  from `SEED_ADMIN_PASSWORD` (if ≥ 8 chars) or a cryptographically-random value
+  that is **never logged**; the account stays flagged `must_change_password`.
+  Recovery for the random case is `scripts/reset-password.mjs` from the Render
+  Shell. Existing production users are untouched (seed only runs on an empty
+  users table). Test in `server/seed-admin.test.ts`.
+
 ### Added — ADR-0003: mobile framework — React Native + Expo (docs only, no code change)
 
 - `docs/adr/0003-mobile-framework.md`: mobile apps switch from Capacitor to
