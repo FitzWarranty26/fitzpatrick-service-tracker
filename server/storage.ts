@@ -3,6 +3,7 @@ import { todayLocalISO, parseMoney } from "@shared/datetime";
 import Database from "better-sqlite3";
 import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 import { auditOrphans, hasOrphans, formatOrphanReport } from "./orphan-audit";
 import {
   serviceCalls,
@@ -708,14 +709,35 @@ sqlite.exec(`
 `);
 console.log("Migration 29: ensured query indexes (invoices, visits, audit, service_calls)");
 
-// Seed default admin user if users table is empty
+// Seed default admin user — only on a fresh/empty DB (server C5).
+//
+// Credential hardening: never bake a well-known default password into the app.
+// If the operator supplies SEED_ADMIN_PASSWORD (>= 8 chars) we use it; otherwise
+// we generate a cryptographically-random password that is NEVER logged. Either
+// way the account is flagged must_change_password so it can't stay as-seeded.
+// When the password is random (and therefore unknown to anyone), recovery is via
+// scripts/reset-password.mjs run from the Render Shell.
 const userCount = (sqlite.prepare(`SELECT COUNT(*) as count FROM users`).get() as any).count;
 if (userCount === 0) {
-  const hashedPw = bcrypt.hashSync("fitzpatrick2026", 12);
+  const envPw = process.env.SEED_ADMIN_PASSWORD?.trim();
+  const useEnvPw = !!envPw && envPw.length >= 8;
+  const seedPw = useEnvPw ? (envPw as string) : randomBytes(24).toString("base64url");
+  const hashedPw = bcrypt.hashSync(seedPw, 12);
   sqlite.prepare(
     `INSERT INTO users (username, password, display_name, email, role, active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run("admin", hashedPw, "Kevin Fitzpatrick", "kevin@fitzpatricksales.com", "manager", 1, 1, new Date().toISOString());
-  console.log("Seed: created default admin user (admin / fitzpatrick2026)");
+  if (useEnvPw) {
+    console.log("Seed: created default admin user 'admin' from SEED_ADMIN_PASSWORD (must change at first login).");
+  } else {
+    if (envPw) {
+      console.warn("Seed: SEED_ADMIN_PASSWORD was set but under 8 chars — ignored; used a random password instead.");
+    }
+    console.log(
+      "Seed: created default admin user 'admin' with a random password (not logged). " +
+        "Set a known password with scripts/reset-password.mjs from the Render Shell, " +
+        "or provide SEED_ADMIN_PASSWORD before first boot."
+    );
+  }
 }
 
 // ─── Foreign-key enforcement gate (server C4) ───────────────────────────────
