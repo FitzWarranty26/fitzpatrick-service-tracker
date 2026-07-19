@@ -3,6 +3,7 @@ import { todayLocalISO, parseMoney } from "@shared/datetime";
 import Database from "better-sqlite3";
 import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { auditOrphans, hasOrphans, formatOrphanReport } from "./orphan-audit";
 import {
   serviceCalls,
   photos,
@@ -715,6 +716,29 @@ if (userCount === 0) {
     `INSERT INTO users (username, password, display_name, email, role, active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run("admin", hashedPw, "Kevin Fitzpatrick", "kevin@fitzpatricksales.com", "manager", 1, 1, new Date().toISOString());
   console.log("Seed: created default admin user (admin / fitzpatrick2026)");
+}
+
+// ─── Foreign-key enforcement gate (server C4) ───────────────────────────────
+// SQLite disables FK enforcement per-connection by default, so the schema's
+// ON DELETE CASCADE clauses are inert. We want enforcement ON, but enabling it
+// against a DB that already contains orphaned rows would make later writes to
+// the affected parents fail at runtime. We cannot reach the production DB from
+// CI/dev, so we gate on a read-only audit run at startup: if the data is clean,
+// enable enforcement; if orphans exist, log a clear warning and SKIP enabling
+// (fail-open — the app keeps working exactly as before). Cleaning up any
+// reported orphans is a follow-up, after which FKs will enable on next boot.
+{
+  const orphanResults = auditOrphans(sqlite);
+  if (hasOrphans(orphanResults)) {
+    console.warn(
+      "FK enforcement SKIPPED — pre-existing orphaned rows found: " +
+        formatOrphanReport(orphanResults) +
+        ". Clean these up (see scripts/audit-orphans.mjs) so foreign_keys can be enabled on next boot."
+    );
+  } else {
+    sqlite.pragma("foreign_keys = ON");
+    console.log("FK enforcement ENABLED (foreign_keys = ON) — orphan audit clean.");
+  }
 }
 
 export interface ServiceCallWithCounts extends ServiceCall {
