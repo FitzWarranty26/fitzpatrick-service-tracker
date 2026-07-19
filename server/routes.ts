@@ -5,6 +5,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { storage, sqlite as sqliteHandle, DB_PATH } from "./storage";
+import { SqliteSessionStore, SqliteLoginRateLimitStore } from "./session-store";
 import { requireManager, requireEditor } from "./auth-guards";
 import { validate } from "./validate";
 import {
@@ -56,35 +57,29 @@ setInterval(() => {
   });
 }, 5 * 60 * 1000);
 
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+// Login lockout counters now live in the shared SQLite DB (server C2) so a
+// deploy/restart no longer resets the 5-attempt lockout and the limit works
+// across instances. Behind an interface (see session-store.ts) so the Postgres
+// swap (Issue #7) is one file.
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
+const LOCKOUT_MS = LOCKOUT_MINUTES * 60 * 1000;
+const loginRateLimitStore = new SqliteLoginRateLimitStore(sqliteHandle);
 
 function getClientIP(req: any): string {
   return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
 }
 
 function isRateLimited(ip: string): boolean {
-  const record = loginAttempts.get(ip);
-  if (!record) return false;
-  if (Date.now() > record.resetAt) {
-    loginAttempts.delete(ip);
-    return false;
-  }
-  return record.count >= MAX_LOGIN_ATTEMPTS;
+  return loginRateLimitStore.isLimited(ip, MAX_LOGIN_ATTEMPTS);
 }
 
 function recordFailedLogin(ip: string) {
-  const record = loginAttempts.get(ip);
-  if (!record || Date.now() > record.resetAt) {
-    loginAttempts.set(ip, { count: 1, resetAt: Date.now() + LOCKOUT_MINUTES * 60 * 1000 });
-  } else {
-    record.count++;
-  }
+  loginRateLimitStore.recordFailure(ip, LOCKOUT_MS);
 }
 
 function clearFailedLogins(ip: string) {
-  loginAttempts.delete(ip);
+  loginRateLimitStore.clear(ip);
 }
 
 // Timing-safe string comparison to prevent timing attacks
@@ -97,58 +92,69 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 // ─── Session Token Management ─────────────────────────────────────────────
+// Sessions live in the shared SQLite DB (server C2) so they survive
+// deploys/restarts (no more "every deploy logs everyone out") and work across
+// instances. Behind an interface (session-store.ts) for the Postgres swap.
 const SESSION_EXPIRY_HOURS = 24;
-interface SessionData {
-  createdAt: number;
-  ip: string;
-  userId: number;
-  username: string;
-  role: string;
-}
-const activeSessions = new Map<string, SessionData>();
+const SESSION_TTL_MS = SESSION_EXPIRY_HOURS * 60 * 60 * 1000;
+const SESSION_COOKIE = "sid";
+const sessionStore = new SqliteSessionStore(sqliteHandle);
 
 function createSessionToken(ip: string, user: { id: number; username: string; role: string }): string {
   const token = crypto.randomBytes(32).toString("hex");
-  activeSessions.set(token, { createdAt: Date.now(), ip, userId: user.id, username: user.username, role: user.role });
+  sessionStore.create({ token, userId: user.id, username: user.username, role: user.role, ip, ttlMs: SESSION_TTL_MS });
   return token;
 }
 
 function isValidSession(token: string): boolean {
-  const session = activeSessions.get(token);
-  if (!session) return false;
-  const age = Date.now() - session.createdAt;
-  if (age > SESSION_EXPIRY_HOURS * 60 * 60 * 1000) {
-    activeSessions.delete(token);
-    return false;
-  }
-  return true;
+  return sessionStore.get(token) !== null;
 }
 
-function getSessionUser(token: string): SessionData | null {
-  const session = activeSessions.get(token);
-  if (!session) return null;
-  const age = Date.now() - session.createdAt;
-  if (age > SESSION_EXPIRY_HOURS * 60 * 60 * 1000) {
-    activeSessions.delete(token);
-    return null;
-  }
-  return session;
+function getSessionUser(token: string) {
+  return sessionStore.get(token);
 }
 
-// Clean expired sessions and stale rate-limit records every hour
+// Read the session token from the httpOnly cookie (client H1: session survives
+// page reload) or the Authorization header (bearer — backward compatible with
+// already-logged-in clients and offline-sync replay).
+function getRequestToken(req: any): string {
+  const bearer = (req.headers.authorization || "").replace("Bearer ", "").trim();
+  if (bearer) return bearer;
+  const cookieHeader = req.headers.cookie;
+  if (typeof cookieHeader === "string" && cookieHeader) {
+    for (const part of cookieHeader.split(";")) {
+      const idx = part.indexOf("=");
+      if (idx === -1) continue;
+      if (part.slice(0, idx).trim() === SESSION_COOKIE) {
+        return decodeURIComponent(part.slice(idx + 1).trim());
+      }
+    }
+  }
+  return "";
+}
+
+function setSessionCookie(res: any, token: string) {
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: SESSION_TTL_MS,
+    path: "/",
+  });
+}
+
+function clearSessionCookie(res: any) {
+  res.clearCookie(SESSION_COOKIE, { path: "/" });
+}
+
+// Clean expired sessions and stale login-lockout records every hour.
 setInterval(() => {
-  const now = Date.now();
-  const maxAge = SESSION_EXPIRY_HOURS * 60 * 60 * 1000;
-  activeSessions.forEach((session, token) => {
-    if (now - session.createdAt > maxAge) {
-      activeSessions.delete(token);
-    }
-  });
-  loginAttempts.forEach((record, ip) => {
-    if (now > record.resetAt) {
-      loginAttempts.delete(ip);
-    }
-  });
+  try {
+    sessionStore.pruneExpired();
+    loginRateLimitStore.pruneExpired();
+  } catch (e) {
+    console.error("[session] prune failed:", e);
+  }
 }, 60 * 60 * 1000);
 
 // Audit log retention. The audit_log_system table grows unbounded otherwise
@@ -250,6 +256,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       clearFailedLogins(ip);
       const token = createSessionToken(ip, { id: user.id, username: user.username, role: user.role });
+      setSessionCookie(res, token);
       storage.createAuditEntry({ userId: user.id, username: user.username, action: "login" });
       return res.json({
         success: true,
@@ -269,8 +276,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   app.post("/api/auth/logout", (req, res) => {
     try {
-      const token = (req.headers.authorization || "").replace("Bearer ", "");
-      if (token) activeSessions.delete(token);
+      const token = getRequestToken(req);
+      if (token) sessionStore.destroy(token);
+      clearSessionCookie(res);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: safeError(e) });
@@ -279,12 +287,26 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   app.get("/api/auth/verify", (req, res) => {
     try {
-      const token = (req.headers.authorization || "").replace("Bearer ", "");
+      const token = getRequestToken(req);
       const session = token ? getSessionUser(token) : null;
       if (session) {
+        // Look up the live user so a page reload can fully restore client auth
+        // state (displayName, mustChangePassword) from the httpOnly cookie.
+        const user = storage.getUserById(session.userId);
+        if (!user || !user.active) {
+          sessionStore.destroy(token);
+          clearSessionCookie(res);
+          return res.status(401).json({ authenticated: false });
+        }
         return res.json({
           authenticated: true,
-          user: { id: session.userId, username: session.username, role: session.role },
+          user: {
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            role: user.role,
+            mustChangePassword: user.mustChangePassword,
+          },
         });
       }
       return res.status(401).json({ authenticated: false });
@@ -296,7 +318,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // Middleware to protect all other API routes — Bearer token only
   // Attach user info to every authenticated request
   const requireAuth = (req: any, res: any, next: any) => {
-    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    const token = getRequestToken(req);
     const session = token ? getSessionUser(token) : null;
     if (session) {
       req.user = { id: session.userId, username: session.username, role: session.role };
@@ -426,9 +448,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       logAudit(req, action, "user", id, JSON.stringify(updates));
       // If this user has active sessions and was deactivated, invalidate them
       if (active === 0 || active === false) {
-        activeSessions.forEach((session, token) => {
-          if (session.userId === id) activeSessions.delete(token);
-        });
+        sessionStore.destroyByUser(id);
       }
       res.json(user);
     } catch (e: any) {
@@ -459,9 +479,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
 
       // Invalidate any active sessions for this user
-      activeSessions.forEach((session, token) => {
-        if (session.userId === id) activeSessions.delete(token);
-      });
+      sessionStore.destroyByUser(id);
 
       logAudit(req, "deleted_user", "user", id, JSON.stringify({ username: target.username, displayName: target.displayName, role: target.role }));
       storage.deleteUser(id);
@@ -3279,8 +3297,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // commonly leak into proxy logs, CDN logs, and browser history. Cron jobs
   // must send it as a header.
   const requireBackupAuth = (req: any, res: any, next: any) => {
-    // Try session token first
-    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    // Try session token first (bearer or session cookie)
+    const token = getRequestToken(req);
     if (token && isValidSession(token)) return next();
     // Try backup secret — header only, never query
     const secret = req.headers["x-backup-secret"];
