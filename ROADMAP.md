@@ -20,7 +20,7 @@
 - Recent deploys: PR #61 + #65 (description-wipe fix + class-kill hardening, 07-16), PR #67 (photo 413 body-limit fix, 07-17). Deploy log: PRs #63, #66, #68.
 - **Open loose ends:**
   - [x] PR #62 (read-only blank-description blast-radius diagnostic) — reviewed and **closed** 2026-07-19 (S7); the fixes it scoped (#61/#65) are live, script preserved on its branch.
-  - [ ] Data cleanup: service calls **#41, #85, #86** have blank descriptions from the buggy path (text unrecoverable — re-enter from field knowledge, then note in the call activity log). **Kevin-only** (field knowledge).
+  - [x] Data cleanup: service calls **#41, #85, #86** had blank descriptions from the buggy path — **done 2026-07-19** (Kevin re-entered from field knowledge).
   - [ ] Issue #64 open: remove legacy dual-storage + `syncLegacyFromProduct` (folded into Phase 1 below).
 
 ## Architecture decisions in force
@@ -50,7 +50,7 @@ Ordered so each step de-risks the next. Review-finding IDs refer to `docs/CODE-R
 - [x] **S4. Manager-gate service-call deletion** (server H4, S): `requireManager` on `DELETE /api/service-calls/:id`; guards extracted to `server/auth-guards.ts` + tests. Soft-delete still deferred. PR #80, merge `b252acd`, deployed 2026-07-19.
 - [x] **S5. Delete the three `*.legacy.tsx` pages + routes** (client H2, S): removed ~4,000 lines + their routes/imports (`App.tsx`). PR #81, merge `b97cae6`, deployed 2026-07-19.
 - [x] **S6. Seeded admin credentials** (server H6, S): password now from `SEED_ADMIN_PASSWORD` or crypto-random, never logged; `must_change_password` kept; existing prod users untouched. PR #82, merge `39ae074`, deployed 2026-07-19.
-- [x] **S7. Loose ends:** PR #62 reviewed and **closed** 2026-07-19 (fixes it scoped are live). **Still pending (Kevin-only):** re-enter descriptions for calls #41/#85/#86 from field knowledge.
+- [x] **S7. Loose ends:** PR #62 reviewed and **closed** 2026-07-19 (fixes it scoped are live). Descriptions for calls #41/#85/#86 re-entered by Kevin from field knowledge 2026-07-19 — **all S7 loose ends closed**.
 
 ### Weekend plan — Sunday 2026-07-19 (boundaries + money)
 
