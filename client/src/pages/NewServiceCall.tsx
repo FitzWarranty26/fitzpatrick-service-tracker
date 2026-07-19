@@ -433,15 +433,23 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
           console.error("Failed to upload photo:", err);
         }
       }
-      // Upload parts
+      // Upload parts. A failed part must not abort the remaining uploads or
+      // leave the tech thinking everything saved — collect the error and surface
+      // it in the final toast, mirroring the photo-upload handling above.
+      let partError: string | null = null;
       for (const part of parts) {
         if (part.partNumber || part.partDescription) {
-          await apiRequest("POST", `/api/service-calls/${newCall.id}/parts`, {
-            partNumber: part.partNumber,
-            partDescription: part.partDescription,
-            quantity: part.quantity || 1,
-            source: part.source,
-          });
+          try {
+            await apiRequest("POST", `/api/service-calls/${newCall.id}/parts`, {
+              partNumber: part.partNumber,
+              partDescription: part.partDescription,
+              quantity: part.quantity || 1,
+              source: part.source,
+            });
+          } catch (err: any) {
+            partError = err?.message ?? "A part didn't save.";
+            console.error("Failed to upload part:", err);
+          }
         }
       }
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
@@ -449,8 +457,12 @@ export default function NewServiceCall({ followUpId: followUpIdProp }: { followU
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent"] });
       // Successful save — wipe the draft so it doesn't reappear next time.
       clearDraft();
-      if (photoError) {
-        toast({ title: `Call #${newCall.id} saved, but a photo didn't upload`, description: photoError, variant: "destructive" });
+      if (photoError || partError) {
+        toast({
+          title: `Call #${newCall.id} saved, but something didn't upload`,
+          description: partError && photoError ? `${photoError}; ${partError}` : (photoError || partError)!,
+          variant: "destructive",
+        });
       } else {
         toast({ title: "Service call created", description: `Call #${newCall.id} saved.` });
       }

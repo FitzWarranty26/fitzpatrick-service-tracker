@@ -310,6 +310,9 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
   // View / search / filters
   const [activeView, setActiveView] = useState<ViewKey>(() => presetToView(presetProp) || "all-open");
   const [search, setSearch] = useState("");
+  // Debounce the search term feeding the query so we don't fire a request on
+  // every keystroke; the input still binds to `search` for instant feedback.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterManufacturer, setFilterManufacturer] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterState, setFilterState] = useState("");
@@ -326,8 +329,13 @@ export default function ServiceCallList({ preset: presetProp }: { preset?: strin
     setShowFilters(false);
   }, [presetProp]);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const params = new URLSearchParams();
-  if (search) params.set("search", search);
+  if (debouncedSearch) params.set("search", debouncedSearch);
   if (filterManufacturer) params.set("manufacturer", filterManufacturer);
   if (filterStatus) params.set("status", filterStatus);
   if (filterState) params.set("state", filterState);
