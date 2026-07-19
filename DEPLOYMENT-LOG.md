@@ -26,6 +26,52 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-07-19 — Pre-migration batch Items 1–3 (three sequential deploys)
+
+- **Date:**            2026-07-19 (America/Denver, MDT)
+- **Commits:**         Item 1 `18b740d` (PR #90) · Item 2 `0a1c6ce` (PR #91) ·
+                       Item 3 `f61681e` (PR #92).
+                       **Current production deploy = `f61681e`** (Item 3, last in sequence).
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit), three
+                       merges in order — each verified live (HTTP 200) before the
+                       next item was started. Kevin approved these deploys
+                       2026-07-19 ~13:22 MDT.
+- **Checks run:**      Per item: `npm run check` (tsc) PASS, `npm run test` PASS,
+                       `npm run build` PASS, CI `check-and-build` green before
+                       merge, prod HTTP 200 after merge. Test count grew
+                       41 → 48 (Item 1) → 51 (Item 2) → 56 (Item 3).
+- **Rollback point:**  pre-batch production = **`44181e0`** (last commit before
+                       Item 1; the batch's rollback anchor). Per-item rollback =
+                       the prior merge in the chain (Item 2→`18b740d`,
+                       Item 3→`0a1c6ce`). Prior sprint's known-good = `25f92d2` (S10).
+- **Notes:**           Item 1 (server C2 + client H1): sessions + login rate limits
+                       moved from in-memory Maps to a shared better-sqlite3 store
+                       (`server/session-store.ts`); new `sessions`/`login_attempts`
+                       tables created idempotently at startup; httpOnly session
+                       cookie so reloads no longer log out. **One-time logout at
+                       this deploy** as old in-memory tokens were cleared;
+                       persistent thereafter. Additive — no schema migration to
+                       undo. Item 2: SERVICE_STATUSES enum gains `'Needs Return
+                       Visit'` (enum-only, no rows rewritten); standardized React
+                       Query keys; reset `expiredHandled` on login. Item 3
+                       (**HIGHEST CARE — schema tooling change**): replaced inline
+                       startup migrations with versioned `migrations/*.sql` + a
+                       startup runner (`server/migrate.ts`) with **baselining** —
+                       the existing production DB is detected via the
+                       `service_calls` sentinel and the baseline is marked applied
+                       WITHOUT executing, so the live schema is untouched; a fresh
+                       DB builds from the baseline. Seed logic extracted to
+                       `server/seed.ts`; CRM data seed now explicit (`npm run seed`),
+                       S6 admin hardening still auto on empty DB. Migrations run at
+                       **startup** (Render pre-deploy runs without the persistent
+                       disk mounted — see `render.yaml`). Post-deploy verified: 502
+                       restart blip → sustained HTTP 200, login page serves, no
+                       crash-loop (baselining did not execute DDL over live data).
+                       **Rollback of Item 3 is safe:** old inline-migration code is
+                       idempotent and ignores the new `schema_migrations` table.
+
 ### 2026-07-19 — Phase 0.5 hardening sprint S8–S10 (three sequential deploys)
 
 - **Date:**            2026-07-19 (America/Denver, MDT)

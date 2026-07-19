@@ -8,6 +8,91 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Pre-migration batch — Items 1–3 (2026-07-19, all deployed to production)
+
+The "Next 1–2 weeks" hardening items from the ROADMAP, run as the last work
+before the Postgres migration (Issue #7). Same workflow as the S-items: each its
+own branch → `npm run check` + `npm run test` + `npm run build` → PR → merge to
+`master` (Render auto-deploy) → post-deploy prod HTTP 200 verified before the
+next item. Merges: Item 1 `18b740d` (PR #90) → Item 2 `0a1c6ce` (PR #91) →
+Item 3 `f61681e` (PR #92). Rollback anchor for the batch: `44181e0`.
+Issue #64 (dual-storage removal) was **intentionally deferred** to sequence with
+Issue #7 so the Postgres schema is born clean.
+
+#### Changed — Item 1: sessions + login rate limits moved to a shared SQLite store (server C2 + client H1)
+
+- The two pieces of auth state that were in-memory `Map`s in `server/routes.ts`
+  now live in the same better-sqlite3 DB behind a small interface
+  (`server/session-store.ts`): `SqliteSessionStore` (sessions survive
+  deploys/restarts — deploys previously logged everyone out) and
+  `SqliteLoginRateLimitStore` (the 5-attempts-per-IP / 15-min lockout now
+  survives restarts; thresholds unchanged). `sessions` and `login_attempts`
+  tables are created idempotently at startup. The store sits behind an interface
+  so the Postgres migration (Issue #7) is a one-file swap.
+- **Client H1 — session survives reload:** the session token is now also set as
+  an httpOnly, `sameSite=lax`, `secure`-in-production cookie (24h TTL). The
+  server accepts the token from the cookie OR the `Authorization: Bearer` header
+  (backward compatible with offline-sync replay). On mount the client calls
+  `/api/auth/verify` and the cookie restores auth, so a reload no longer logs
+  the user out. Expired sessions and stale lockout rows are pruned hourly.
+- **One-time logout at this deploy only:** currently-logged-in users held an
+  in-memory bearer token, cleared once by the deploy restart; from then on
+  sessions persist. 7 new tests in `server/session-store.test.ts` (41 → 48).
+
+#### Changed — Item 2: SERVICE_STATUSES reconcile, standardized RQ keys, reset `expiredHandled` (server M6 + client M5/L1)
+
+- **M6:** `'Needs Return Visit'` was already written to `service_calls.status`
+  and filtered on in server SQL but was missing from the `SERVICE_STATUSES`
+  enum, so it never appeared in the status dropdowns. Added it to the enum (the
+  single source of truth); **no rows rewritten** — the value already exists in
+  production. New `server/service-statuses.test.ts` asserts the enum contains
+  the value, has no duplicates, and that every service-call status literal in
+  server SQL `IN (...)` clauses is a member (guards against future drift).
+- **M5:** converted the remaining string-template React Query keys in
+  `ServiceCallDetail.tsx` (detail invalidate, appointments query + invalidate,
+  visits invalidate) to the array shape `["/api/service-calls", callId, ...]`
+  used elsewhere, so invalidations hit their queries directly instead of relying
+  on accidental prefix invalidation.
+- **L1:** added `resetExpiredHandled()` in `queryClient.ts` and call it on
+  successful login and cookie-restore, so the module-scope session-expired guard
+  no longer permanently suppresses the toast/redirect after one expiry in a tab.
+- 3 new tests (48 → 51). No data changes; client has no test framework so no
+  client tests added.
+
+#### Changed — Item 3: versioned schema migrations + baseline + extracted seed (server H5)
+
+- Replaces the ad-hoc inline startup migrations in `server/storage.ts` (a
+  growing stack of `CREATE TABLE IF NOT EXISTS` + `columnExists`-guarded
+  `ALTER`s, up to "Migration 37") with a versioned, ordered migration system.
+- **`migrations/0000_baseline.sql`** — a snapshot of the *current production
+  schema* (15 tables + named indexes), captured by booting the legacy build
+  against an empty DB and dumping `sqlite_master`. Dumped rather than generated
+  from `shared/schema.ts` because that file does **not** match the live DB
+  (`audit_log_system` vs `audit_log`; omits `scheduled_appointments`/`sessions`/
+  `login_attempts`), so generating from schema would have baselined the wrong
+  shape.
+- **`server/migrate.ts`** — `runMigrations(db)` applies ordered `*.sql` files
+  tracked in a `schema_migrations` bookkeeping table, at import time (before the
+  server listens). A Render pre-deploy command was rejected because it runs
+  **without the persistent disk mounted** (see `render.yaml`), so startup is the
+  safe place.
+- **Baselining:** an existing DB (production) with the app schema but no
+  bookkeeping is detected via a sentinel table (`service_calls`); the baseline is
+  **marked applied WITHOUT executing**, so the live schema is never touched. A
+  fresh/empty DB executes the baseline to build the schema.
+- **`server/seed.ts`** — extracted seed logic. `seedAdmin()` (S6 credential
+  hardening) still runs on an empty DB at startup (idempotent). `seedInitialData()`
+  (the CRM contact list + TEST CUSTOMER) now runs **explicitly** via
+  `npm run seed` (`script/seed.ts`), not on every boot. Seeds are the same
+  guarded inserts, only relocated — no customer rows altered.
+- **`script/build.ts`** copies `migrations/` into `dist/migrations/` as a
+  runtime path-resolution fallback. 5 new tests in `server/migrate.test.ts`
+  covering both baseline paths + idempotency + seed behavior (51 → 56).
+- **Rollback:** if reverted, the old startup-migration code runs again against a
+  DB that now has a `schema_migrations` table. Harmless — the old code never
+  referenced any bookkeeping table and all its DDL is idempotent, so it no-ops
+  and ignores `schema_migrations`. No data/schema change on rollback.
+
 ### Phase 0.5 hardening sprint — S1–S6 (2026-07-19, all deployed to production)
 
 Six sequenced hardening items from the 2026-07-17 code review, each its own

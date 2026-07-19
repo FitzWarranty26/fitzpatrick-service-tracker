@@ -6,7 +6,7 @@
 > the issue tracker — is the source of truth. Update this file whenever phases,
 > priorities, or scope change.
 
-**Last updated:** 2026-07-17 · **Owner:** Kevin Withers
+**Last updated:** 2026-07-19 · **Owner:** Kevin Withers
 **Companion docs:** [`docs/CODE-REVIEW-2026-07-17.md`](docs/CODE-REVIEW-2026-07-17.md) (full findings) ·
 [`docs/adr/0001-commercial-hosting-platform.md`](docs/adr/0001-commercial-hosting-platform.md) ·
 `COMMERCIAL-READINESS-CHECKLIST.md` · `RECOVERY-INDEX.md`
@@ -60,11 +60,11 @@ Ordered so each step de-risks the next. Review-finding IDs refer to `docs/CODE-R
 
 ### Next 1–2 weeks (before/with the Postgres migration)
 
-- [ ] **Sessions + rate limits to a shared store** (server C2, M–L): DB-backed sessions (Postgres table once migrated); fixes deploy-logout and enables multi-instance. Pair with client H1 (session survives reload — httpOnly cookie preferred).
-- [ ] **Versioned migrations** (server H5, L): drizzle-kit generated SQL migrations run as a pre-deploy step; move seed data out of `storage.ts`.
-- [ ] **Issue #64 — remove dual-storage + `syncLegacyFromProduct`** (L): single source of truth for narrative fields; migrate readers (reports, equipment search); schema migration with tested rollback. *Sequence with Issue #7 so the Postgres schema is born clean, without the legacy columns.*
-- [ ] Reconcile `SERVICE_STATUSES` enum vs SQL (`'Needs Return Visit'`) (server M6, S).
-- [ ] Standardize React Query keys; reset `expiredHandled` on login (client M5/L1, S).
+- [x] **Sessions + rate limits to a shared store** (server C2, M–L): SQLite-backed session store + shared rate-limit store; fixes deploy-logout and lays the groundwork for multi-instance. Paired with client H1 (session survives reload). Pre-migration batch Item 1, PR #90, merge `18b740d`, deployed + prod HTTP 200 verified 2026-07-19.
+- [x] **Versioned migrations** (server H5, L): SQL migration files + a startup migration runner with baselining (existing/production DB marks the baseline applied WITHOUT executing; fresh DB builds the schema); seed logic moved out of `storage.ts` into `server/seed.ts` + explicit `npm run seed` (S6 seeded-admin hardening preserved for empty DBs, still auto at startup). Runs at startup (not a Render pre-deploy step — the persistent disk is unmounted then). Pre-migration batch Item 3, PR #92, merge `f61681e`, deployed + prod HTTP 200 verified 2026-07-19.
+- [ ] **Issue #64 — remove dual-storage + `syncLegacyFromProduct`** (L): single source of truth for narrative fields; migrate readers (reports, equipment search); schema migration with tested rollback. *Deferred — sequenced with Issue #7 (Postgres) so the new schema is born clean, without the legacy columns; intentionally NOT part of the pre-migration batch.*
+- [x] Reconcile `SERVICE_STATUSES` enum vs SQL (`'Needs Return Visit'`) (server M6, S). Pre-migration batch Item 2, PR #91, merge `0a1c6ce`, deployed 2026-07-19.
+- [x] Standardize React Query keys; reset `expiredHandled` on login (client M5/L1, S). Pre-migration batch Item 2, PR #91, merge `0a1c6ce`, deployed 2026-07-19.
 
 ---
 
