@@ -19,8 +19,8 @@
 - Stack: Express 5 + React 18 + Drizzle + better-sqlite3 on Render persistent disk.
 - Recent deploys: PR #61 + #65 (description-wipe fix + class-kill hardening, 07-16), PR #67 (photo 413 body-limit fix, 07-17). Deploy log: PRs #63, #66, #68.
 - **Open loose ends:**
-  - [ ] PR #62 (read-only blank-description blast-radius diagnostic) — review, run, close.
-  - [ ] Data cleanup: service calls **#41, #85, #86** have blank descriptions from the buggy path (text unrecoverable — re-enter from field knowledge, then note in the call activity log).
+  - [x] PR #62 (read-only blank-description blast-radius diagnostic) — reviewed and **closed** 2026-07-19 (S7); the fixes it scoped (#61/#65) are live, script preserved on its branch.
+  - [ ] Data cleanup: service calls **#41, #85, #86** have blank descriptions from the buggy path (text unrecoverable — re-enter from field knowledge, then note in the call activity log). **Kevin-only** (field knowledge).
   - [ ] Issue #64 open: remove legacy dual-storage + `syncLegacyFromProduct` (folded into Phase 1 below).
 
 ## Architecture decisions in force
@@ -44,13 +44,13 @@ migration, so we migrate clean data with a safety net instead of migrating bugs.
 
 Ordered so each step de-risks the next. Review-finding IDs refer to `docs/CODE-REVIEW-2026-07-17.md`.
 
-- [ ] **S1. CI runs tests** (server H2, S): add `npm test` step to `.github/workflows/ci.yml`. Do this first so every later PR is gated.
-- [ ] **S2. Enforce foreign keys** (server C4, S): `sqlite.pragma('foreign_keys = ON')` after opening the DB **plus** a read-only orphan-audit script run first against a backup copy; clean any pre-existing orphans before deploying.
-- [ ] **S3. Fix `deleteServiceCall`** (server C3, S): wrap in a transaction; delete `invoice_items` for the call's invoices; regression test proving no orphans remain.
-- [ ] **S4. Manager-gate service-call deletion** (server H4, S): `requireManager` on `DELETE /api/service-calls/:id` (decide soft-delete later).
-- [ ] **S5. Delete the three `*.legacy.tsx` pages + routes** (client H2, S): removes ~4,000 lines of drifted, still-reachable code (legacy create drops `products[]`; legacy detail has no 409 guard).
-- [ ] **S6. Seeded admin credentials** (server H6, S): random or env-provided password; never log plaintext.
-- [ ] **S7. Loose ends:** review/run/close PR #62; re-enter descriptions for calls #41/#85/#86.
+- [x] **S1. CI runs tests** (server H2, S): added `npm test` step to `.github/workflows/ci.yml` (runs before build); `test` script widened to `tsx --test server/*.test.ts`. PR #77, merge `ba5b9bc`, deployed 2026-07-19.
+- [x] **S2. Enforce foreign keys** (server C4, S): `foreign_keys = ON` enabled at startup **only** behind a read-only orphan-audit gate (fail-open if orphans exist). New `server/orphan-audit.ts` + `scripts/audit-orphans.mjs` (Render-Shell runnable) + 4 tests. PR #78, merge `fc83e41`, deployed 2026-07-19.
+- [x] **S3. Fix `deleteServiceCall`** (server C3, S): wrapped in a transaction and now deletes `invoice_items` for the call's invoices; regression test proves no orphans remain. PR #79, merge `b1b27a2`, deployed 2026-07-19.
+- [x] **S4. Manager-gate service-call deletion** (server H4, S): `requireManager` on `DELETE /api/service-calls/:id`; guards extracted to `server/auth-guards.ts` + tests. Soft-delete still deferred. PR #80, merge `b252acd`, deployed 2026-07-19.
+- [x] **S5. Delete the three `*.legacy.tsx` pages + routes** (client H2, S): removed ~4,000 lines + their routes/imports (`App.tsx`). PR #81, merge `b97cae6`, deployed 2026-07-19.
+- [x] **S6. Seeded admin credentials** (server H6, S): password now from `SEED_ADMIN_PASSWORD` or crypto-random, never logged; `must_change_password` kept; existing prod users untouched. PR #82, merge `39ae074`, deployed 2026-07-19.
+- [x] **S7. Loose ends:** PR #62 reviewed and **closed** 2026-07-19 (fixes it scoped are live). **Still pending (Kevin-only):** re-enter descriptions for calls #41/#85/#86 from field knowledge.
 
 ### Weekend plan — Sunday 2026-07-19 (boundaries + money)
 
