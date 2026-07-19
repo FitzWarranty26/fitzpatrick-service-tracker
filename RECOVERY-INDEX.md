@@ -114,6 +114,25 @@ and writes a `password_reset_cli` audit row. Note: the per-IP login lockout is 5
 failed attempts; it clears on its own after the lockout window (or on app
 restart), so a "Too many login attempts" message is not a password problem.
 
+## Legacy → Product 1 Divergence Report (Issue #64 prep)
+
+`service_calls` carries 16 legacy columns duplicated on `service_call_products`
+(`product_index = 1`). The detail-page edit path updates only `service_calls`,
+so the Product 1 row can drift stale. **Before** any legacy → product1
+reconciliation, run this **read-only** report from the **Render Shell** to see
+exactly what a reconcile would change:
+
+```bash
+node scripts/audit-legacy-divergence.mjs
+```
+
+It reads `DB_PATH` (production `/var/data/warranty_tracker.db`), opens the DB
+`readonly` (cannot write), and prints, per diverged call, the legacy value a
+reconcile would keep/copy vs the stale product1 value it would overwrite —
+plus a `REVIEW: possible deliberate clear` flag (product1 blanked more recently
+than the call), calls with no Product 1 row, and summary counts. No customer
+names/addresses are printed. Exits 0; makes no changes.
+
 ## Recovery Procedure
 
 To reconstruct project state, follow these steps **in order**:
