@@ -26,6 +26,63 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-07-19 — Phase 1 prep: Stage A (async storage) + A2 single source of truth (five sequential deploys) — closes Issue #64
+
+- **Date:**            2026-07-19 (America/Denver, MDT)
+- **Commits:**         Stage A `c253bf7` (PR #94) · audit `aab9518` (PR #95) ·
+                       A2-1 `1ac8023` (PR #96) · A2-2 `8f12eba` (PR #97) ·
+                       A2-3 `d49fc48` (PR #98).
+                       **Current production deploy = `d49fc48`** (A2 step 3, last in sequence).
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit), five
+                       merges in order — each verified live (HTTP 200) before the
+                       next. Deploys approved by Kevin.
+- **Checks run:**      Per PR: `npm run check` (tsc) PASS, `npm run test` PASS,
+                       `npm run build` PASS, CI `check-and-build` green before
+                       merge, prod HTTP 200 after merge. Test count grew
+                       **56 → 84** across the five PRs (write-through ×6,
+                       reconcile ×9, parity ×6, plus the audit/Stage-A suites).
+- **Rollback point:**  pre-Stage-A production = **`6662465`** (last commit before
+                       Stage A; the sequence's rollback anchor). Per-PR rollback =
+                       the prior merge in the chain (audit→`c253bf7`,
+                       A2-1→`aab9518`, A2-2→`1ac8023`, A2-3→`8f12eba`). Known-good
+                       tag `known-good-2026-06-12` → `e28492b`.
+- **Notes:**           Finishes the Issue #64 dual-storage problem. **Stage A**
+                       (PR #94): storage interface made async (~50 `IStorage`
+                       methods promise-based, 123 awaited call sites, 88 async
+                       route handlers); `verifyPassword` deliberately kept sync
+                       (auth safety); SQLite behavior unchanged — pure interface
+                       reshape for the coming Postgres driver (Issue #7).
+                       **Audit** (PR #95): read-only
+                       `scripts/audit-legacy-divergence.mjs`; production run found
+                       **76 calls, 15 diverged, 0 review flags, 1 missing a Product
+                       1 row**. **A2-1** (PR #96): `updateServiceCall` write-through
+                       also writes Product 1 (creates if missing), idempotent so
+                       offline-sync replay is unaffected. **A2-2** (PR #97): gated
+                       `scripts/reconcile-legacy-product1.mjs` — dry-run default,
+                       `--apply` archives every overwritten value to
+                       `/var/data/reconcile-archive-<ISO>.json` first, single
+                       transaction, re-verifies 0 diverged, idempotent. **Kevin ran
+                       the reconcile in production 2026-07-19 ~5:25 PM MDT:** manual
+                       backup taken (`manual-backup-*.db`), 15 updates + 1 create
+                       applied, archive written
+                       (`reconcile-archive-2026-07-19T23-24-30.256Z.json`),
+                       post-apply verification and re-audit both **0 diverged**.
+                       **A2-3** (PR #98, closes Issue #64): all readers resolve the
+                       16 legacy fields from Product 1 with legacy fallback
+                       (`pickProduct1`/`overlayProduct1`; `globalSearch` via
+                       `COALESCE(NULLIF(TRIM(...)))`, which also fixed a latent
+                       stale-equipment-search bug); `syncLegacyFromProduct` removed;
+                       legacy columns kept as a live mirror (dropped later in Stage
+                       B / Postgres). Landed **only after** the production reconcile
+                       + clean re-audit above, so readers are byte-identical on the
+                       reconciled data. No schema migration in any of the five PRs.
+                       **Recovery artifacts on the `/var/data` persistent disk:** the
+                       pre-reconcile `manual-backup-*.db` and the
+                       `reconcile-archive-2026-07-19T23-24-30.256Z.json` (captures
+                       every overwritten Product 1 value).
+
 ### 2026-07-19 — Pre-migration batch Items 1–3 (three sequential deploys)
 
 - **Date:**            2026-07-19 (America/Denver, MDT)
