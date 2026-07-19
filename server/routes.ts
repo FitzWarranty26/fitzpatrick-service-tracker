@@ -17,6 +17,7 @@ import {
   rescheduleAppointmentSchema,
   editActiveAppointmentSchema,
 } from "./validation-schemas";
+import { computeInvoiceTotals } from "./invoice-totals";
 import { insertServiceCallSchema, insertPhotoSchema, insertPartSchema, insertContactSchema, insertServiceCallProductSchema, getWarrantyStatus } from "@shared/schema";
 import { z } from "zod";
 import { todayLocalISO, parseMoney, safeDivide } from "@shared/datetime";
@@ -2624,8 +2625,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
         return res.status(400).json({ error: "Bill To Name and Issue Date are required" });
       }
       data.createdBy = req.user?.id || null;
-      const items = data.items || [];
+      // Server derives line amounts + subtotal/total from the line items and
+      // ignores any client-supplied totals (client C1). Empty invoice → "0.00".
+      const totals = computeInvoiceTotals(data.items);
+      const items = totals.items;
       delete data.items;
+      data.subtotal = totals.subtotal;
+      data.total = totals.total;
 
       // Create the invoice with up to 5 retries on UNIQUE-constraint collisions.
       // Two near-simultaneous POSTs could both pre-fetch the same next number.
@@ -2666,10 +2672,20 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const { items, ...data } = req.body;
+      // Server always derives subtotal/total from the line items and ignores any
+      // client-supplied totals (client C1). When the client sends items we
+      // recompute from those; a status-only patch (no items) recomputes from the
+      // items already persisted so the stored totals stay consistent.
+      const existing = storage.getInvoiceById(id);
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      const effectiveItems = items !== undefined ? items : existing.items;
+      const totals = computeInvoiceTotals(effectiveItems);
+      data.subtotal = totals.subtotal;
+      data.total = totals.total;
       const invoice = storage.updateInvoice(id, data);
       if (!invoice) return res.status(404).json({ error: "Not found" });
       if (items !== undefined) {
-        storage.replaceInvoiceItems(id, items.map((item: any) => ({ ...item, invoiceId: id })));
+        storage.replaceInvoiceItems(id, totals.items.map((item: any) => ({ ...item, invoiceId: id })));
       }
       // Auto-set paid_date when status changes to Paid
       if (data.status === "Paid" && !invoice.paidDate) {
