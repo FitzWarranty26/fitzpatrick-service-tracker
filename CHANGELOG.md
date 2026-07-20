@@ -8,6 +8,513 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Phase 1 prep — Stage A (async storage) + A2 single source of truth for the legacy fields (2026-07-19, all deployed to production) — closes Issue #64
+
+Five sequenced PRs that finish the long-standing dual-storage problem: the 16
+"legacy" single-product columns on `service_calls` were duplicated on the
+`service_call_products` Product 1 row (`product_index=1, voided=0`) and could
+drift apart, because the detail-page edit path wrote only the legacy columns
+while the product-form path wrote only the product row. This work makes **Product
+1 the single source of truth** and removes `syncLegacyFromProduct`. Same workflow
+as the S-items: each its own branch → `npm run check` + `npm run test` +
+`npm run build` → PR → merge to `master` (Render auto-deploy) → post-deploy prod
+HTTP 200 verified before the next. Merges: Stage A `c253bf7` (PR #94) →
+audit `aab9518` (PR #95) → A2-1 `1ac8023` (PR #96) → A2-2 `8f12eba` (PR #97) →
+A2-3 `d49fc48` (PR #98). Rollback anchor before Stage A: `6662465`. The legacy
+columns are **NOT dropped** — they are kept as a live mirror and will be removed
+later with the Postgres migration (Issue #7, Stage B). Test suite grew **56 → 84**
+across these PRs.
+
+#### Changed — Stage A: storage interface made async (Phase 1 prep, PR #94)
+
+- The ~50 `IStorage` methods are now promise-based, 123 call sites `await` them,
+  and 88 route handlers became `async`, so the storage layer can swap to an async
+  driver (Postgres, Issue #7) without touching callers. `verifyPassword` is
+  **deliberately kept synchronous** as an auth-safety measure. Pure interface
+  reshape — the underlying better-sqlite3 behavior is unchanged. Rollback anchor
+  before this change: `6662465`.
+
+#### Added — Read-only legacy→Product 1 divergence audit script (PR #95)
+
+- `scripts/audit-legacy-divergence.mjs` — opens the DB `readonly` and reports,
+  per diverged call, the legacy value a reconcile would keep vs the stale Product
+  1 value it would overwrite, plus a `REVIEW: possible deliberate clear` flag,
+  calls with no Product 1 row, and summary counts. No customer names/addresses
+  printed; makes no changes. **Production audit (Kevin, Render Shell): 76 calls,
+  15 diverged, 0 review flags, 1 call missing a Product 1 row.**
+
+#### Changed — A2 step 1: write-through keeps Product 1 in sync (server, PR #96)
+
+- `PATCH /api/service-calls/:id` → `storage.updateServiceCall` now also writes the
+  16 legacy fields onto the Product 1 row (creating that row if missing), so a
+  detail-page edit can no longer leave Product 1 stale. Idempotent, so the
+  offline-sync replay path is unaffected. 6 tests in
+  `server/write-through-product1.test.ts`.
+
+#### Added — A2 step 2: gated one-time reconcile script (PR #97)
+
+- `scripts/reconcile-legacy-product1.mjs`, run from the Render Shell. Dry-run by
+  default (opens the DB `readonly`, prints the COMPLETE untruncated before/after
+  for every field it would change plus any Product 1 row it would create, writes
+  nothing). `--apply` **first** writes a timestamped JSON archive of every
+  overwritten value plus the full plan to `/var/data/reconcile-archive-<ISO>.json`
+  (aborts before any write if the archive can't be written), then applies all
+  changes in a **single transaction**, then re-verifies 0 divergence. Idempotent
+  (a second `--apply` is a no-op). Touches no reader and no
+  `syncLegacyFromProduct`. 9 tests in `server/reconcile-legacy-product1.test.ts`;
+  runbook added to `RECOVERY-INDEX.md`.
+- **Kevin ran it in production 2026-07-19 ~5:25 PM MDT:** manual backup taken
+  (`manual-backup-*.db`), 15 updates + 1 create applied, archive written
+  (`reconcile-archive-2026-07-19T23-24-30.256Z.json`), post-apply verification
+  and the follow-up re-audit both reported **0 diverged**.
+
+#### Changed — A2 step 3: single source of truth — readers repointed, sync removed (server, PR #98) — closes Issue #64
+
+- Every reader of the 16 legacy fields now resolves them from Product 1 with a
+  fallback to the legacy column when the Product 1 field is missing/empty, via a
+  `pickProduct1()` helper + a batched `overlayProduct1()` applied in
+  `getAllServiceCalls`, `getRecentServiceCalls`, `getFollowUpsDue`,
+  `getRelatedCalls`, `getDashboardToday`, and inline in `getServiceCallById`
+  (reports/analytics follow automatically because they consume these readers).
+  `globalSearch` was rewritten to return **and** match product fields from
+  Product 1 via `COALESCE(NULLIF(TRIM(p1.x), ''), sc.x)` — which also fixes a
+  latent stale-equipment-search bug.
+- `syncLegacyFromProduct` and its two call sites are **removed**; the product-form
+  write path now writes only Product 1, and the PR-96 write-through remains the
+  single write path (it still updates both the legacy columns and Product 1, so
+  the legacy columns stay a live mirror and the API response shape is unchanged).
+- On reconciled data (Product 1 == legacy) every reader returns byte-identical
+  output to before, so this was safe to land only **after** the production
+  reconcile + clean re-audit above. 6 parity tests in
+  `server/single-source-parity.test.ts`. Legacy columns kept (dropped later in
+  Stage B / Postgres).
+
+### Pre-migration batch — Items 1–3 (2026-07-19, all deployed to production)
+
+The "Next 1–2 weeks" hardening items from the ROADMAP, run as the last work
+before the Postgres migration (Issue #7). Same workflow as the S-items: each its
+own branch → `npm run check` + `npm run test` + `npm run build` → PR → merge to
+`master` (Render auto-deploy) → post-deploy prod HTTP 200 verified before the
+next item. Merges: Item 1 `18b740d` (PR #90) → Item 2 `0a1c6ce` (PR #91) →
+Item 3 `f61681e` (PR #92). Rollback anchor for the batch: `44181e0`.
+Issue #64 (dual-storage removal) was **intentionally deferred** to sequence with
+Issue #7 so the Postgres schema is born clean.
+
+#### Changed — Item 1: sessions + login rate limits moved to a shared SQLite store (server C2 + client H1)
+
+- The two pieces of auth state that were in-memory `Map`s in `server/routes.ts`
+  now live in the same better-sqlite3 DB behind a small interface
+  (`server/session-store.ts`): `SqliteSessionStore` (sessions survive
+  deploys/restarts — deploys previously logged everyone out) and
+  `SqliteLoginRateLimitStore` (the 5-attempts-per-IP / 15-min lockout now
+  survives restarts; thresholds unchanged). `sessions` and `login_attempts`
+  tables are created idempotently at startup. The store sits behind an interface
+  so the Postgres migration (Issue #7) is a one-file swap.
+- **Client H1 — session survives reload:** the session token is now also set as
+  an httpOnly, `sameSite=lax`, `secure`-in-production cookie (24h TTL). The
+  server accepts the token from the cookie OR the `Authorization: Bearer` header
+  (backward compatible with offline-sync replay). On mount the client calls
+  `/api/auth/verify` and the cookie restores auth, so a reload no longer logs
+  the user out. Expired sessions and stale lockout rows are pruned hourly.
+- **One-time logout at this deploy only:** currently-logged-in users held an
+  in-memory bearer token, cleared once by the deploy restart; from then on
+  sessions persist. 7 new tests in `server/session-store.test.ts` (41 → 48).
+
+#### Changed — Item 2: SERVICE_STATUSES reconcile, standardized RQ keys, reset `expiredHandled` (server M6 + client M5/L1)
+
+- **M6:** `'Needs Return Visit'` was already written to `service_calls.status`
+  and filtered on in server SQL but was missing from the `SERVICE_STATUSES`
+  enum, so it never appeared in the status dropdowns. Added it to the enum (the
+  single source of truth); **no rows rewritten** — the value already exists in
+  production. New `server/service-statuses.test.ts` asserts the enum contains
+  the value, has no duplicates, and that every service-call status literal in
+  server SQL `IN (...)` clauses is a member (guards against future drift).
+- **M5:** converted the remaining string-template React Query keys in
+  `ServiceCallDetail.tsx` (detail invalidate, appointments query + invalidate,
+  visits invalidate) to the array shape `["/api/service-calls", callId, ...]`
+  used elsewhere, so invalidations hit their queries directly instead of relying
+  on accidental prefix invalidation.
+- **L1:** added `resetExpiredHandled()` in `queryClient.ts` and call it on
+  successful login and cookie-restore, so the module-scope session-expired guard
+  no longer permanently suppresses the toast/redirect after one expiry in a tab.
+- 3 new tests (48 → 51). No data changes; client has no test framework so no
+  client tests added.
+
+#### Changed — Item 3: versioned schema migrations + baseline + extracted seed (server H5)
+
+- Replaces the ad-hoc inline startup migrations in `server/storage.ts` (a
+  growing stack of `CREATE TABLE IF NOT EXISTS` + `columnExists`-guarded
+  `ALTER`s, up to "Migration 37") with a versioned, ordered migration system.
+- **`migrations/0000_baseline.sql`** — a snapshot of the *current production
+  schema* (15 tables + named indexes), captured by booting the legacy build
+  against an empty DB and dumping `sqlite_master`. Dumped rather than generated
+  from `shared/schema.ts` because that file does **not** match the live DB
+  (`audit_log_system` vs `audit_log`; omits `scheduled_appointments`/`sessions`/
+  `login_attempts`), so generating from schema would have baselined the wrong
+  shape.
+- **`server/migrate.ts`** — `runMigrations(db)` applies ordered `*.sql` files
+  tracked in a `schema_migrations` bookkeeping table, at import time (before the
+  server listens). A Render pre-deploy command was rejected because it runs
+  **without the persistent disk mounted** (see `render.yaml`), so startup is the
+  safe place.
+- **Baselining:** an existing DB (production) with the app schema but no
+  bookkeeping is detected via a sentinel table (`service_calls`); the baseline is
+  **marked applied WITHOUT executing**, so the live schema is never touched. A
+  fresh/empty DB executes the baseline to build the schema.
+- **`server/seed.ts`** — extracted seed logic. `seedAdmin()` (S6 credential
+  hardening) still runs on an empty DB at startup (idempotent). `seedInitialData()`
+  (the CRM contact list + TEST CUSTOMER) now runs **explicitly** via
+  `npm run seed` (`script/seed.ts`), not on every boot. Seeds are the same
+  guarded inserts, only relocated — no customer rows altered.
+- **`script/build.ts`** copies `migrations/` into `dist/migrations/` as a
+  runtime path-resolution fallback. 5 new tests in `server/migrate.test.ts`
+  covering both baseline paths + idempotency + seed behavior (51 → 56).
+- **Rollback:** if reverted, the old startup-migration code runs again against a
+  DB that now has a `schema_migrations` table. Harmless — the old code never
+  referenced any bookkeeping table and all its DDL is idempotent, so it no-ops
+  and ignores `schema_migrations`. No data/schema change on rollback.
+
+### Phase 0.5 hardening sprint — S1–S6 (2026-07-19, all deployed to production)
+
+Six sequenced hardening items from the 2026-07-17 code review, each its own
+branch → `npm run check` + `npm run test` + `npm run build` → PR → merge to
+`master` (Render auto-deploy) → post-deploy prod HTTP 200 verified before the
+next item. Merges: S1 `ba5b9bc` (PR #77) → S2 `fc83e41` (PR #78) → S3 `b1b27a2`
+(PR #79) → S4 `b252acd` (PR #80) → S5 `b97cae6` (PR #81) → S6 `39ae074` (PR #82).
+No schema changes, no migrations.
+
+#### Added — S1: CI runs the test suite (server H2)
+
+- `.github/workflows/ci.yml` now runs `npm test` between the type-check and
+  build steps, so every future PR is gated on tests. `package.json` `test`
+  script widened from a single file to `tsx --test server/*.test.ts` so all
+  suites run.
+
+#### Added — S2: foreign-key enforcement behind an orphan-audit gate (server C4)
+
+- `sqlite.pragma("foreign_keys = ON")` is now enabled at startup, but **only**
+  after a read-only orphan audit confirms the DB is clean. If any orphaned rows
+  exist, enforcement is skipped with a clear warning (fail-open — behavior
+  unchanged) so it can be enabled on the next boot once cleaned.
+- New `server/orphan-audit.ts` (reusable audit of 10 parent/child relationships)
+  and standalone `scripts/audit-orphans.mjs` (read-only, runnable from the
+  Render Shell). 4 tests in `server/orphan-audit.test.ts`.
+
+#### Fixed — S3: `deleteServiceCall` is transactional and cleans invoice_items (server C3)
+
+- The delete now runs in a single `sqlite.transaction(...)` and removes
+  `invoice_items` for the call's invoices, closing the orphan hazard where a
+  call's invoices were deleted with a raw statement that bypassed
+  `deleteInvoice()` and left `invoice_items` behind. Regression test in
+  `server/delete-service-call.test.ts` proves no child row (invoice_items
+  included) survives and the orphan audit is clean.
+
+#### Changed — S4: manager-gate service-call deletion (server H4)
+
+- `DELETE /api/service-calls/:id` now uses `requireManager` (was
+  `requireEditor`), so techs/staff can no longer delete calls. Guards extracted
+  to `server/auth-guards.ts` and unit-tested (`server/auth-guards.test.ts`):
+  non-managers get 403 `{ error: "Manager access required" }`. Soft-delete
+  deferred.
+
+#### Removed — S5: three legacy service-call pages + routes (client H2)
+
+- Deleted `ServiceCallDetail.legacy.tsx`, `NewServiceCall.legacy.tsx`,
+  `ServiceCallList.legacy.tsx` (~4,000 lines of drifted, still-reachable code)
+  and their `/calls/legacy/:id`, `/new/legacy`, `/calls/list/legacy` routes plus
+  now-dead lazy imports in `App.tsx`. Nothing linked to these routes.
+
+#### Security — S6: seeded admin credentials hardened (server H6)
+
+- Removed the hardcoded default admin password (`fitzpatrick2026`) and its
+  plaintext log line. On a fresh/empty DB the seeded `admin` password now comes
+  from `SEED_ADMIN_PASSWORD` (if ≥ 8 chars) or a cryptographically-random value
+  that is **never logged**; the account stays flagged `must_change_password`.
+  Recovery for the random case is `scripts/reset-password.mjs` from the Render
+  Shell. Existing production users are untouched (seed only runs on an empty
+  users table). Test in `server/seed-admin.test.ts`.
+
+### Phase 0.5 hardening sprint — S8–S10 (2026-07-19, all deployed to production)
+
+Three further sequenced hardening items ("Sunday" batch) from the 2026-07-17
+code review, same workflow as S1–S6: each its own branch → `npm run check` +
+`npm run test` + `npm run build` → PR → merge to `master` (Render auto-deploy)
+→ post-deploy prod HTTP 200 verified before the next item. Merges: S8 `240ffe8`
+(PR #86) → S9 `79cadee` (PR #87) → S10 `25f92d2` (PR #88). No schema changes,
+no migrations.
+
+#### Added — S8: zod request-body validation on the raw-body routes (server H1)
+
+- New `validate(schema)` middleware (`server/validate.ts`): runs the body
+  through a zod schema before the handler — valid input is replaced with the
+  parsed/typed output; invalid input returns 400 with a field-level error list
+  and the handler never runs. Unknown keys are stripped (no `.strict()`), so the
+  web client's harmless extras (`confirmPassword`, spread invoice objects) keep
+  working, and the offline-sync replay path is unaffected.
+- Per-route schemas in `server/validation-schemas.ts` wired onto the users,
+  invoices, service-call-visits, and scheduled-appointment mutating routes
+  (PATCH/PUT schemas are `.partial()`). 13 tests in `server/validate.test.ts`.
+
+#### Fixed — S9: invoice totals computed server-side from line items (client C1)
+
+- On invoice create AND update the server now recomputes each line `amount`
+  (quantity × unit price) and the invoice `subtotal`/`total` from the persisted
+  line items, ignoring any client-supplied totals — a stale or tampered client
+  can no longer store a total that disagrees with its items. Math mirrors the
+  web client to the cent (per-line round then sum; `total == subtotal`, no tax
+  line today). New `server/invoice-totals.ts`; golden-value tests in
+  `server/invoice-totals.test.ts`. No backfill of existing invoices; response
+  shape unchanged.
+
+#### Fixed — S10: client error handling (client M1/M2/H3)
+
+- `NewServiceCall`: the post-save parts upload loop is wrapped in try/catch so a
+  failed part no longer silently aborts the remaining uploads; the error is
+  surfaced in the completion toast alongside photo-upload errors.
+- `ServiceCallDetail`: added `onError` toasts to the previously silent
+  `deletePhoto` / `deleteCall` / `deleteActivity` / `reorderPhotos` mutations.
+- `ServiceCallList`: search term feeding the query is debounced 300ms (mirrors
+  the `EquipmentHistory` pattern); the input still updates instantly.
+
+### Added — ADR-0003: mobile framework — React Native + Expo (docs only, no code change)
+
+- `docs/adr/0003-mobile-framework.md`: mobile apps switch from Capacitor to
+  **Expo React Native**, scoped as a purpose-built Technician App with a
+  shared core package; decided because Tap to Pay is strategic and only RN
+  has the official first-party Stripe Terminal SDK (Jobber/ServiceTitan
+  precedent). ROADMAP.md updated (decisions-in-force, Phase 4 sync note,
+  Phase 5 scope); issue #30 re-scoped from Capacitor to Expo RN.
+
+### Added — ADR-0002: payments & billing provider (docs only, no code change)
+
+- `docs/adr/0002-payments-provider.md`: Stripe selected for both revenue
+  streams — Stripe Billing for subscriptions (#11) and Stripe Connect
+  (Standard accounts + application fees) for tenant invoice payments with a
+  platform take-rate (#24). Based on a source-cited comparison of ten
+  providers (2026-07-17). ROADMAP.md updated: ADR-0002 added to
+  decisions-in-force, Phases 2/6 annotated, and field↔office sync
+  architecture note added to Phase 4/5 mobile scope.
+
+## [2026-07-17] — Fix photo uploads rejected with 413 (body-limit override)
+
+Deployed to production 2026-07-17 (commit `52b38de`, merge of PR #67, fix
+commit `7704191`). No schema change, no migration. Post-deploy verified live
+via oversized-body probe (pre-deploy 413 → post-deploy 401 auth-gate response).
+
+### Fixed — Photo uploads rejected with 413 (global 1MB body limit overrode photo route's 20MB limit)
+
+Service techs saw `413: {"message":"Internal Server Error"}` ("X uploaded, Y
+failed") when uploading detail-heavy photos. Root cause: `server/index.ts`
+registered a **global** `express.json({ limit: "1mb" })` body parser that ran
+before the photo upload route's own `express.json({ limit: "20mb" })` in
+`server/routes.ts`. The global parser threw `PayloadTooLargeError` (status 413,
+masked as "Internal Server Error" by the production error handler) for any body
+over 1MB — and a compressed photo (1600px / JPEG q0.7) can reach ~1MB binary →
+~1.4MB base64, exceeding the cap. The route-level 20MB parser never ran.
+
+Fix (server, `server/index.ts` + new `server/photo-upload-path.ts`): the global
+1MB JSON parser now **skips** `POST /api/service-calls/:id/photos` via the
+`isPhotoUploadRequest` predicate, so the route's own 20MB parser is the real
+limit. The route's existing 10MB-per-photo cap (400 "Photo too large") is
+unchanged.
+
+Fix (client): photo-upload failures now map 413 (and the server's 400 "Photo too
+large") to a friendly "<file> is too large to upload. Try a smaller photo."
+message via a shared `photoUploadErrorMessage` helper in
+`client/src/lib/image-utils.ts`, applied across all three upload paths
+(`ServiceCallDetail` review + save flows, `NewServiceCall` create flow).
+
+### Added — Regression tests for the body-limit skip predicate
+
+- 2 tests in `server/storage.test.ts` covering `isPhotoUploadRequest` (matches
+  the POST upload route only; ignores GET, reorder, delete, and other routes).
+- `npm run check`, `npm run build`, and `npm run test` all pass.
+
+### Added — Full code review + consolidated ROADMAP.md (docs only, no code change)
+
+- `docs/CODE-REVIEW-2026-07-17.md`: two-pass (server + client) severity-ranked
+  code review with file:line evidence, triggered by the 2026-07-16
+  description-wipe incident and 2026-07-17 photo 413. Headline: solid
+  single-tenant codebase; multi-tenant readiness blocked by tenant scoping,
+  client-computed invoice totals, non-transactional deletes, unenforced FKs,
+  in-memory sessions, and thin test coverage.
+- `ROADMAP.md`: new single working roadmap. Supersedes the April 2026 launch
+  roadmap PDF (retired). Consolidates the June phase issues (#7–#36), ADR-0001,
+  Issue #64, open loose ends (PR #62, blank-description data cleanup for calls
+  #41/#85/#86), and adds Phase 0.5 hardening with the 2026-07-18/19 weekend plan.
+
+## [2026-07-16b] — Harden legacy sync: non-destructive fill-only merge
+
+Deployed to production via PR #65 (merge commit `69dae783`, fix commit
+`0eb67775`). No schema change, no migration. Rollback anchor: prior deploy
+`87463c07` (PR #61); known-good `known-good-2026-06-05` → `44e91ce`.
+
+### Fixed — `syncLegacyFromProduct` no longer overwrites populated fields with empty values
+
+Permanent, class-kill hardening fix for the description-wipe bug, following the
+same-day targeted hotfix (PR #61). PR #61 patched the single `POST
+/api/service-calls` create path, but `syncLegacyFromProduct` itself was still
+destructive: any caller that saved a Product 1 row with an absent
+narrative/claim field would blank the corresponding populated column on the
+parent `service_calls` row.
+
+Fix (server-only, `server/storage.ts`): `syncLegacyFromProduct` is now a
+**non-destructive, fill-only merge** — it never overwrites an already-populated
+field with an empty, `undefined`, or whitespace-only value. Applied uniformly to
+all **16** synced fields, so the legacy sync can no longer wipe existing data
+regardless of which code path (create, offline-sync replay, product edit, or a
+direct API caller) triggers it.
+
+### Added — Regression tests + `test` npm script
+
+- **4 regression tests** in `server/storage.test.ts` covering the fill-only
+  merge (populated fields preserved when a product omits them; genuinely new
+  values still written). Added a `test` npm script to run them.
+- `npm run test` (4/4 pass), `npm run check`, and `npm run build` all pass. Full
+  re-architecture (single source of truth for the description) remains tracked in
+  **issue #64**.
+
+## [2026-07-16] — Fix service call description wiped on create (multi-product sync)
+
+Deployed to production via PR #61 (merge commit `87463c0`, fix commit
+`3e292c2b`). No schema change, no migration. Rollback anchor:
+`known-good-2026-06-05` → `44e91ce`.
+
+### Fixed — New service call Issue Description (and diagnosis/resolution/claim) blanked on create
+
+Creating a service call through the **New Service Call** form silently blanked the
+**Issue Description** (and Diagnosis / Resolution / all Claim fields) on the saved
+call.
+
+Root cause: the form always sends a `products[]` array whose entries carry only the
+identity columns (manufacturer, model, serial, type, install date) and **omit** the
+narrative/claim fields. On `POST /api/service-calls`, `createServiceCall` stored the
+description correctly, but saving Product 1 then triggered `syncLegacyFromProduct()`,
+which copied **all** of Product 1's columns — including `issue_description = NULL` —
+back onto the parent `service_calls` row, overwriting the text the user just typed.
+Older calls (created before the form began sending `products[]`) were unaffected
+because they went through the server's `else` branch, which built Product 1 *with*
+the narrative fields.
+
+Fix (server-only, `server/routes.ts`): the `POST /api/service-calls` if-branch now
+merges the call-level narrative/claim fields (`issueDescription`, `diagnosis`,
+`resolution`, `claim*`) onto Product 1 before saving, so `syncLegacyFromProduct`
+writes back the same values `createServiceCall` already stored instead of NULL. The
+operation is idempotent and does not change `syncLegacyFromProduct` itself, so the
+product editor is unaffected. Because the fix is server-side it also covers the
+offline-sync replay path and any direct API caller posting identity-only products.
+
+`npm run check` and `npm run build` pass. **Data cleanup pending:** real calls
+**#41, #85, #86** were created through the buggy path and have blank descriptions
+that must be **manually re-entered** (text is unrecoverable). **Hardening
+recommended:** make `syncLegacyFromProduct` non-destructive (never overwrite a
+populated field with an empty one), define a single source of truth for the
+description, and add a regression test for the `products[]` create path.
+
+## [2026-06-24] — Assign Technician on service calls (dropdown, editable, prominent)
+
+Adds a first-class **assigned technician** to service calls. A technician can
+now be chosen directly when logging a New Service Call, changed later from the
+detail page, and is shown prominently instead of being implied only by a visit.
+Branch `feature/assign-technician`. Includes **Migration 37** (additive,
+nullable `service_calls.assigned_technician_id` column — no data backfill).
+Rollback anchor: `known-good-2026-06-12` → `e28492b`.
+
+### Added — Technician assignment captured, editable, and surfaced
+
+- **New Service Call form:** an **Assign Technician** dropdown now sits at the
+  top of the Scheduling card (options = active users with role tech / manager /
+  sales, plus an explicit *Unassigned*). The chosen technician is sent on
+  `POST /api/service-calls` as `assignedTechnicianId`.
+- **Editable after scheduling:** the **Service Call detail** page shows an
+  **Assigned Technician** row in Call Information and an editable dropdown in
+  edit mode; the change persists via `PATCH /api/service-calls/:id`. A prominent
+  **Technician** cell was added to the detail header KPI strip (now 7 cells) so
+  the assignment is visible at a glance rather than buried under Visits.
+- **Schema / persistence:** `shared/schema.ts` adds `assignedTechnicianId` to
+  `serviceCalls`. Unlike `createdBy`, it is intentionally **user-settable** on
+  both create and update, so it is **not** omitted from `insertServiceCallSchema`
+  — `POST` and `PATCH` accept it automatically and `createServiceCall` /
+  `updateServiceCall` persist it.
+- **List "Tech" column:** `getAllServiceCalls` now resolves
+  `primary_technician_id` / `primary_technician_name` as
+  `COALESCE(sc.assigned_technician_id, most-recent visit's technician)`. The
+  Service Calls list Tech column and the "My Calls" filter therefore reflect the
+  explicitly assigned technician, and fall back to the visit-derived technician
+  for legacy calls that predate the column.
+- **Migration 37:** `ALTER TABLE service_calls ADD COLUMN assigned_technician_id
+  INTEGER`. Additive, nullable, guarded by `columnExists` (idempotent); no
+  backfill — existing calls start NULL ("Unassigned") and keep their
+  visit-derived Tech value via the COALESCE fallback.
+
+## [2026-06-24] — Service call creator attribution (capture, display, retroactive backfill)
+
+Adds first-class “who created this service call” tracking. Branch
+`feature/service-call-creator-attribution`. Includes **Migration 36** (a
+one-time, idempotent data backfill — no schema/column change). Rollback anchor:
+`known-good-2026-06-12` → `e28492b`.
+
+### Added — Creator captured, shown, and recoverable for past calls
+
+Every new service call now records the **creator** (the authenticated user who
+logged it), it is shown in the UI, and existing calls are backfilled.
+
+- **Capture (going forward):** `POST /api/service-calls` now stamps
+  `service_calls.created_by` from the authenticated session
+  (`req.user.id`) — never from the request body. The `created_by` column has
+  existed since Migration 11 but was never written; this is the first code that
+  populates it. `shared/schema.ts` now exposes `createdBy`; it is omitted from
+  `insertServiceCallSchema` so it cannot be spoofed via the create body.
+- **Display:** the **Service Call list** (desktop rows + mobile cards) shows a
+  subtle “Logged by {name}” line under the customer/site; the **Service Call
+  detail** page shows “Created By {name}” in Call Information and lets a manager
+  reassign the creator from the edit view. `GET /api/service-calls` resolves the
+  creator’s display name (`created_by_name`) via a `users` subquery, and
+  `GET /api/service-calls/:id` returns `createdByName`. The existing **Reports →
+  Team Workload** section (which groups calls by `created_by`) now populates
+  because the column finally has data.
+- **Retroactive backfill (Migration 36):** for any existing call with a NULL
+  creator, recovers the creator from the audit log — the earliest
+  `created_call` / `service_call` entry’s `user_id` (`audit_log_system`). Only
+  fills NULL rows, never overwrites an existing value, and is idempotent (skips
+  already-attributed rows on every boot). Calls created before audit logging
+  existed remain NULL and surface gracefully as “Unknown.”
+- **Manager reassignment:** `PATCH /api/service-calls/:id` accepts an explicit
+  `createdBy` (numeric user id, or null to clear) so the detail page’s “Created
+  By” editor keeps working even though `createdBy` is omitted from the insert
+  schema.
+
+No customer-facing data is exposed; creator is an internal team attribution
+only. `npm run check` and `npm run build` pass.
+
+## [2026-06-24] — Fix visit count + total hours on Service Call detail header
+
+Deployed to production via PR #55 (merge commit `7970b4f`, fix commit
+`eba52ae`). No schema change, no migration. Rollback anchor:
+`known-good-2026-06-12` → `e28492b`.
+
+### Fixed — Service Call detail header undercounted visits and hours
+
+On the Service Call detail screen, the header **VISITS** KPI and the **Visits**
+tab badge always read **1**, and **HOURS ON JOB** showed only the original
+visit's hours, even when return visits existed. Reported on Call #65 (Visit 1 =
+7h, return Visit 2 = 4h): header showed `1 visit / 7h` and the tab badge showed
+`1` — all incorrect.
+
+Root cause: the count was `(call.visits?.length || 0) + 1`, but
+`GET /api/service-calls/:id` (`getServiceCallById`) never populates a `visits`
+array on the call object (it returns only `photos`, `parts`, `activities`,
+`products`), so the value was hardcoded to 1. The Hours KPI likewise read only
+`call.hoursOnJob`, ignoring return-visit hours.
+
+Fix (client-only, `client/src/pages/ServiceCallDetail.tsx`): compute both from
+the already-loaded `visits` query array — `visitCount = visits.length + 1`
+(return visits + the original Visit 1, which drives both the header KPI and the
+tab badge) and `totalHoursOnJob = call.hoursOnJob + sum(visits[].hoursOnJob)`,
+formatted to drop a trailing `.0`. Call #65 now correctly shows **2 visits**
+and **11h**. Single-visit calls are unchanged; a scheduled return visit with no
+logged hours counts toward visits but not hours. No backend or schema change.
+
 ## [2026-06-18] — Admin password reset button + manager-lockout recovery script
 
 No schema change, no migration. Rollback anchor: `known-good-2026-06-12` →

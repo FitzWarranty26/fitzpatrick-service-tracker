@@ -62,6 +62,17 @@ export const serviceCalls = sqliteTable("service_calls", {
   longitude: text("longitude"),
   parentCallId: integer("parent_call_id"),
   isTest: integer("is_test").default(0),
+  // User who created this service call (FK to users.id). Populated on create
+  // (Migration 11 added the column; this is when we started writing + showing
+  // it). Migration 36 backfills existing rows from the audit log.
+  createdBy: integer("created_by"),
+  // Technician assigned to this service call (FK to users.id). Set on the New
+  // Service Call form and editable on the detail page (Migration 37 added the
+  // column). Unlike created_by this is intentionally user-settable on both
+  // create and update, so it is NOT omitted from insertServiceCallSchema.
+  // The Service Calls list "Tech" column prefers this value, falling back to
+  // the most-recent visit's technician for legacy calls that pre-date it.
+  assignedTechnicianId: integer("assigned_technician_id"),
   createdAt: text("created_at").notNull(),
   // Set on every update so optimistic concurrency works. Migration 28
   // backfills it to created_at for pre-existing rows.
@@ -87,6 +98,9 @@ export const insertServiceCallSchema = createInsertSchema(serviceCalls).omit({
   createdAt: true,
   updatedAt: true,
   completedDate: true,
+  // createdBy is stamped server-side from the authenticated user, never from
+  // the client request body.
+  createdBy: true,
 });
 
 export type InsertServiceCall = z.infer<typeof insertServiceCallSchema>;
@@ -309,9 +323,15 @@ export const MANUFACTURERS = [
   "Other",
 ] as const;
 
+// Single source of truth for a service call's status (server M6). "Needs Return
+// Visit" was already written to the status column via visit-status propagation
+// (see routes.ts) and filtered on in server SQL, but was missing here — so it
+// never appeared in the status dropdowns. Added to reconcile the enum with the
+// data/SQL. No rows are rewritten; the value already exists in production.
 export const SERVICE_STATUSES = [
   "Scheduled",
   "In Progress",
+  "Needs Return Visit",
   "Completed",
   "Pending Parts",
   "Escalated",

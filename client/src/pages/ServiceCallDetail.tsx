@@ -450,8 +450,15 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       return res.json();
     },
     onSuccess: async () => {
+      const { photoUploadErrorMessage } = await import("@/lib/image-utils");
+      let photoError: string | null = null;
       for (const p of newPhotoFiles) {
-        await apiRequest("POST", `/api/service-calls/${callId}/photos`, p);
+        try {
+          await apiRequest("POST", `/api/service-calls/${callId}/photos`, p);
+        } catch (err: any) {
+          photoError = photoUploadErrorMessage(err);
+          console.error("Failed to upload photo:", err);
+        }
       }
       setNewPhotoFiles([]);
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
@@ -459,7 +466,11 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent"] });
       setIsEditing(false);
-      toast({ title: "Saved", description: "Service call updated." });
+      if (photoError) {
+        toast({ title: "Saved, but a photo didn't upload", description: photoError, variant: "destructive" });
+      } else {
+        toast({ title: "Saved", description: "Service call updated." });
+      }
     },
     onError: (e: any) => {
       // 409 means someone else saved this call in parallel. Refresh the
@@ -483,6 +494,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
     },
+    onError: (e: any) => toast({ title: "Could not delete photo", description: e.message, variant: "destructive" }),
   });
 
   const deleteCallMutation = useMutation({
@@ -494,6 +506,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
       toast({ title: "Deleted", description: "Service call deleted." });
       navigate("/calls");
     },
+    onError: (e: any) => toast({ title: "Could not delete service call", description: e.message, variant: "destructive" }),
   });
 
   // Toggle the internal-only follow-up flag. Server records who/what/when in
@@ -597,6 +610,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
     },
+    onError: (e: any) => toast({ title: "Could not delete activity", description: e.message, variant: "destructive" }),
   });
 
   // Fix 2: Add Part state and mutations
@@ -617,7 +631,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   }
 
   const { data: appointments } = useQuery<AppointmentEntry[]>({
-    queryKey: [`/api/service-calls/${callId}/appointments`],
+    queryKey: ["/api/service-calls", callId, "appointments"],
     queryFn: async () => (await apiRequest("GET", `/api/service-calls/${callId}/appointments`)).json(),
     enabled: !!callId,
   });
@@ -628,9 +642,9 @@ export default function ServiceCallDetail({ id }: { id: string }) {
   // /upcoming-week, /watchlist, /recent, /stats, /trend, /follow-ups,
   // /activity — causing the tech dashboard to show the stale old time.
   const invalidateSchedulingSurfaces = () => {
-    queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/appointments`] });
-    queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}`] });
-    queryClient.invalidateQueries({ queryKey: [`/api/service-calls/${callId}/visits`] });
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId, "appointments"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId, "visits"] });
     queryClient.invalidateQueries({ queryKey: ["/api/service-calls"] });
     queryClient.invalidateQueries({ queryKey: ["/api/calendar"] });
     // Hit every dashboard endpoint that surfaces a scheduled date or time
@@ -708,6 +722,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-calls", callId] });
     },
+    onError: (e: any) => toast({ title: "Could not reorder photos", description: e.message, variant: "destructive" }),
   });
 
   // ─── Return Visits ──────────────────────────────────────────────────────────
@@ -746,6 +761,16 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     },
   });
   const createdByName = teamMembers.find(u => u.id === call?.createdBy)?.displayName ?? null;
+  // Assigned technician display name (Migration 37). Resolve against the active
+  // team list; if the assigned user is inactive/missing we fall back to the
+  // tech list, then null (renders as "Unassigned").
+  const assignedTechnicianId = (call as any)?.assignedTechnicianId ?? null;
+  const assignedTechnicianName =
+    assignedTechnicianId != null
+      ? teamMembers.find(u => u.id === assignedTechnicianId)?.displayName
+        ?? techUsers.find(u => u.id === assignedTechnicianId)?.displayName
+        ?? null
+      : null;
 
   // Wholesaler contacts for edit dropdown
   const { data: wholesalers = [] } = useQuery<{ id: number; companyName: string; contactName: string; phone: string | null }[]>({
@@ -1071,6 +1096,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     let uploaded = 0;
     let failed = 0;
     let lastError: string | null = null;
+    const { photoUploadErrorMessage } = await import("@/lib/image-utils");
     for (const d of reviewDrafts) {
       try {
         await apiRequest("POST", `/api/service-calls/${call.id}/photos`, {
@@ -1081,7 +1107,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         uploaded++;
       } catch (err: any) {
         failed++;
-        lastError = `Couldn't upload ${d.fileName}: ${err?.message ?? "unknown error"}`;
+        lastError = photoUploadErrorMessage(err, d.fileName);
         console.error("Failed to upload photo:", err);
       }
     }
@@ -1265,7 +1291,28 @@ export default function ServiceCallDetail({ id }: { id: string }) {
     const start = new Date(call.callDate + "T00:00:00").getTime();
     return Math.max(0, Math.floor((Date.now() - start) / 86400000));
   })();
-  const visitCount = (call.visits?.length || 0) + 1;
+  // Total visits = the original on-site work (Visit 1, stored on the parent
+  // `call`) + every return visit (Visit 2+, rows in `service_call_visits`,
+  // loaded into the `visits` array above). `call.visits` is NOT populated by
+  // GET /api/service-calls/:id, so the old `(call.visits?.length || 0) + 1`
+  // was always 1 — drives both the header KPI and the Visits tab badge.
+  const visitCount = visits.length + 1;
+
+  // Total hours on job = the parent call's hours (Visit 1) + the hours logged
+  // on each return visit. The header previously showed only the Visit 1 hours.
+  const totalHoursOnJob = (() => {
+    const base = parseFloat(call.hoursOnJob ?? "") || 0;
+    const returnHours = visits.reduce(
+      (sum, v) => sum + (parseFloat(v.hoursOnJob ?? "") || 0),
+      0,
+    );
+    return base + returnHours;
+  })();
+  // Trim a trailing ".0" so whole numbers read "11h" not "11.0h".
+  const totalHoursLabel =
+    totalHoursOnJob > 0
+      ? `${Number.isInteger(totalHoursOnJob) ? totalHoursOnJob : totalHoursOnJob.toFixed(1)}h`
+      : "\u2014";
   const photoCount = call.photos?.length || 0;
   const partsCount = call.parts?.length || 0;
   const activityCount = call.activities?.length || 0;
@@ -1406,12 +1453,13 @@ export default function ServiceCallDetail({ id }: { id: string }) {
         </div>
 
         {/* ── KPI Strip ── */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 mt-5 pt-5 border-t border-border/50">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-3 md:gap-4 mt-5 pt-5 border-t border-border/50">
+          <KPICell label="Technician" value={assignedTechnicianName ?? "Unassigned"} />
           <KPICell label="Call Date" value={formatDate(call.callDate)} />
           <KPICell label="Scheduled" value={call.scheduledDate ? formatDate(call.scheduledDate) + (call.scheduledTime ? ` · ${formatTime(call.scheduledTime)}` : "") : "—"} />
           <KPICell label="Days Open" value={call.status === "Completed" ? "—" : `${daysOpen}d`} />
           <KPICell label="Visits" value={String(visitCount)} />
-          <KPICell label="Hours on Job" value={call.hoursOnJob ? `${call.hoursOnJob}h` : "—"} />
+          <KPICell label="Hours on Job" value={totalHoursLabel} />
           <KPICell label="Photos" value={String(photoCount)} />
         </div>
       </div>
@@ -1586,6 +1634,7 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                   </div>
                 )}
                 {createdByName && <DetailRow label="Created By" value={createdByName} />}
+                <DetailRow label="Assigned Technician" value={assignedTechnicianName ?? "Unassigned"} />
                 <DetailRow label="Created" value={formatDateTime(call.createdAt)} />
                 {/* Follow-up Reminder */}
                 <div>
@@ -1651,6 +1700,22 @@ export default function ServiceCallDetail({ id }: { id: string }) {
                     <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select team member…" /></SelectTrigger>
                     <SelectContent>
                       {teamMembers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Assigned Technician</label>
+                  <Select
+                    value={(() => {
+                      const v = (editData as any).assignedTechnicianId ?? (call as any).assignedTechnicianId;
+                      return v != null ? String(v) : "unassigned";
+                    })()}
+                    onValueChange={v => setEditData(d => ({ ...d, assignedTechnicianId: v === "unassigned" ? null : Number(v) } as any))}
+                  >
+                    <SelectTrigger className="h-8 text-sm" data-testid="edit-assigned-technician"><SelectValue placeholder="Select technician…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {techUsers.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.displayName}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>

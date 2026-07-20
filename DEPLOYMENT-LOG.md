@@ -26,6 +26,334 @@ Copy this block for each new deployment:
 
 ## Deployments
 
+### 2026-07-19 — Phase 1 prep: Stage A (async storage) + A2 single source of truth (five sequential deploys) — closes Issue #64
+
+- **Date:**            2026-07-19 (America/Denver, MDT)
+- **Commits:**         Stage A `c253bf7` (PR #94) · audit `aab9518` (PR #95) ·
+                       A2-1 `1ac8023` (PR #96) · A2-2 `8f12eba` (PR #97) ·
+                       A2-3 `d49fc48` (PR #98).
+                       **Current production deploy = `d49fc48`** (A2 step 3, last in sequence).
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit), five
+                       merges in order — each verified live (HTTP 200) before the
+                       next. Deploys approved by Kevin.
+- **Checks run:**      Per PR: `npm run check` (tsc) PASS, `npm run test` PASS,
+                       `npm run build` PASS, CI `check-and-build` green before
+                       merge, prod HTTP 200 after merge. Test count grew
+                       **56 → 84** across the five PRs (write-through ×6,
+                       reconcile ×9, parity ×6, plus the audit/Stage-A suites).
+- **Rollback point:**  pre-Stage-A production = **`6662465`** (last commit before
+                       Stage A; the sequence's rollback anchor). Per-PR rollback =
+                       the prior merge in the chain (audit→`c253bf7`,
+                       A2-1→`aab9518`, A2-2→`1ac8023`, A2-3→`8f12eba`). Known-good
+                       tag `known-good-2026-06-12` → `e28492b`.
+- **Notes:**           Finishes the Issue #64 dual-storage problem. **Stage A**
+                       (PR #94): storage interface made async (~50 `IStorage`
+                       methods promise-based, 123 awaited call sites, 88 async
+                       route handlers); `verifyPassword` deliberately kept sync
+                       (auth safety); SQLite behavior unchanged — pure interface
+                       reshape for the coming Postgres driver (Issue #7).
+                       **Audit** (PR #95): read-only
+                       `scripts/audit-legacy-divergence.mjs`; production run found
+                       **76 calls, 15 diverged, 0 review flags, 1 missing a Product
+                       1 row**. **A2-1** (PR #96): `updateServiceCall` write-through
+                       also writes Product 1 (creates if missing), idempotent so
+                       offline-sync replay is unaffected. **A2-2** (PR #97): gated
+                       `scripts/reconcile-legacy-product1.mjs` — dry-run default,
+                       `--apply` archives every overwritten value to
+                       `/var/data/reconcile-archive-<ISO>.json` first, single
+                       transaction, re-verifies 0 diverged, idempotent. **Kevin ran
+                       the reconcile in production 2026-07-19 ~5:25 PM MDT:** manual
+                       backup taken (`manual-backup-*.db`), 15 updates + 1 create
+                       applied, archive written
+                       (`reconcile-archive-2026-07-19T23-24-30.256Z.json`),
+                       post-apply verification and re-audit both **0 diverged**.
+                       **A2-3** (PR #98, closes Issue #64): all readers resolve the
+                       16 legacy fields from Product 1 with legacy fallback
+                       (`pickProduct1`/`overlayProduct1`; `globalSearch` via
+                       `COALESCE(NULLIF(TRIM(...)))`, which also fixed a latent
+                       stale-equipment-search bug); `syncLegacyFromProduct` removed;
+                       legacy columns kept as a live mirror (dropped later in Stage
+                       B / Postgres). Landed **only after** the production reconcile
+                       + clean re-audit above, so readers are byte-identical on the
+                       reconciled data. No schema migration in any of the five PRs.
+                       **Recovery artifacts on the `/var/data` persistent disk:** the
+                       pre-reconcile `manual-backup-*.db` and the
+                       `reconcile-archive-2026-07-19T23-24-30.256Z.json` (captures
+                       every overwritten Product 1 value).
+
+### 2026-07-19 — Pre-migration batch Items 1–3 (three sequential deploys)
+
+- **Date:**            2026-07-19 (America/Denver, MDT)
+- **Commits:**         Item 1 `18b740d` (PR #90) · Item 2 `0a1c6ce` (PR #91) ·
+                       Item 3 `f61681e` (PR #92).
+                       **Current production deploy = `f61681e`** (Item 3, last in sequence).
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit), three
+                       merges in order — each verified live (HTTP 200) before the
+                       next item was started. Kevin approved these deploys
+                       2026-07-19 ~13:22 MDT.
+- **Checks run:**      Per item: `npm run check` (tsc) PASS, `npm run test` PASS,
+                       `npm run build` PASS, CI `check-and-build` green before
+                       merge, prod HTTP 200 after merge. Test count grew
+                       41 → 48 (Item 1) → 51 (Item 2) → 56 (Item 3).
+- **Rollback point:**  pre-batch production = **`44181e0`** (last commit before
+                       Item 1; the batch's rollback anchor). Per-item rollback =
+                       the prior merge in the chain (Item 2→`18b740d`,
+                       Item 3→`0a1c6ce`). Prior sprint's known-good = `25f92d2` (S10).
+- **Notes:**           Item 1 (server C2 + client H1): sessions + login rate limits
+                       moved from in-memory Maps to a shared better-sqlite3 store
+                       (`server/session-store.ts`); new `sessions`/`login_attempts`
+                       tables created idempotently at startup; httpOnly session
+                       cookie so reloads no longer log out. **One-time logout at
+                       this deploy** as old in-memory tokens were cleared;
+                       persistent thereafter. Additive — no schema migration to
+                       undo. Item 2: SERVICE_STATUSES enum gains `'Needs Return
+                       Visit'` (enum-only, no rows rewritten); standardized React
+                       Query keys; reset `expiredHandled` on login. Item 3
+                       (**HIGHEST CARE — schema tooling change**): replaced inline
+                       startup migrations with versioned `migrations/*.sql` + a
+                       startup runner (`server/migrate.ts`) with **baselining** —
+                       the existing production DB is detected via the
+                       `service_calls` sentinel and the baseline is marked applied
+                       WITHOUT executing, so the live schema is untouched; a fresh
+                       DB builds from the baseline. Seed logic extracted to
+                       `server/seed.ts`; CRM data seed now explicit (`npm run seed`),
+                       S6 admin hardening still auto on empty DB. Migrations run at
+                       **startup** (Render pre-deploy runs without the persistent
+                       disk mounted — see `render.yaml`). Post-deploy verified: 502
+                       restart blip → sustained HTTP 200, login page serves, no
+                       crash-loop (baselining did not execute DDL over live data).
+                       **Rollback of Item 3 is safe:** old inline-migration code is
+                       idempotent and ignores the new `schema_migrations` table.
+
+### 2026-07-19 — Phase 0.5 hardening sprint S8–S10 (three sequential deploys)
+
+- **Date:**            2026-07-19 (America/Denver, MDT)
+- **Commits:**         S8 `240ffe8` (PR #86) · S9 `79cadee` (PR #87) ·
+                       S10 `25f92d2` (PR #88).
+                       **Current production deploy = `25f92d2`** (S10, last in sequence).
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit), three
+                       merges in order — each verified live (HTTP 200) before the
+                       next item was started.
+- **Checks run:**      Per item: `npm run check` (tsc) PASS, `npm run test` PASS,
+                       `npm run build` PASS, CI `check-and-build` green before
+                       merge, prod HTTP 200 after merge. Test count grew 15 → 41
+                       across the sprint (S8 validate ×13, S9 invoice-totals ×13;
+                       S10 client-only, no test framework client-side).
+- **Rollback point:**  pre-S8 production = **`0cc53bf`** (last commit before S8;
+                       the sprint's rollback anchor). Per-item rollback = the prior
+                       merge in the chain above (S9→`240ffe8`, S10→`79cadee`).
+                       Prior sprint's known-good = `39ae074` (S6).
+- **Notes:**           No schema changes, no migrations in any item.
+                       S8: `validate(schema)` zod middleware (`server/validate.ts`)
+                       + per-route schemas on users/invoices/visits/appointments;
+                       400 with field-level errors, unknown keys stripped,
+                       offline-sync replay unaffected. S9: invoice line amounts +
+                       `subtotal`/`total` recomputed server-side from persisted
+                       items on create AND update, ignoring client totals; math
+                       mirrors the client to the cent (no tax line today); no
+                       backfill, response shape unchanged. S10 (client-only):
+                       try/catch on the NewServiceCall parts loop; `onError` toasts
+                       on the silent deletePhoto/deleteCall/deleteActivity/
+                       reorderPhotos mutations; 300 ms debounce on service-call
+                       search.
+
+### 2026-07-19 — Phase 0.5 hardening sprint S1–S6 (six sequential deploys)
+
+- **Date:**            2026-07-19 (America/Denver, MDT)
+- **Commits:**         S1 `ba5b9bc` (PR #77) · S2 `fc83e41` (PR #78) ·
+                       S3 `b1b27a2` (PR #79) · S4 `b252acd` (PR #80) ·
+                       S5 `b97cae6` (PR #81) · S6 `39ae074` (PR #82).
+                       **Current production deploy = `39ae074`** (S6, last in sequence).
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit), six
+                       merges in order — each verified live (HTTP 200) before the
+                       next item was started.
+- **Checks run:**      Per item: `npm run check` (tsc) PASS, `npm run test` PASS,
+                       `npm run build` PASS, CI `check-and-build` green before
+                       merge, prod HTTP 200 after merge. Test count grew 6 → 15
+                       across the sprint (orphan-audit ×4, delete-service-call ×1,
+                       auth-guards ×3, seed-admin ×1, plus existing suites).
+- **Rollback point:**  pre-sprint production = **`0a164cc`** (PR #76, last commit
+                       before S1). Per-item rollback = the prior merge in the
+                       chain above. Known-good tags: `known-good-2026-06-12` →
+                       `e28492b`, baseline `known-good-2026-06-05` → `44e91ce`.
+- **Notes:**           No schema changes, no migrations in any item.
+                       S1: CI now runs `npm test` (gates all later PRs);
+                       `package.json` `test` widened to `tsx --test server/*.test.ts`.
+                       S2: `foreign_keys = ON` enabled at startup **only** behind a
+                       read-only orphan-audit gate (fail-open if orphans exist);
+                       new `server/orphan-audit.ts` + `scripts/audit-orphans.mjs`
+                       (Render-Shell runnable). S3: `deleteServiceCall` now
+                       transactional and deletes `invoice_items` (was orphaning
+                       them via a raw bypass of `deleteInvoice()`). S4:
+                       `DELETE /api/service-calls/:id` now `requireManager` (was
+                       `requireEditor`); guards extracted to `server/auth-guards.ts`.
+                       S5: removed three `*.legacy.tsx` pages + routes (~4,000
+                       lines), client-only. S6: seeded-admin password now from
+                       `SEED_ADMIN_PASSWORD` or crypto-random, never logged;
+                       existing prod users untouched (seed only on empty DB).
+                       Follow-ups pending (Kevin-only): manual re-entry of blank
+                       descriptions on calls **#41 / #85 / #86**. PR #62
+                       (read-only diagnostic) reviewed and **closed** (S7) — the
+                       fixes it scoped (#61/#65) are already live; script preserved
+                       on its branch if a fresh list is needed.
+
+### 2026-07-17 — Fix photo uploads rejected with 413 (body-limit override)
+
+- **Date:**            2026-07-17 12:38 (America/Denver, MDT)
+- **Commit:**          `52b38de` (merge of PR #67, fix commit `7704191`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run test — 6/6 PASS (`server/storage.test.ts`, incl.
+                       2 new `isPhotoUploadRequest` regression tests);
+                       npm run check (tsc) — PASS; npm run build — PASS;
+                       post-deploy probe: oversized (2MB) unauthenticated POST to
+                       `/api/service-calls/:id/photos` returned **413 pre-deploy →
+                       401 post-deploy** (body now parsed, auth gate reached) —
+                       confirms the fix is live.
+- **Rollback point:**  prior production deploy = `69dae783` (merge of PR #65).
+                       Known-good tags: `known-good-2026-06-12` → `e28492b`,
+                       baseline `known-good-2026-06-05` → `44e91ce`.
+- **Notes:**           No schema change, no migration. Root cause: global
+                       `express.json({ limit: "1mb" })` in `server/index.ts` ran
+                       before the photo route's own 20MB parser (`server/routes.ts`),
+                       rejecting any photo whose base64 body exceeded 1MB with a 413
+                       masked as "Internal Server Error". Latent since the 2026-04-04
+                       request-size hardening (`b1d2268`); surfaced with detail-heavy
+                       tech photos (~1MB binary → ~1.4MB base64 at 1600px/q0.7).
+                       Fix: global parser skips `POST /api/service-calls/:id/photos`
+                       (new `server/photo-upload-path.ts` predicate); route-level
+                       20MB parser + existing 10MB-per-photo cap now govern. Client
+                       maps 413/400-too-large to a friendly toast via
+                       `photoUploadErrorMessage` in all 3 upload paths. There is NO
+                       photo-count limit — the reported "max 5 photos" was
+                       coincidental photo size, not count. Follow-up: none pending.
+
+### 2026-07-16 — Harden legacy sync: non-destructive fill-only merge (permanent description-wipe fix)
+
+- **Date:**            2026-07-16 (America/Denver, MDT)
+- **Commit:**          `69dae783` (merge of PR #65, fix commit `0eb67775`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run test — 4/4 PASS (`server/storage.test.ts`);
+                       npm run check (tsc) — PASS; npm run build — PASS
+- **Rollback point:**  prior production deploy = `87463c07` (merge of PR #61, fix
+                       commit `3e292c2b`). Known-good tags:
+                       `known-good-2026-06-05` → `44e91ce` (deeper baseline
+                       `known-good-2026-06-12` → `e28492b`)
+- **Notes:**           No schema change, no migration. Server-only hardening to
+                       `syncLegacyFromProduct` (`server/storage.ts`): the legacy
+                       sync is now **non-destructive (fill-only merge)** — it never
+                       overwrites an already-populated field with an empty,
+                       `undefined`, or whitespace-only value, applied to all **16**
+                       synced fields. This is the **permanent / class-kill hardening
+                       fix** for the description-wipe bug, following the earlier
+                       targeted hotfix PR #61 (deployed same day). Adds **4
+                       regression tests** (`server/storage.test.ts`) plus a `test`
+                       npm script. Full re-architecture (single source of truth for
+                       the description) remains tracked in **issue #64**.
+                       **Post-deploy verification:** app confirmed up (sign-in
+                       screen serving) at warranty.fitzpatricksalescrm.com.
+
+### 2026-07-16 — Fix service call description wiped on create (multi-product sync)
+
+- **Date:**            2026-07-16 (America/Denver, MDT)
+- **Commit:**          `87463c0` (merge of PR #61, fix commit `3e292c2b`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run check (tsc) — PASS; npm run build — PASS
+- **Rollback point:**  `known-good-2026-06-05` → `44e91ce` (deeper baseline
+                       `known-good-2026-06-12` → `e28492b`)
+- **Notes:**           No schema change, no migration. Server-only fix to
+                       `POST /api/service-calls` (`server/routes.ts`). Fixes a bug
+                       where a new service call's `issue_description` (and
+                       diagnosis / resolution / claim fields) was wiped to NULL at
+                       create time via the multi-product `products[]` path: the New
+                       Service Call form sends only identity fields per product, so
+                       `syncLegacyFromProduct()` copied Product 1's absent narrative
+                       fields back onto the parent `service_calls` row, overwriting
+                       the text `createServiceCall` had just stored. The if-branch
+                       now merges the call-level narrative/claim fields onto Product
+                       1, making the legacy sync idempotent. Also fixes the
+                       offline-sync replay path and any direct API caller posting
+                       identity-only products. Root cause detail in `bug-findings.md`.
+                       **Post-deploy verification:** app confirmed up (sign-in
+                       screen serving) at warranty.fitzpatricksalescrm.com.
+  - **Follow-up — data cleanup PENDING:** real service calls **#41, #85, #86** were
+    created through the buggy path and have blank (`NULL`) descriptions. The text
+    is **NOT recoverable** (it was never stored on the product row either) and must
+    be **manually re-entered**. (Call #42 was `is_test = 1` — ignore.)
+  - **Follow-up — hardening RECOMMENDED:** make `syncLegacyFromProduct` non-destructive
+    (never overwrite a populated field with an empty/NULL one); establish a single
+    source of truth for the description; add a regression test covering the
+    `products[]` create path so this cannot silently recur.
+
+### 2026-06-24 — Assign Technician on service calls (dropdown + editable + prominent)
+
+- **Date:**            2026-06-24 (America/Denver, MDT) — merged after green CI (check-and-build ✓, 41s).
+- **Commit:**          `5fbdf88` (merge of PR #59, feature commit `36bffcb`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run check (tsc) ✓, npm run build ✓, local migration smoke test ✓ (Migration 37 idempotency + COALESCE tech-resolution verified)
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`
+- **Notes:**           Migration 37 = additive, nullable `service_calls.assigned_technician_id`
+  column (guarded by `columnExists`, idempotent; **no data backfill**). Adds an
+  **Assign Technician** dropdown to the New Service Call form, an editable
+  Assigned Technician control on the detail page, and a prominent Technician
+  KPI cell. `assignedTechnicianId` is user-settable on `POST` and `PATCH`
+  (kept in `insertServiceCallSchema`). The list "Tech" column / "My Calls"
+  filter now resolve `COALESCE(assigned_technician_id, most-recent visit tech)`,
+  preserving legacy behavior for older calls. No customer-facing data exposed.
+
+### 2026-06-24 — Service call creator attribution (capture + display + retroactive backfill)
+
+- **Date:**            2026-06-24 (America/Denver, MDT) — merged after green CI (check-and-build ✓). Post-deploy smoke: root 200, /api/service-calls 401 (auth-gated).
+- **Commit:**          `4ec990d` (merge of PR #57, feature commit `24416b6`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run check (tsc) ✓, npm run build ✓, local migration smoke test ✓ (backfill + idempotency verified)
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`
+- **Notes:**           Migration 36 = one-time idempotent **data backfill** of
+  `service_calls.created_by` from `audit_log_system` (`created_call` entries);
+  no column/schema change (the `created_by` column has existed since Migration
+  11). `POST /api/service-calls` now stamps the creator from the session;
+  `PATCH` accepts an explicit `createdBy` for manager reassignment. UI: "Logged
+  by" line on the call list + "Created By" on the detail page; Reports → Team
+  Workload now populates. Backfill only fills NULL rows, never overwrites, and
+  is safe to re-run. No customer-facing data exposed.
+
+### 2026-06-24 — Fix visit count + total hours on Service Call detail header
+
+- **Date:**            2026-06-24 ~08:55 (America/Denver, MDT)
+- **Commit:**          `7970b4f` (merge of PR #55, fix commit `eba52ae`)
+- **Environment:**     production
+- **Production URL:**  https://warranty.fitzpatricksalescrm.com/#/
+- **Deploy action:**   auto-deploy on push to `master` (Render, On Commit)
+- **Checks run:**      npm run check (tsc) pass; npm run build pass; CI
+                       check-and-build gate pass (42s)
+- **Rollback point:**  `known-good-2026-06-12` → `e28492b`
+- **Notes:**           Client-only fix to `client/src/pages/ServiceCallDetail.tsx`.
+                       Header VISITS KPI + Visits tab badge now use
+                       `visits.length + 1` (return visits + original Visit 1)
+                       instead of the never-populated `call.visits`; HOURS ON
+                       JOB now sums `call.hoursOnJob` + each return visit's
+                       hours. Fixes Call #65 showing 1 visit / 7h instead of 2
+                       visits / 11h. No schema change, no migration, no backend
+                       change. Approved by Kevin ("Branch, PR, then deploy",
+                       2026-06-24).
+
 ### 2026-06-18 — Admin password reset button + manager-lockout recovery script
 
 - **Date:**            2026-06-18 ~08:30 (America/Denver, MDT)

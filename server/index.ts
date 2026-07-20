@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
+import { isPhotoUploadRequest } from "./photo-upload-path";
 import { createServer } from "http";
 
 const app = express();
@@ -54,15 +55,23 @@ app.use((_req, res, next) => {
 app.use(compression());
 
 // ─── Body Parsing ──────────────────────────────────────────────────────────────
-// 1mb general limit — photo upload routes override with their own 20mb limit
-app.use(
-  express.json({
-    limit: "1mb",
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
+// 1mb general limit for all routes EXCEPT photo uploads. The photo upload route
+// (POST /api/service-calls/:id/photos) installs its own express.json({ limit:
+// "20mb" }) parser in routes.ts; if this global 1mb parser ran first it would
+// reject large photo bodies with a PayloadTooLargeError (413) before the route's
+// parser ever ran. We skip it here so the route-level 20mb limit is the real cap.
+const generalJsonParser = express.json({
+  limit: "1mb",
+  verify: (req, _res, buf) => {
+    req.rawBody = buf;
+  },
+});
+app.use((req, res, next) => {
+  if (isPhotoUploadRequest(req.method, req.path)) {
+    return next();
+  }
+  return generalJsonParser(req, res, next);
+});
 
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 

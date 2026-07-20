@@ -3,6 +3,9 @@ import { todayLocalISO, parseMoney } from "@shared/datetime";
 import Database from "better-sqlite3";
 import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { runMigrations } from "./migrate";
+import { seedAdmin } from "./seed";
+import { auditOrphans, hasOrphans, formatOrphanReport } from "./orphan-audit";
 import {
   serviceCalls,
   photos,
@@ -50,622 +53,40 @@ if (process.env.NODE_ENV !== "production") {
   console.log(`Database: ${DB_PATH}`);
 }
 
-// Create tables if they don't exist
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS service_calls (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    call_date TEXT NOT NULL,
-    manufacturer TEXT NOT NULL,
-    manufacturer_other TEXT,
-    customer_name TEXT,
-    job_site_name TEXT,
-    job_site_address TEXT,
-    job_site_city TEXT,
-    job_site_state TEXT,
-    contact_name TEXT,
-    contact_phone TEXT,
-    contact_email TEXT,
-    site_contact_name TEXT,
-    site_contact_phone TEXT,
-    site_contact_email TEXT,
-    product_model TEXT,
-    product_serial TEXT,
-    installation_date TEXT,
-    issue_description TEXT,
-    diagnosis TEXT,
-    resolution TEXT,
-    status TEXT NOT NULL DEFAULT 'Scheduled',
-    claim_status TEXT NOT NULL DEFAULT 'Not Filed',
-    claim_notes TEXT,
-    tech_notes TEXT,
-    latitude TEXT,
-    longitude TEXT,
-    created_at TEXT NOT NULL
-  );
+// ─── Schema migrations + seed (server H5) ───────────────────────────────────
+// Versioned migrations replace the old inline CREATE TABLE / guarded-ALTER
+// blocks. Runs at import time (before the server listens, since routes.ts
+// imports this module), so the schema is ready before the first request. An
+// existing production DB is baselined (marked applied, not re-executed); a
+// fresh DB gets the full schema from migrations/0000_baseline.sql.
+runMigrations(sqlite, { log: console.log });
 
-  CREATE TABLE IF NOT EXISTS photos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    service_call_id INTEGER NOT NULL,
-    photo_url TEXT NOT NULL,
-    caption TEXT,
-    photo_type TEXT NOT NULL DEFAULT 'Other'
-  );
+// S6 admin hardening: seed a login on an empty DB (idempotent). Non-admin
+// initial data (the CRM contact list) is seeded explicitly via `npm run seed`
+// (script/seed.ts), not on every boot.
+seedAdmin(sqlite);
 
-  CREATE TABLE IF NOT EXISTS parts_used (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    service_call_id INTEGER NOT NULL,
-    part_number TEXT NOT NULL,
-    part_description TEXT NOT NULL,
-    quantity INTEGER NOT NULL DEFAULT 1,
-    source TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS contacts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    contact_type TEXT NOT NULL,
-    company_name TEXT,
-    contact_name TEXT NOT NULL,
-    phone TEXT,
-    email TEXT,
-    address TEXT,
-    city TEXT,
-    state TEXT,
-    notes TEXT,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS activity_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    service_call_id INTEGER NOT NULL,
-    note TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    display_name TEXT NOT NULL,
-    email TEXT,
-    role TEXT NOT NULL DEFAULT 'tech',
-    active INTEGER NOT NULL DEFAULT 1,
-    must_change_password INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS invoices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invoice_number TEXT NOT NULL UNIQUE,
-    service_call_id INTEGER,
-    bill_to_type TEXT NOT NULL DEFAULT 'contractor',
-    bill_to_name TEXT NOT NULL,
-    bill_to_address TEXT,
-    bill_to_city TEXT,
-    bill_to_state TEXT,
-    bill_to_email TEXT,
-    bill_to_phone TEXT,
-    issue_date TEXT NOT NULL,
-    due_date TEXT,
-    payment_terms TEXT DEFAULT 'Net 30',
-    status TEXT NOT NULL DEFAULT 'Draft',
-    notes TEXT,
-    subtotal TEXT NOT NULL DEFAULT '0',
-    total TEXT NOT NULL DEFAULT '0',
-    paid_date TEXT,
-    created_by INTEGER,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS invoice_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invoice_id INTEGER NOT NULL,
-    type TEXT NOT NULL DEFAULT 'other',
-    description TEXT NOT NULL,
-    quantity TEXT NOT NULL DEFAULT '1',
-    unit_price TEXT NOT NULL DEFAULT '0',
-    amount TEXT NOT NULL DEFAULT '0',
-    sort_order INTEGER NOT NULL DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS audit_log_system (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    username TEXT NOT NULL,
-    action TEXT NOT NULL,
-    entity_type TEXT,
-    entity_id INTEGER,
-    details TEXT,
-    created_at TEXT NOT NULL
-  );
-`);
-
-// ─── Indexes for query performance ──────────────────────────────────────────
-sqlite.exec(`
-  CREATE INDEX IF NOT EXISTS idx_photos_service_call_id ON photos(service_call_id);
-  CREATE INDEX IF NOT EXISTS idx_parts_service_call_id ON parts_used(service_call_id);
-  CREATE INDEX IF NOT EXISTS idx_service_calls_call_date ON service_calls(call_date);
-  CREATE INDEX IF NOT EXISTS idx_service_calls_status ON service_calls(status);
-  CREATE INDEX IF NOT EXISTS idx_activity_log_service_call_id ON activity_log(service_call_id);
-  CREATE INDEX IF NOT EXISTS idx_contacts_type ON contacts(contact_type);
-`);
-
-// ─── Migrations (safe to re-run) ─────────────────────────────────────────────
-// Add new columns to existing tables without losing data.
-// SQLite's ALTER TABLE ADD COLUMN is safe — it adds the column if missing.
-// We check first to avoid errors on tables that already have the column.
-
-// Allow only known table names to prevent SQL injection
-const ALLOWED_TABLES = new Set(["service_calls", "photos", "parts_used", "contacts", "activity_log", "users", "audit_log_system", "service_call_visits", "invoice_items", "service_call_products"]);
-
-function columnExists(table: string, column: string): boolean {
-  if (!ALLOWED_TABLES.has(table)) throw new Error(`Unknown table: ${table}`);
-  const info = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  return info.some(col => col.name === column);
-}
-
-// Migration 1: Add contact_email to service_calls
-if (!columnExists("service_calls", "contact_email")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN contact_email TEXT`);
-  console.log("Migration: added contact_email column to service_calls");
-}
-
-// Migration 2: Add site contact fields to service_calls
-if (!columnExists("service_calls", "site_contact_name")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN site_contact_name TEXT`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN site_contact_phone TEXT`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN site_contact_email TEXT`);
-  console.log("Migration: added site contact columns to service_calls");
-}
-
-// Migration 3: Add latitude/longitude to service_calls
-if (!columnExists("service_calls", "latitude")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN latitude TEXT`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN longitude TEXT`);
-  console.log("Migration: added latitude/longitude columns to service_calls");
-}
-
-// Migration 4: Add job logistics (hours, miles) and scheduling fields
-if (!columnExists("service_calls", "hours_on_job")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN hours_on_job TEXT`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN miles_traveled TEXT`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN scheduled_date TEXT`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN scheduled_time TEXT`);
-  console.log("Migration: added hours_on_job, miles_traveled, scheduled_date, scheduled_time columns");
-}
-
-// Migration 5: Add parent_call_id for follow-up tracking
-if (!columnExists("service_calls", "parent_call_id")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN parent_call_id INTEGER`);
-  console.log("Migration: added parent_call_id column to service_calls");
-}
-
-// Migration 6: Add product_type for warranty calculation
-if (!columnExists("service_calls", "product_type")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN product_type TEXT`);
-  console.log("Migration: added product_type column to service_calls");
-}
-
-// Migration 7: Add claim financial fields
-if (!columnExists("service_calls", "parts_cost")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN parts_cost TEXT`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN labor_cost TEXT`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN other_cost TEXT`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN claim_amount TEXT`);
-  console.log("Migration: added claim financial columns");
-}
-
-// Migration 8: Add sort_order to photos
-if (!columnExists("photos", "sort_order")) {
-  sqlite.exec(`ALTER TABLE photos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
-  sqlite.exec(`UPDATE photos SET sort_order = id WHERE sort_order = 0`);
-  console.log("Migration: added sort_order column to photos");
-}
-
-// Migration 9: Add claim_number field
-if (!columnExists("service_calls", "claim_number")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN claim_number TEXT`);
-  console.log("Migration: added claim_number column");
-}
-
-// Migration 10: Add follow_up_date field
-if (!columnExists("service_calls", "follow_up_date")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN follow_up_date TEXT`);
-  console.log("Migration: added follow_up_date column");
-}
-
-// Migration 11: Add created_by / updated_by to service_calls
-if (!columnExists("service_calls", "created_by")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN created_by INTEGER`);
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN updated_by INTEGER`);
-  console.log("Migration: added created_by/updated_by to service_calls");
-}
-
-// Migration 12: Add created_by to contacts
-if (!columnExists("contacts", "created_by")) {
-  sqlite.exec(`ALTER TABLE contacts ADD COLUMN created_by INTEGER`);
-  console.log("Migration: added created_by to contacts");
-}
-
-// Migration 13: Add username to activity_log for attribution
-if (!columnExists("activity_log", "username")) {
-  sqlite.exec(`ALTER TABLE activity_log ADD COLUMN username TEXT`);
-  console.log("Migration: added username to activity_log");
-}
-
-// Migration 14: Remove NOT NULL from optional fields in service_calls
-// SQLite can't ALTER COLUMN, so we recreate the table.
-// Handles partial failures from prior deploy attempts.
+// ─── Foreign-key enforcement gate (server C4) ───────────────────────────────
+// SQLite disables FK enforcement per-connection by default, so the schema's
+// ON DELETE CASCADE clauses are inert. We want enforcement ON, but enabling it
+// against a DB that already contains orphaned rows would make later writes to
+// the affected parents fail at runtime. We cannot reach the production DB from
+// CI/dev, so we gate on a read-only audit run at startup: if the data is clean,
+// enable enforcement; if orphans exist, log a clear warning and SKIP enabling
+// (fail-open — the app keeps working exactly as before). Cleaning up any
+// reported orphans is a follow-up, after which FKs will enable on next boot.
 {
-  const hasOriginal = (sqlite.prepare(`SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name='service_calls'`).get() as any).c > 0;
-  const hasNewTable = (sqlite.prepare(`SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name='service_calls_new'`).get() as any).c > 0;
-
-  if (!hasOriginal && hasNewTable) {
-    // Prior attempt dropped service_calls but crashed before rename
-    console.log("Migration 14: Recovering from partial prior run...");
-    sqlite.exec(`ALTER TABLE service_calls_new RENAME TO service_calls`);
-    sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_calls_call_date ON service_calls(call_date)`);
-    sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_calls_status ON service_calls(status)`);
-    console.log("Migration 14: Recovery complete");
-  } else if (hasOriginal) {
-    const m14cols = sqlite.prepare(`PRAGMA table_info(service_calls)`).all() as any[];
-    const m14check = m14cols.find((c: any) => c.name === "customer_name");
-    if (m14check && m14check.notnull === 1) {
-      console.log("Migration 14: Removing NOT NULL constraints from optional service_calls columns...");
-      sqlite.exec(`DROP TABLE IF EXISTS service_calls_new`);
-      sqlite.exec(`
-        CREATE TABLE service_calls_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          call_date TEXT NOT NULL,
-          manufacturer TEXT NOT NULL,
-          manufacturer_other TEXT,
-          customer_name TEXT,
-          job_site_name TEXT,
-          job_site_address TEXT,
-          job_site_city TEXT,
-          job_site_state TEXT,
-          contact_name TEXT,
-          contact_phone TEXT,
-          contact_email TEXT,
-          site_contact_name TEXT,
-          site_contact_phone TEXT,
-          site_contact_email TEXT,
-          product_model TEXT,
-          product_serial TEXT,
-          installation_date TEXT,
-          issue_description TEXT,
-          diagnosis TEXT,
-          resolution TEXT,
-          status TEXT NOT NULL DEFAULT 'Scheduled',
-          claim_status TEXT NOT NULL DEFAULT 'Not Filed',
-          claim_notes TEXT,
-          tech_notes TEXT,
-          latitude TEXT,
-          longitude TEXT,
-          created_at TEXT NOT NULL,
-          hours_on_job TEXT,
-          miles_traveled TEXT,
-          scheduled_date TEXT,
-          scheduled_time TEXT,
-          parent_call_id INTEGER,
-          product_type TEXT,
-          parts_cost TEXT,
-          labor_cost TEXT,
-          other_cost TEXT,
-          claim_amount TEXT,
-          claim_number TEXT,
-          follow_up_date TEXT,
-          created_by INTEGER,
-          updated_by INTEGER
-        )
-      `);
-      // Use explicit column list from the OLD table to handle column differences
-      const oldCols = m14cols.map((c: any) => c.name).join(", ");
-      sqlite.exec(`INSERT INTO service_calls_new (${oldCols}) SELECT ${oldCols} FROM service_calls`);
-      sqlite.exec(`DROP TABLE service_calls`);
-      sqlite.exec(`ALTER TABLE service_calls_new RENAME TO service_calls`);
-      sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_calls_call_date ON service_calls(call_date)`);
-      sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_calls_status ON service_calls(status)`);
-      console.log("Migration 14: Done");
-    }
+  const orphanResults = auditOrphans(sqlite);
+  if (hasOrphans(orphanResults)) {
+    console.warn(
+      "FK enforcement SKIPPED — pre-existing orphaned rows found: " +
+        formatOrphanReport(orphanResults) +
+        ". Clean these up (see scripts/audit-orphans.mjs) so foreign_keys can be enabled on next boot."
+    );
+  } else {
+    sqlite.pragma("foreign_keys = ON");
+    console.log("FK enforcement ENABLED (foreign_keys = ON) — orphan audit clean.");
   }
-}
-
-// Indexes for new tables
-sqlite.exec(`
-  CREATE INDEX IF NOT EXISTS idx_audit_log_system_created_at ON audit_log_system(created_at);
-  CREATE INDEX IF NOT EXISTS idx_audit_log_system_user_id ON audit_log_system(user_id);
-  CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-`);
-
-// Migration 15: Create service_call_visits table for return visits
-{
-  const hasTable = (sqlite.prepare(`SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name='service_call_visits'`).get() as any).c > 0;
-  if (!hasTable) {
-    sqlite.exec(`CREATE TABLE IF NOT EXISTS service_call_visits (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      service_call_id INTEGER NOT NULL REFERENCES service_calls(id) ON DELETE CASCADE,
-      visit_number INTEGER NOT NULL,
-      visit_date TEXT NOT NULL,
-      technician_id INTEGER REFERENCES users(id),
-      notes TEXT,
-      status TEXT NOT NULL DEFAULT 'Scheduled',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`);
-    sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_call_visits_call_id ON service_call_visits(service_call_id)`);
-    console.log("Migration 15: created service_call_visits table");
-  }
-}
-
-// Migration 20: Add wholesaler fields to service_calls
-if (!columnExists("service_calls", "wholesaler_name")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN wholesaler_name TEXT`).run();
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN wholesaler_phone TEXT`).run();
-  console.log("Migration 20: added wholesaler_name/wholesaler_phone to service_calls");
-}
-
-// Migration 21: Add job_site_zip to service_calls
-if (!columnExists("service_calls", "job_site_zip")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN job_site_zip TEXT`).run();
-  console.log("Migration 21: added job_site_zip to service_calls");
-}
-
-// Migration 18: Add unit_cost to parts_used
-if (!columnExists("parts_used", "unit_cost")) {
-  sqlite.prepare(`ALTER TABLE parts_used ADD COLUMN unit_cost TEXT`).run();
-  console.log("Migration 18: added unit_cost to parts_used");
-}
-
-// Migration 16: Add hours_on_job, miles_traveled to service_call_visits; add visit_number to photos
-{
-  if (!columnExists("service_call_visits", "hours_on_job")) {
-    sqlite.exec(`ALTER TABLE service_call_visits ADD COLUMN hours_on_job TEXT`);
-    console.log("Migration 16: added hours_on_job to service_call_visits");
-  }
-  if (!columnExists("service_call_visits", "miles_traveled")) {
-    sqlite.exec(`ALTER TABLE service_call_visits ADD COLUMN miles_traveled TEXT`);
-    console.log("Migration 16: added miles_traveled to service_call_visits");
-  }
-  if (!columnExists("photos", "visit_number")) {
-    sqlite.exec(`ALTER TABLE photos ADD COLUMN visit_number INTEGER NOT NULL DEFAULT 1`);
-    console.log("Migration 16: added visit_number to photos");
-  }
-}
-
-// Migration 17: Add visit_number to invoice_items for visit-grouped line items
-if (!columnExists("invoice_items", "visit_number")) {
-  sqlite.exec(`ALTER TABLE invoice_items ADD COLUMN visit_number INTEGER`);
-  console.log("Migration 17: added visit_number to invoice_items");
-}
-
-
-
-// Migration 25: Add call_type to service_calls
-if (!columnExists("service_calls", "call_type")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN call_type TEXT DEFAULT 'residential'`).run();
-  console.log("Migration 25: added call_type to service_calls");
-}
-
-// Migration 24: Add contact_company to service_calls
-if (!columnExists("service_calls", "contact_company")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN contact_company TEXT`).run();
-  console.log("Migration 24: added contact_company to service_calls");
-}
-
-// Migration 22: Add is_test flag to service_calls
-if (!columnExists("service_calls", "is_test")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN is_test INTEGER DEFAULT 0`).run();
-  console.log("Migration 22: added is_test column to service_calls");
-}
-
-// Migration 26: Add service_method to service_calls (In-Person / Phone Call / Video Call)
-if (!columnExists("service_calls", "service_method")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN service_method TEXT DEFAULT 'In-Person'`).run();
-  console.log("Migration 26: added service_method column to service_calls");
-}
-
-// Migration 27: Add scheduled_appointments table for schedule history
-const hasSchedAppts = (sqlite.prepare(
-  `SELECT name FROM sqlite_master WHERE type='table' AND name='scheduled_appointments'`
-).get() as any);
-if (!hasSchedAppts) {
-  sqlite.prepare(`
-    CREATE TABLE scheduled_appointments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_id INTEGER NOT NULL REFERENCES service_calls(id) ON DELETE CASCADE,
-      scheduled_date TEXT NOT NULL,
-      scheduled_time TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      reason TEXT,
-      created_by_id INTEGER REFERENCES users(id),
-      created_by_name TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run();
-  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_sched_appts_call ON scheduled_appointments(call_id)`).run();
-  // Backfill from existing service_calls.scheduled_date
-  const existing = sqlite.prepare(`
-    SELECT id, scheduled_date, scheduled_time FROM service_calls
-    WHERE scheduled_date IS NOT NULL AND scheduled_date != ''
-  `).all() as any[];
-  const insertAppt = sqlite.prepare(`
-    INSERT INTO scheduled_appointments (call_id, scheduled_date, scheduled_time, status, reason, created_by_name, created_at)
-    VALUES (?, ?, ?, 'active', NULL, 'System', CURRENT_TIMESTAMP)
-  `);
-  for (const c of existing) {
-    insertAppt.run(c.id, c.scheduled_date, c.scheduled_time);
-  }
-  console.log(`Migration 27: created scheduled_appointments table, backfilled ${existing.length} active appointments`);
-}
-
-// Migration 28: Add updated_at to service_calls for optimistic concurrency
-// control. Two editors (e.g. manager on desktop + tech on phone) could
-// previously silently overwrite each other's changes. PATCH now accepts an
-// If-Unmodified-Since header and rejects with 409 if the row has changed.
-if (!columnExists("service_calls", "updated_at")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN updated_at TEXT`).run();
-  // Backfill to created_at so existing rows have a baseline.
-  sqlite.prepare(`UPDATE service_calls SET updated_at = created_at WHERE updated_at IS NULL`).run();
-  console.log("Migration 28: added updated_at column to service_calls (backfilled from created_at)");
-}
-
-// Migration 30: Add completed_date to service_calls. Dashboard "completed
-// this month" and First-Time Fix Rate previously filtered by call_date, which
-// is when the call was logged — a call logged in March but finished in May
-// wouldn't count as completed in May at all. We now track when the row
-// transitioned to Completed. Backfill: rows currently Completed get their
-// updated_at (or created_at) so existing history is approximately correct.
-if (!columnExists("service_calls", "completed_date")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN completed_date TEXT`).run();
-  sqlite.prepare(`
-    UPDATE service_calls
-    SET completed_date = COALESCE(updated_at, created_at)
-    WHERE status = 'Completed' AND completed_date IS NULL
-  `).run();
-  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_calls_completed_date ON service_calls(completed_date)`);
-  console.log("Migration 30: added completed_date column to service_calls (backfilled from updated_at/created_at)");
-}
-
-// Migration 32: Photo label presets. The tech can save a custom photo label
-// (e.g. "Cracked Heat Exchanger") and reuse it on future uploads. Built-in
-// labels (Before / After / Product Label / Serial Number / Damage / Other)
-// live in shared/schema.ts and are merged with these saved presets in the
-// picker UI. Unique on label so duplicates are prevented at the DB layer.
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS photo_label_presets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    label TEXT NOT NULL UNIQUE,
-    created_by_user_id INTEGER,
-    created_at TEXT NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_photo_label_presets_label ON photo_label_presets(label);
-`);
-
-// Migration 31: Internal-only flag. Lets the tech (or manager) mark a
-// service call for follow-up review even after it's been Completed. The flag
-// is plain boolean (0/1); an optional reason note explains why it was
-// flagged. Surfaces as a star icon on the detail page and a filter chip on
-// the call list.
-if (!columnExists("service_calls", "flagged_internal")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN flagged_internal INTEGER NOT NULL DEFAULT 0`).run();
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN flagged_reason TEXT`).run();
-  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_service_calls_flagged_internal ON service_calls(flagged_internal) WHERE flagged_internal = 1`);
-  console.log("Migration 31: added flagged_internal + flagged_reason columns to service_calls");
-}
-
-// Migration 32: Add installation_review_notes to service_calls. A narrative
-// field for techs to document installation issues, code issues, workmanship
-// observations, or other site conditions noticed during a service call.
-// Additive nullable column — existing rows are unaffected. Excluded from
-// printed/emailed reports by default (opt-in toggle in the report dialog).
-if (!columnExists("service_calls", "installation_review_notes")) {
-  sqlite.prepare(`ALTER TABLE service_calls ADD COLUMN installation_review_notes TEXT`).run();
-  console.log("Migration 32: added installation_review_notes column to service_calls");
-}
-
-// Migration 33: Multi-product support. Create service_call_products and
-// backfill one "Product 1" row per existing call from the legacy single-
-// product columns on service_calls. Legacy columns are RETAINED and kept in
-// sync with product_index=1 for backward-compat (reports/equipment search read
-// them until those screens migrate). Additive + idempotent.
-{
-  const hasTable = (sqlite.prepare(`SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name='service_call_products'`).get() as any).c > 0;
-  if (!hasTable) {
-    sqlite.exec(`CREATE TABLE service_call_products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      service_call_id INTEGER NOT NULL REFERENCES service_calls(id) ON DELETE CASCADE,
-      product_index INTEGER NOT NULL DEFAULT 1,
-      manufacturer TEXT NOT NULL,
-      manufacturer_other TEXT,
-      product_model TEXT,
-      product_serial TEXT,
-      product_type TEXT,
-      installation_date TEXT,
-      issue_description TEXT,
-      diagnosis TEXT,
-      resolution TEXT,
-      claim_status TEXT NOT NULL DEFAULT 'Not Filed',
-      claim_number TEXT,
-      claim_notes TEXT,
-      parts_cost TEXT,
-      labor_cost TEXT,
-      other_cost TEXT,
-      claim_amount TEXT,
-      discovered_visit_number INTEGER NOT NULL DEFAULT 1,
-      voided INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT
-    )`);
-    sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_scp_call_id ON service_call_products(service_call_id)`);
-    // Backfill Product 1 from legacy columns for every existing call.
-    const now = new Date().toISOString();
-    const calls = sqlite.prepare(`SELECT * FROM service_calls`).all() as any[];
-    const ins = sqlite.prepare(`INSERT INTO service_call_products
-      (service_call_id, product_index, manufacturer, manufacturer_other, product_model, product_serial, product_type, installation_date, issue_description, diagnosis, resolution, claim_status, claim_number, claim_notes, parts_cost, labor_cost, other_cost, claim_amount, discovered_visit_number, voided, created_at, updated_at)
-      VALUES (?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,0,?,?)`);
-    for (const c of calls) {
-      ins.run(c.id, c.manufacturer || 'Other', c.manufacturer_other, c.product_model, c.product_serial, c.product_type, c.installation_date, c.issue_description, c.diagnosis, c.resolution, c.claim_status || 'Not Filed', c.claim_number, c.claim_notes, c.parts_cost, c.labor_cost, c.other_cost, c.claim_amount, c.created_at || now, c.updated_at);
-    }
-    console.log(`Migration 33: created service_call_products, backfilled ${calls.length} Product-1 rows`);
-  }
-}
-
-// Migration 34: manual coordinate lock for map pins. Set to 1 when a user drags
-// a pin to correct its location; background geocoding skips locked rows.
-if (!columnExists("service_calls", "coords_locked")) {
-  sqlite.exec(`ALTER TABLE service_calls ADD COLUMN coords_locked INTEGER DEFAULT 0`);
-  console.log("Migration 34: added coords_locked column to service_calls");
-}
-
-// Migration 35: clear out-of-US coordinates left by an unbounded geocoder.
-// A bad address previously matched anywhere on Earth (e.g. off the coast of
-// India), which blew up the map's auto-fit. Null out lat/lng for any call
-// whose stored coords fall outside a generous US box (lat 24..50,
-// lng -125..-66) so it falls back into the needs-geocoding list and can be
-// retried/corrected. Never deletes a call; never touches manually-locked
-// pins (coords_locked=1). Idempotent — safe to run on every boot.
-{
-  const cleared = sqlite.prepare(`
-    UPDATE service_calls
-    SET latitude = NULL, longitude = NULL
-    WHERE coords_locked = 0
-      AND latitude IS NOT NULL
-      AND (
-        CAST(latitude AS REAL) NOT BETWEEN 24 AND 50
-        OR CAST(longitude AS REAL) NOT BETWEEN -125 AND -66
-      )
-  `).run();
-  if (cleared.changes > 0) {
-    console.log(`Migration 35: cleared out-of-US coordinates from ${cleared.changes} service_call row(s)`);
-  }
-}
-
-// Migration 29: Add covering indexes for queries that scan tables fully.
-// These dramatically speed up the manager dashboard and detail pages once the
-// database has thousands of rows. All idempotent (IF NOT EXISTS).
-sqlite.exec(`
-  CREATE INDEX IF NOT EXISTS idx_invoices_service_call_id ON invoices(service_call_id);
-  CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
-  CREATE INDEX IF NOT EXISTS idx_invoices_issue_date ON invoices(issue_date);
-  CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
-  CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
-  CREATE INDEX IF NOT EXISTS idx_service_calls_parent_call_id ON service_calls(parent_call_id);
-  CREATE INDEX IF NOT EXISTS idx_service_calls_scheduled_date ON service_calls(scheduled_date);
-  CREATE INDEX IF NOT EXISTS idx_service_calls_created_by ON service_calls(created_by);
-  CREATE INDEX IF NOT EXISTS idx_visits_visit_date ON service_call_visits(visit_date);
-  CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log_system(entity_type, entity_id);
-`);
-console.log("Migration 29: ensured query indexes (invoices, visits, audit, service_calls)");
-
-// Seed default admin user if users table is empty
-const userCount = (sqlite.prepare(`SELECT COUNT(*) as count FROM users`).get() as any).count;
-if (userCount === 0) {
-  const hashedPw = bcrypt.hashSync("fitzpatrick2026", 12);
-  sqlite.prepare(
-    `INSERT INTO users (username, password, display_name, email, role, active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run("admin", hashedPw, "Kevin Fitzpatrick", "kevin@fitzpatricksales.com", "manager", 1, 1, new Date().toISOString());
-  console.log("Seed: created default admin user (admin / fitzpatrick2026)");
 }
 
 export interface ServiceCallWithCounts extends ServiceCall {
@@ -675,6 +96,7 @@ export interface ServiceCallWithCounts extends ServiceCall {
   // Roll-up fields for the operational list view
   primaryTechnicianId: number | null;     // technician on most-recent visit
   primaryTechnicianName: string | null;
+  createdByName: string | null;            // display name of the user who created the call
   visitCount: number;                      // # of return visits
   invoiceId: number | null;                // latest invoice on this call
   invoiceNumber: string | null;
@@ -684,6 +106,7 @@ export interface ServiceCallWithCounts extends ServiceCall {
 }
 
 export interface ServiceCallFull extends ServiceCall {
+  createdByName: string | null;            // display name of the user who created the call
   photos: Photo[];
   parts: Part[];
   activities: ActivityLog[];
@@ -731,49 +154,49 @@ export interface IStorage {
     dateFrom?: string;
     dateTo?: string;
     flaggedOnly?: boolean;
-  }): ServiceCallWithCounts[];
-  getServiceCallById(id: number): ServiceCallFull | undefined;
-  createServiceCall(call: InsertServiceCall): ServiceCall;
-  updateServiceCall(id: number, call: Partial<InsertServiceCall>): ServiceCall | undefined;
-  deleteServiceCall(id: number): void;
+  }): Promise<ServiceCallWithCounts[]>;
+  getServiceCallById(id: number): Promise<ServiceCallFull | undefined>;
+  createServiceCall(call: InsertServiceCall): Promise<ServiceCall>;
+  updateServiceCall(id: number, call: Partial<InsertServiceCall>): Promise<ServiceCall | undefined>;
+  deleteServiceCall(id: number): Promise<void>;
 
   // Photos
-  getPhotosByServiceCallId(serviceCallId: number): Photo[];
-  createPhoto(photo: InsertPhoto): Photo;
-  deletePhoto(id: number): void;
+  getPhotosByServiceCallId(serviceCallId: number): Promise<Photo[]>;
+  createPhoto(photo: InsertPhoto): Promise<Photo>;
+  deletePhoto(id: number): Promise<void>;
 
   // Photo label presets (custom labels users save for reuse)
-  getPhotoLabelPresets(): PhotoLabelPreset[];
-  getMergedPhotoLabels(): string[];
-  createPhotoLabelPreset(label: string, userId: number | null): PhotoLabelPreset | null;
-  deletePhotoLabelPreset(id: number): void;
+  getPhotoLabelPresets(): Promise<PhotoLabelPreset[]>;
+  getMergedPhotoLabels(): Promise<string[]>;
+  createPhotoLabelPreset(label: string, userId: number | null): Promise<PhotoLabelPreset | null>;
+  deletePhotoLabelPreset(id: number): Promise<void>;
 
   // Parts
-  getPartsByServiceCallId(serviceCallId: number): Part[];
-  createPart(part: InsertPart): Part;
-  updatePart(id: number, part: Partial<InsertPart>): Part | undefined;
-  deletePart(id: number): void;
+  getPartsByServiceCallId(serviceCallId: number): Promise<Part[]>;
+  createPart(part: InsertPart): Promise<Part>;
+  updatePart(id: number, part: Partial<InsertPart>): Promise<Part | undefined>;
+  deletePart(id: number): Promise<void>;
 
   // Service Call Products (multi-product)
-  getProductsByServiceCallId(serviceCallId: number): ServiceCallProduct[];
-  createServiceCallProduct(data: InsertServiceCallProduct): ServiceCallProduct;
-  updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): ServiceCallProduct | undefined;
-  voidServiceCallProduct(id: number): { voided: boolean; reason?: string };
+  getProductsByServiceCallId(serviceCallId: number): Promise<ServiceCallProduct[]>;
+  createServiceCallProduct(data: InsertServiceCallProduct): Promise<ServiceCallProduct>;
+  updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): Promise<ServiceCallProduct | undefined>;
+  voidServiceCallProduct(id: number): Promise<{ voided: boolean; reason?: string }>;
 
   // Dashboard
-  getDashboardStats(): DashboardStats;
-  getRecentServiceCalls(limit: number): ServiceCallWithCounts[];
+  getDashboardStats(): Promise<DashboardStats>;
+  getRecentServiceCalls(limit: number): Promise<ServiceCallWithCounts[]>;
 
   // Related Calls
-  getRelatedCalls(callId: number): ServiceCall[];
+  getRelatedCalls(callId: number): Promise<ServiceCall[]>;
 
   // Contacts
-  getAllContacts(filters?: { type?: string; search?: string }): Contact[];
-  getContactById(id: number): Contact | undefined;
-  createContact(contact: InsertContact): Contact;
-  updateContact(id: number, contact: Partial<InsertContact>): Contact | undefined;
-  deleteContact(id: number): void;
-  suggestContacts(type: string, query: string): Contact[];
+  getAllContacts(filters?: { type?: string; search?: string }): Promise<Contact[]>;
+  getContactById(id: number): Promise<Contact | undefined>;
+  createContact(contact: InsertContact): Promise<Contact>;
+  updateContact(id: number, contact: Partial<InsertContact>): Promise<Contact | undefined>;
+  deleteContact(id: number): Promise<void>;
+  suggestContacts(type: string, query: string): Promise<Contact[]>;
   findOrCreateContact(type: string, contactName: string, extra?: {
     companyName?: string | null;
     phone?: string | null;
@@ -781,13 +204,45 @@ export interface IStorage {
     address?: string | null;
     city?: string | null;
     state?: string | null;
-  }): Contact | null;
+  }): Promise<Contact | null>;
+}
+
+// The 16 legacy single-product columns that service_calls duplicates on the
+// product_index=1 row. Camel-case keys shared by both InsertServiceCall and
+// InsertServiceCallProduct. Mirrors scripts/audit-legacy-divergence.mjs (which
+// uses the snake_case equivalents) and the write-through in updateServiceCall.
+const LEGACY_PRODUCT_FIELDS = [
+  "manufacturer",
+  "manufacturerOther",
+  "productModel",
+  "productSerial",
+  "productType",
+  "installationDate",
+  "issueDescription",
+  "diagnosis",
+  "resolution",
+  "claimStatus",
+  "claimNumber",
+  "claimNotes",
+  "partsCost",
+  "laborCost",
+  "otherCost",
+  "claimAmount",
+] as const;
+
+// A2 step 3 (#64): the Product 1 row (product_index=1, voided=0) is the source
+// of truth for the 16 legacy fields. Readers overlay its value onto the call,
+// falling back to the legacy service_calls column only when Product 1 is missing
+// or empty for that field. On reconciled data (product1 == legacy) this is
+// identical to reading the legacy columns; where they differ, Product 1 wins.
+function pickProduct1(product1Value: unknown, legacyValue: unknown): unknown {
+  return product1Value != null && String(product1Value).trim() !== "" ? product1Value : legacyValue;
 }
 
 export class SQLiteStorage implements IStorage {
   // ─── Service Calls ──────────────────────────────────────────────────────────
 
-  getAllServiceCalls(filters?: {
+  async getAllServiceCalls(filters?: {
     manufacturer?: string;
     status?: string;
     claimStatus?: string;
@@ -797,7 +252,7 @@ export class SQLiteStorage implements IStorage {
     dateFrom?: string;
     dateTo?: string;
     flaggedOnly?: boolean;
-  }): ServiceCallWithCounts[] {
+  }): Promise<ServiceCallWithCounts[]> {
     // Build WHERE conditions to push filtering into SQL
     const conditions: any[] = [];
     const params: any[] = [];
@@ -842,7 +297,9 @@ export class SQLiteStorage implements IStorage {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     // Single query with subqueries for counts + rollups (tech, invoice) — eliminates N+1
-    // primary_technician_id = most-recent visit's technician (or NULL)
+    // primary_technician_id = the explicitly assigned technician
+    // (sc.assigned_technician_id, Migration 37) if set, else the most-recent
+    // visit's technician (legacy fallback), else NULL.
     // invoice_* = latest invoice (by issue_date) on this call (or NULL)
     const query = `
       SELECT sc.*,
@@ -850,17 +307,26 @@ export class SQLiteStorage implements IStorage {
         (SELECT COUNT(*) FROM parts_used pu WHERE pu.service_call_id = sc.id) AS part_count,
         (SELECT COUNT(*) FROM service_call_products scp WHERE scp.service_call_id = sc.id AND scp.voided = 0) AS product_count,
         (SELECT COUNT(*) FROM service_call_visits v WHERE v.service_call_id = sc.id) AS visit_count,
-        (
-          SELECT v.technician_id FROM service_call_visits v
-          WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
-          ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+        COALESCE(
+          sc.assigned_technician_id,
+          (
+            SELECT v.technician_id FROM service_call_visits v
+            WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
+            ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+          )
         ) AS primary_technician_id,
-        (
-          SELECT u.display_name FROM service_call_visits v
-          LEFT JOIN users u ON u.id = v.technician_id
-          WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
-          ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+        COALESCE(
+          (SELECT u.display_name FROM users u WHERE u.id = sc.assigned_technician_id LIMIT 1),
+          (
+            SELECT u.display_name FROM service_call_visits v
+            LEFT JOIN users u ON u.id = v.technician_id
+            WHERE v.service_call_id = sc.id AND v.technician_id IS NOT NULL
+            ORDER BY v.visit_date DESC, v.id DESC LIMIT 1
+          )
         ) AS primary_technician_name,
+        (
+          SELECT u.display_name FROM users u WHERE u.id = sc.created_by LIMIT 1
+        ) AS created_by_name,
         (
           SELECT i.id FROM invoices i
           WHERE i.service_call_id = sc.id
@@ -894,7 +360,7 @@ export class SQLiteStorage implements IStorage {
     const rows = sqlite.prepare(query).all(...params) as any[];
 
     // Map snake_case SQL result to camelCase TypeScript types
-    return rows.map(row => ({
+    const mapped = rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -954,33 +420,92 @@ export class SQLiteStorage implements IStorage {
       visitCount: row.visit_count ?? 0,
       primaryTechnicianId: row.primary_technician_id ?? null,
       primaryTechnicianName: row.primary_technician_name ?? null,
+      createdBy: row.created_by ?? null,
+      createdByName: row.created_by_name ?? null,
+      assignedTechnicianId: row.assigned_technician_id ?? null,
       invoiceId: row.invoice_id ?? null,
       invoiceNumber: row.invoice_number ?? null,
       invoiceStatus: row.invoice_status ?? null,
       invoiceTotal: row.invoice_total ?? null,
       invoiceDueDate: row.invoice_due_date ?? null,
     }));
+    return this.overlayProduct1(mapped);
   }
 
-  getServiceCallById(id: number): ServiceCallFull | undefined {
+  // Overlay each call's 16 legacy fields with its Product 1 row (batched: one
+  // query for all ids). Mutates and returns the same array. Used by every reader
+  // that surfaces the legacy fields so they all resolve to the same source.
+  private overlayProduct1<T extends { id: number }>(calls: T[]): T[] {
+    if (calls.length === 0) return calls;
+    const ids = calls.map((c) => c.id);
+    const placeholders = ids.map(() => "?").join(", ");
+    const prodRows = sqlite
+      .prepare(
+        `SELECT * FROM service_call_products WHERE product_index = 1 AND voided = 0 AND service_call_id IN (${placeholders}) ORDER BY id`,
+      )
+      .all(...ids) as any[];
+    const byCall = new Map<number, any>();
+    for (const p of prodRows) if (!byCall.has(p.service_call_id)) byCall.set(p.service_call_id, p);
+
+    for (const call of calls as any[]) {
+      const p = byCall.get(call.id);
+      if (!p) continue;
+      call.manufacturer = pickProduct1(p.manufacturer, call.manufacturer);
+      call.manufacturerOther = pickProduct1(p.manufacturer_other, call.manufacturerOther);
+      call.productModel = pickProduct1(p.product_model, call.productModel);
+      call.productSerial = pickProduct1(p.product_serial, call.productSerial);
+      call.productType = pickProduct1(p.product_type, call.productType);
+      call.installationDate = pickProduct1(p.installation_date, call.installationDate);
+      call.issueDescription = pickProduct1(p.issue_description, call.issueDescription);
+      call.diagnosis = pickProduct1(p.diagnosis, call.diagnosis);
+      call.resolution = pickProduct1(p.resolution, call.resolution);
+      call.claimStatus = pickProduct1(p.claim_status, call.claimStatus);
+      call.claimNumber = pickProduct1(p.claim_number, call.claimNumber);
+      call.claimNotes = pickProduct1(p.claim_notes, call.claimNotes);
+      call.partsCost = pickProduct1(p.parts_cost, call.partsCost);
+      call.laborCost = pickProduct1(p.labor_cost, call.laborCost);
+      call.otherCost = pickProduct1(p.other_cost, call.otherCost);
+      call.claimAmount = pickProduct1(p.claim_amount, call.claimAmount);
+    }
+    return calls;
+  }
+
+  async getServiceCallById(id: number): Promise<ServiceCallFull | undefined> {
     const call = db.select().from(serviceCalls).where(eq(serviceCalls.id, id)).get();
     if (!call) return undefined;
     // Photos grouped chronologically by visit (Visit 1 first, then Visit 2,
     // etc.). Routes through getPhotosByServiceCallId so the sort lives in one
     // place.
-    const callPhotos = this.getPhotosByServiceCallId(id);
+    const callPhotos = await this.getPhotosByServiceCallId(id);
     const callParts = db.select().from(partsUsed).where(eq(partsUsed.serviceCallId, id)).all();
     const callActivities = db.select().from(activityLog).where(eq(activityLog.serviceCallId, id)).all();
-    const callProducts = this.getProductsByServiceCallId(id);
-    return { ...call, photos: callPhotos, parts: callParts, activities: callActivities, products: callProducts };
+    const callProducts = await this.getProductsByServiceCallId(id);
+    // Resolve the creator's display name (if the call has a creator and that
+    // user still exists). Surfaces "Created by …" on the detail page header.
+    let createdByName: string | null = null;
+    if ((call as any).createdBy) {
+      const u = sqlite
+        .prepare(`SELECT display_name FROM users WHERE id = ? LIMIT 1`)
+        .get((call as any).createdBy) as any;
+      createdByName = u?.display_name ?? null;
+    }
+    // A2 step 3 (#64): source the 16 legacy fields from Product 1 (falling back
+    // to the legacy column when Product 1 is missing/empty for that field), so
+    // the detail payload resolves them from the same source as every list view.
+    const overlaid = { ...call } as any;
+    const p1 = callProducts.find((p) => p.productIndex === 1);
+    if (p1) {
+      for (const f of LEGACY_PRODUCT_FIELDS) overlaid[f] = pickProduct1((p1 as any)[f], (call as any)[f]);
+    }
+    return { ...overlaid, createdByName, photos: callPhotos, parts: callParts, activities: callActivities, products: callProducts };
   }
 
-  createServiceCall(call: InsertServiceCall): ServiceCall {
+  async createServiceCall(call: InsertServiceCall, createdBy?: number | null): Promise<ServiceCall> {
     const now = new Date().toISOString();
-    return db.insert(serviceCalls).values({ ...call, createdAt: now }).returning().get();
+    return db.insert(serviceCalls).values({ ...call, createdBy: createdBy ?? null, createdAt: now } as any).returning().get();
   }
 
-  updateServiceCall(id: number, call: Partial<InsertServiceCall>): ServiceCall | undefined {
+  async updateServiceCall(id: number, call: Partial<InsertServiceCall>): Promise<ServiceCall | undefined> {
     // Always bump updated_at so optimistic concurrency works.
     const withTs = { ...call, updatedAt: new Date().toISOString() } as any;
 
@@ -1014,25 +539,89 @@ export class SQLiteStorage implements IStorage {
         ).run(updated.scheduledDate, updated.scheduledTime, activeApp.id);
       }
     }
+
+    // Write-through (A2 step 1): the detail-page edit path historically wrote
+    // ONLY the legacy service_calls columns, leaving product_index=1 stale.
+    // Now, whenever any of the 16 legacy fields is part of this PATCH, mirror
+    // the resulting values onto the Product 1 row so the two sources converge.
+    // Values are copied verbatim from the freshly-updated row (including
+    // intentional clears), which makes replayed/offline PATCHes idempotent.
+    if (updated) {
+      this.writeThroughLegacyToProduct1(
+        updated,
+        LEGACY_PRODUCT_FIELDS.filter((f) => Object.prototype.hasOwnProperty.call(call, f)),
+      );
+    }
     return updated;
   }
 
-  deleteServiceCall(id: number): void {
-    // Clean up all relational rows that reference this call so we don't leave
-    // orphans in the DB (previously: appointments, visits, invoices remained).
-    sqlite.prepare(`DELETE FROM scheduled_appointments WHERE call_id = ?`).run(id);
-    sqlite.prepare(`DELETE FROM service_call_visits WHERE service_call_id = ?`).run(id);
-    sqlite.prepare(`DELETE FROM invoices WHERE service_call_id = ?`).run(id);
-    db.delete(photos).where(eq(photos.serviceCallId, id)).run();
-    db.delete(partsUsed).where(eq(partsUsed.serviceCallId, id)).run();
-    db.delete(activityLog).where(eq(activityLog.serviceCallId, id)).run();
-    sqlite.prepare(`DELETE FROM service_call_products WHERE service_call_id = ?`).run(id);
-    db.delete(serviceCalls).where(eq(serviceCalls.id, id)).run();
+  // Mirror the legacy columns just written on service_calls onto the call's
+  // product_index=1 (voided=0) row. If that row does not exist yet, create it
+  // by backfilling ALL 16 fields from the call (matching migration-33 backfill
+  // semantics: product_index=1, voided=0, timestamps now) — the same shape the
+  // multi-product code and equipment search expect.
+  private writeThroughLegacyToProduct1(
+    call: ServiceCall,
+    changedFields: readonly (typeof LEGACY_PRODUCT_FIELDS)[number][],
+  ): void {
+    if (changedFields.length === 0) return;
+
+    const now = new Date().toISOString();
+    const product1 = sqlite
+      .prepare(
+        `SELECT id FROM service_call_products WHERE service_call_id = ? AND product_index = 1 AND voided = 0 ORDER BY id LIMIT 1`,
+      )
+      .get(call.id) as { id: number } | undefined;
+
+    if (product1) {
+      const patch: Record<string, unknown> = { updatedAt: now };
+      for (const f of changedFields) patch[f] = (call as any)[f];
+      db.update(serviceCallProducts).set(patch as any).where(eq(serviceCallProducts.id, product1.id)).run();
+      return;
+    }
+
+    // No Product 1 row — create a complete one from the current legacy columns.
+    const values: Record<string, unknown> = {
+      serviceCallId: call.id,
+      productIndex: 1,
+      voided: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    for (const f of LEGACY_PRODUCT_FIELDS) values[f] = (call as any)[f];
+    // manufacturer is NOT NULL on the product table; service_calls.manufacturer
+    // is likewise NOT NULL, so this is always populated, but guard anyway.
+    if (values.manufacturer == null || values.manufacturer === "") values.manufacturer = "Other";
+    db.insert(serviceCallProducts).values(values as any).run();
+  }
+
+  async deleteServiceCall(id: number): Promise<void> {
+    // Delete the call and every row that references it, atomically. All eight
+    // statements run inside a single transaction so a failure midway can never
+    // leave the DB half-deleted (e.g. call gone but visits/photos remain).
+    //
+    // invoice_items are keyed on invoice_id, not service_call_id, so they must
+    // be deleted via the call's invoices FIRST — a raw `DELETE FROM invoices`
+    // (as before) bypassed deleteInvoice() and orphaned every line item.
+    const tx = sqlite.transaction((callId: number) => {
+      sqlite.prepare(
+        `DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE service_call_id = ?)`
+      ).run(callId);
+      sqlite.prepare(`DELETE FROM invoices WHERE service_call_id = ?`).run(callId);
+      sqlite.prepare(`DELETE FROM scheduled_appointments WHERE call_id = ?`).run(callId);
+      sqlite.prepare(`DELETE FROM service_call_visits WHERE service_call_id = ?`).run(callId);
+      db.delete(photos).where(eq(photos.serviceCallId, callId)).run();
+      db.delete(partsUsed).where(eq(partsUsed.serviceCallId, callId)).run();
+      db.delete(activityLog).where(eq(activityLog.serviceCallId, callId)).run();
+      sqlite.prepare(`DELETE FROM service_call_products WHERE service_call_id = ?`).run(callId);
+      db.delete(serviceCalls).where(eq(serviceCalls.id, callId)).run();
+    });
+    tx(id);
   }
 
   // ─── Photos ─────────────────────────────────────────────────────────────────
 
-  getPhotosByServiceCallId(serviceCallId: number): Photo[] {
+  async getPhotosByServiceCallId(serviceCallId: number): Promise<Photo[]> {
     // Group by visit chronologically: Visit 1 photos first, then Visit 2,
     // etc., with each visit's photos in the order the tech arranged them.
     // Tie-break on id so new uploads always land at the end of their visit.
@@ -1044,7 +633,7 @@ export class SQLiteStorage implements IStorage {
       .all();
   }
 
-  createPhoto(photo: InsertPhoto): Photo {
+  async createPhoto(photo: InsertPhoto): Promise<Photo> {
     // Auto-assign visit_number based on latest visit for this service call
     const latest = sqlite.prepare(
       `SELECT COALESCE(MAX(visit_number), 1) as latest FROM service_call_visits WHERE service_call_id = ?`
@@ -1053,11 +642,11 @@ export class SQLiteStorage implements IStorage {
     return db.insert(photos).values({ ...photo, visitNumber }).returning().get();
   }
 
-  deletePhoto(id: number): void {
+  async deletePhoto(id: number): Promise<void> {
     db.delete(photos).where(eq(photos.id, id)).run();
   }
 
-  updatePhotoSortOrder(photoId: number, sortOrder: number): void {
+  async updatePhotoSortOrder(photoId: number, sortOrder: number): Promise<void> {
     sqlite.prepare("UPDATE photos SET sort_order = ? WHERE id = ?").run(sortOrder, photoId);
   }
 
@@ -1067,7 +656,7 @@ export class SQLiteStorage implements IStorage {
   // labels. We expose the merged list so the client doesn't have to know
   // about the split.
 
-  getPhotoLabelPresets(): PhotoLabelPreset[] {
+  async getPhotoLabelPresets(): Promise<PhotoLabelPreset[]> {
     return sqlite
       .prepare(`SELECT id, label, created_by_user_id, created_at FROM photo_label_presets ORDER BY label ASC`)
       .all()
@@ -1080,8 +669,8 @@ export class SQLiteStorage implements IStorage {
   }
 
   /** Get the full list of labels the picker should show — built-in first, then saved. */
-  getMergedPhotoLabels(): string[] {
-    const saved = this.getPhotoLabelPresets().map(p => p.label);
+  async getMergedPhotoLabels(): Promise<string[]> {
+    const saved = (await this.getPhotoLabelPresets()).map(p => p.label);
     const seen = new Set<string>();
     const out: string[] = [];
     for (const l of [...PHOTO_TYPES, ...saved]) {
@@ -1092,7 +681,7 @@ export class SQLiteStorage implements IStorage {
 
   /** Save a custom label. Idempotent — if the label already exists (built-in
    *  or saved), just returns the existing row (or null for built-ins). */
-  createPhotoLabelPreset(label: string, userId: number | null): PhotoLabelPreset | null {
+  async createPhotoLabelPreset(label: string, userId: number | null): Promise<PhotoLabelPreset | null> {
     const trimmed = label.trim();
     if (!trimmed) return null;
     // Don't re-save built-ins.
@@ -1118,31 +707,31 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  deletePhotoLabelPreset(id: number): void {
+  async deletePhotoLabelPreset(id: number): Promise<void> {
     sqlite.prepare(`DELETE FROM photo_label_presets WHERE id = ?`).run(id);
   }
 
   // ─── Parts ──────────────────────────────────────────────────────────────────
 
-  getPartsByServiceCallId(serviceCallId: number): Part[] {
+  async getPartsByServiceCallId(serviceCallId: number): Promise<Part[]> {
     return db.select().from(partsUsed).where(eq(partsUsed.serviceCallId, serviceCallId)).all();
   }
 
-  createPart(part: InsertPart): Part {
+  async createPart(part: InsertPart): Promise<Part> {
     return db.insert(partsUsed).values(part).returning().get();
   }
 
-  updatePart(id: number, part: Partial<InsertPart>): Part | undefined {
+  async updatePart(id: number, part: Partial<InsertPart>): Promise<Part | undefined> {
     return db.update(partsUsed).set(part).where(eq(partsUsed.id, id)).returning().get();
   }
 
-  deletePart(id: number): void {
+  async deletePart(id: number): Promise<void> {
     db.delete(partsUsed).where(eq(partsUsed.id, id)).run();
   }
 
   // ─── Service Call Products (multi-product) ────────────────────────────────────
 
-  getProductsByServiceCallId(serviceCallId: number): ServiceCallProduct[] {
+  async getProductsByServiceCallId(serviceCallId: number): Promise<ServiceCallProduct[]> {
     return db
       .select()
       .from(serviceCallProducts)
@@ -1151,7 +740,7 @@ export class SQLiteStorage implements IStorage {
       .all();
   }
 
-  createServiceCallProduct(data: InsertServiceCallProduct): ServiceCallProduct {
+  async createServiceCallProduct(data: InsertServiceCallProduct): Promise<ServiceCallProduct> {
     const now = new Date().toISOString();
     // Auto-assign productIndex = MAX(product_index)+1 for this call (min 1).
     const maxRow = sqlite.prepare(
@@ -1163,26 +752,20 @@ export class SQLiteStorage implements IStorage {
       .values({ ...data, productIndex: nextIndex, createdAt: now })
       .returning()
       .get();
-    if (created.productIndex === 1) {
-      this.syncLegacyFromProduct(created);
-    }
     return created;
   }
 
-  updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): ServiceCallProduct | undefined {
+  async updateServiceCallProduct(id: number, data: Partial<InsertServiceCallProduct>): Promise<ServiceCallProduct | undefined> {
     const updated = db
       .update(serviceCallProducts)
       .set({ ...data, updatedAt: new Date().toISOString() } as any)
       .where(eq(serviceCallProducts.id, id))
       .returning()
       .get();
-    if (updated && updated.productIndex === 1) {
-      this.syncLegacyFromProduct(updated);
-    }
     return updated;
   }
 
-  voidServiceCallProduct(id: number): { voided: boolean; reason?: string } {
+  async voidServiceCallProduct(id: number): Promise<{ voided: boolean; reason?: string }> {
     const product = db.select().from(serviceCallProducts).where(eq(serviceCallProducts.id, id)).get();
     if (!product) return { voided: false, reason: "not_found" };
     // A call must always retain >=1 active product. Refuse to void the last one.
@@ -1199,36 +782,9 @@ export class SQLiteStorage implements IStorage {
     return { voided: true };
   }
 
-  // Keep the legacy single-product columns on service_calls in sync with
-  // product_index=1 so reports/equipment search that still read those columns
-  // stay correct until they migrate to the products table.
-  private syncLegacyFromProduct(p: ServiceCallProduct): void {
-    db.update(serviceCalls)
-      .set({
-        manufacturer: p.manufacturer,
-        manufacturerOther: p.manufacturerOther,
-        productModel: p.productModel,
-        productSerial: p.productSerial,
-        productType: p.productType,
-        installationDate: p.installationDate,
-        issueDescription: p.issueDescription,
-        diagnosis: p.diagnosis,
-        resolution: p.resolution,
-        claimStatus: p.claimStatus,
-        claimNumber: p.claimNumber,
-        claimNotes: p.claimNotes,
-        partsCost: p.partsCost,
-        laborCost: p.laborCost,
-        otherCost: p.otherCost,
-        claimAmount: p.claimAmount,
-      })
-      .where(eq(serviceCalls.id, p.serviceCallId))
-      .run();
-  }
-
   // ─── Dashboard ──────────────────────────────────────────────────────────────
 
-  getDashboardStats(): DashboardStats {
+  async getDashboardStats(): Promise<DashboardStats> {
     // All dates computed in the business timezone (default America/Denver).
     // Previously this used server-local (UTC on Render) which caused the
     // month-start to roll over ~6 hours early.
@@ -1310,7 +866,7 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  getDashboardToday(): DashboardTodayData {
+  async getDashboardToday(): Promise<DashboardTodayData> {
     const today = todayLocalISO();
 
     // Pull every call whose schedule lands on today — either via the parent
@@ -1342,7 +898,7 @@ export class SQLiteStorage implements IStorage {
         sc.id ASC
     `).all(today, today, today) as any[];
 
-    const todayScheduled: ServiceCallWithCounts[] = rows.map(row => ({
+    const todayScheduled: ServiceCallWithCounts[] = this.overlayProduct1(rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -1402,12 +958,15 @@ export class SQLiteStorage implements IStorage {
       visitCount: 0,
       primaryTechnicianId: null,
       primaryTechnicianName: null,
+      createdBy: (row as any).created_by ?? null,
+      createdByName: null,
+      assignedTechnicianId: (row as any).assigned_technician_id ?? null,
       invoiceId: null,
       invoiceNumber: null,
       invoiceStatus: null,
       invoiceTotal: null,
       invoiceDueDate: null,
-    }));
+    })));
 
     const inProgressCount = todayScheduled.filter(c => c.status === "In Progress").length;
 
@@ -1427,7 +986,7 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  getDashboardActivity(limit: number = 10): DashboardActivityEntry[] {
+  async getDashboardActivity(limit: number = 10): Promise<DashboardActivityEntry[]> {
     const rows = sqlite.prepare(`
       SELECT id, username, action, entity_type, entity_id, details, created_at
       FROM audit_log_system
@@ -1446,7 +1005,7 @@ export class SQLiteStorage implements IStorage {
     }));
   }
 
-  getRecentServiceCalls(limit: number): ServiceCallWithCounts[] {
+  async getRecentServiceCalls(limit: number): Promise<ServiceCallWithCounts[]> {
     const rows = sqlite.prepare(`
       SELECT sc.*,
         (SELECT COUNT(*) FROM photos p WHERE p.service_call_id = sc.id) AS photo_count,
@@ -1462,7 +1021,7 @@ export class SQLiteStorage implements IStorage {
       LIMIT ?
     `).all(limit) as any[];
 
-    return rows.map(row => ({
+    return this.overlayProduct1(rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -1522,17 +1081,20 @@ export class SQLiteStorage implements IStorage {
       visitCount: 0,
       primaryTechnicianId: null,
       primaryTechnicianName: null,
+      createdBy: (row as any).created_by ?? null,
+      createdByName: null,
+      assignedTechnicianId: (row as any).assigned_technician_id ?? null,
       invoiceId: null,
       invoiceNumber: null,
       invoiceStatus: null,
       invoiceTotal: null,
       invoiceDueDate: null,
-    }));
+    })));
   }
 
   // ─── Related Calls (Follow-up chain) ─────────────────────────────────────
 
-  getRelatedCalls(callId: number): ServiceCall[] {
+  async getRelatedCalls(callId: number): Promise<ServiceCall[]> {
     // Find the root call by walking up parent_call_id
     let currentId = callId;
     for (let i = 0; i < 100; i++) {
@@ -1571,7 +1133,7 @@ export class SQLiteStorage implements IStorage {
       `SELECT * FROM service_calls WHERE id IN (${placeholders}) ORDER BY call_date ASC, id ASC`
     ).all(...Array.from(ids)) as any[];
 
-    return rows.map(row => ({
+    return this.overlayProduct1(rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -1619,18 +1181,20 @@ export class SQLiteStorage implements IStorage {
       longitude: row.longitude,
       parentCallId: row.parent_call_id,
       isTest: row.is_test,
+      createdBy: row.created_by ?? null,
+      assignedTechnicianId: row.assigned_technician_id ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       completedDate: row.completed_date ?? null,
       flaggedInternal: !!row.flagged_internal,
       flaggedReason: row.flagged_reason ?? null,
       coordsLocked: row.coords_locked ?? 0,
-    }));
+    })));
   }
 
   // ─── Contacts ──────────────────────────────────────────────────────────────
 
-  getAllContacts(filters?: { type?: string; search?: string }): Contact[] {
+  async getAllContacts(filters?: { type?: string; search?: string }): Promise<Contact[]> {
     const conditions: string[] = [];
     const params: any[] = [];
 
@@ -1663,32 +1227,32 @@ export class SQLiteStorage implements IStorage {
     }));
   }
 
-  getContactById(id: number): Contact | undefined {
+  async getContactById(id: number): Promise<Contact | undefined> {
     return db.select().from(contacts).where(eq(contacts.id, id)).get();
   }
 
-  createContact(contact: InsertContact): Contact {
+  async createContact(contact: InsertContact): Promise<Contact> {
     const now = new Date().toISOString();
     return db.insert(contacts).values({ ...contact, createdAt: now }).returning().get();
   }
 
-  updateContact(id: number, contact: Partial<InsertContact>): Contact | undefined {
+  async updateContact(id: number, contact: Partial<InsertContact>): Promise<Contact | undefined> {
     return db.update(contacts).set(contact).where(eq(contacts.id, id)).returning().get();
   }
 
-  deleteContact(id: number): void {
+  async deleteContact(id: number): Promise<void> {
     db.delete(contacts).where(eq(contacts.id, id)).run();
   }
 
   // Find existing contact by type + name, or create a new one
-  findOrCreateContact(type: string, contactName: string, extra?: {
+  async findOrCreateContact(type: string, contactName: string, extra?: {
     companyName?: string | null;
     phone?: string | null;
     email?: string | null;
     address?: string | null;
     city?: string | null;
     state?: string | null;
-  }): Contact | null {
+  }): Promise<Contact | null> {
     if (!contactName || !contactName.trim()) return null;
     const name = contactName.trim();
     // Check if a contact with the same type and name already exists
@@ -1711,7 +1275,7 @@ export class SQLiteStorage implements IStorage {
       return existing;
     }
     // Create new
-    return this.createContact({
+    return await this.createContact({
       contactType: type,
       contactName: name,
       companyName: extra?.companyName ?? null,
@@ -1724,7 +1288,7 @@ export class SQLiteStorage implements IStorage {
     });
   }
 
-  suggestContacts(type: string, query: string): Contact[] {
+  async suggestContacts(type: string, query: string): Promise<Contact[]> {
     const s = `%${query.toLowerCase()}%`;
     const rows = sqlite.prepare(
       `SELECT * FROM contacts WHERE contact_type = ? AND (LOWER(company_name) LIKE ? OR LOWER(contact_name) LIKE ?) ORDER BY contact_name ASC LIMIT 5`
@@ -1748,7 +1312,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Follow-ups Due ────────────────────────────────────────────────────────
 
-  getFollowUpsDue(): ServiceCallWithCounts[] {
+  async getFollowUpsDue(): Promise<ServiceCallWithCounts[]> {
     const today = todayLocalISO();
     const rows = sqlite.prepare(`
       SELECT sc.*,
@@ -1760,7 +1324,7 @@ export class SQLiteStorage implements IStorage {
       ORDER BY sc.follow_up_date ASC
     `).all(today) as any[];
 
-    return rows.map(row => ({
+    return this.overlayProduct1(rows.map(row => ({
       id: row.id,
       callType: row.call_type,
       serviceMethod: row.service_method,
@@ -1820,30 +1384,50 @@ export class SQLiteStorage implements IStorage {
       visitCount: 0,
       primaryTechnicianId: null,
       primaryTechnicianName: null,
+      createdBy: (row as any).created_by ?? null,
+      createdByName: null,
+      assignedTechnicianId: (row as any).assigned_technician_id ?? null,
       invoiceId: null,
       invoiceNumber: null,
       invoiceStatus: null,
       invoiceTotal: null,
       invoiceDueDate: null,
-    }));
+    })));
   }
 
   // ─── Global Search ────────────────────────────────────────────────────────
 
-  globalSearch(query: string): {
+  async globalSearch(query: string): Promise<{
     calls: Array<{ id: number; callDate: string; customerName: string | null; manufacturer: string; productModel: string | null; status: string }>;
     contacts: Array<{ id: number; contactType: string; contactName: string; companyName: string | null; phone: string | null }>;
     activities: Array<{ id: number; serviceCallId: number; note: string; createdAt: string }>;
-  } {
+  }> {
     const q = `%${query.toLowerCase()}%`;
 
+    // A2 step 3 (#64): the product fields returned AND matched come from the
+    // Product 1 row (falling back to the legacy column when it is missing/empty),
+    // so search resolves equipment/claim terms against the same source as the
+    // list views. On reconciled data this is identical to matching the legacy
+    // columns.
     const calls = sqlite.prepare(`
-      SELECT id, call_date, customer_name, manufacturer, product_model, status
-      FROM service_calls
-      WHERE LOWER(customer_name) LIKE ? OR LOWER(job_site_name) LIKE ? OR LOWER(product_model) LIKE ?
-        OR LOWER(product_serial) LIKE ? OR LOWER(issue_description) LIKE ? OR LOWER(claim_number) LIKE ?
-        OR LOWER(manufacturer) LIKE ?
-      ORDER BY call_date DESC
+      SELECT sc.id AS id, sc.call_date AS call_date, sc.customer_name AS customer_name,
+        COALESCE(NULLIF(TRIM(p1.manufacturer), ''), sc.manufacturer) AS manufacturer,
+        COALESCE(NULLIF(TRIM(p1.product_model), ''), sc.product_model) AS product_model,
+        sc.status AS status
+      FROM service_calls sc
+      LEFT JOIN service_call_products p1
+        ON p1.id = (
+          SELECT s.id FROM service_call_products s
+          WHERE s.service_call_id = sc.id AND s.product_index = 1 AND s.voided = 0
+          ORDER BY s.id LIMIT 1
+        )
+      WHERE LOWER(sc.customer_name) LIKE ? OR LOWER(sc.job_site_name) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.product_model), ''), sc.product_model)) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.product_serial), ''), sc.product_serial)) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.issue_description), ''), sc.issue_description)) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.claim_number), ''), sc.claim_number)) LIKE ?
+        OR LOWER(COALESCE(NULLIF(TRIM(p1.manufacturer), ''), sc.manufacturer)) LIKE ?
+      ORDER BY sc.call_date DESC
       LIMIT 5
     `).all(q, q, q, q, q, q, q) as any[];
 
@@ -1890,22 +1474,22 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Activity Log ──────────────────────────────────────────────────────────
 
-  getActivitiesByServiceCallId(serviceCallId: number): ActivityLog[] {
+  async getActivitiesByServiceCallId(serviceCallId: number): Promise<ActivityLog[]> {
     return db.select().from(activityLog).where(eq(activityLog.serviceCallId, serviceCallId)).all();
   }
 
-  createActivity(data: InsertActivityLog): ActivityLog {
+  async createActivity(data: InsertActivityLog): Promise<ActivityLog> {
     const now = new Date().toISOString();
     return db.insert(activityLog).values({ ...data, createdAt: now }).returning().get();
   }
 
-  deleteActivity(id: number): void {
+  async deleteActivity(id: number): Promise<void> {
     db.delete(activityLog).where(eq(activityLog.id, id)).run();
   }
 
   // ─── Users ──────────────────────────────────────────────────────────────────
 
-  getAllUsers(): Omit<User, "password">[] {
+  async getAllUsers(): Promise<Omit<User, "password">[]> {
     const rows = sqlite.prepare(`SELECT id, username, display_name, email, role, active, must_change_password, created_at FROM users ORDER BY created_at ASC`).all() as any[];
     return rows.map(r => ({
       id: r.id, username: r.username, displayName: r.display_name, email: r.email,
@@ -1913,19 +1497,19 @@ export class SQLiteStorage implements IStorage {
     }));
   }
 
-  getUserById(id: number): User | undefined {
+  async getUserById(id: number): Promise<User | undefined> {
     const row = sqlite.prepare(`SELECT * FROM users WHERE id = ?`).get(id) as any;
     if (!row) return undefined;
     return { id: row.id, username: row.username, password: row.password, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
   }
 
-  getUserByUsername(username: string): User | undefined {
+  async getUserByUsername(username: string): Promise<User | undefined> {
     const row = sqlite.prepare(`SELECT * FROM users WHERE LOWER(username) = LOWER(?)`).get(username) as any;
     if (!row) return undefined;
     return { id: row.id, username: row.username, password: row.password, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
   }
 
-  createUser(data: { username: string; password: string; displayName: string; email?: string; role: string }): Omit<User, "password"> {
+  async createUser(data: { username: string; password: string; displayName: string; email?: string; role: string }): Promise<Omit<User, "password">> {
     const hashed = bcrypt.hashSync(data.password, 12);
     const now = new Date().toISOString();
     const row = sqlite.prepare(
@@ -1934,14 +1518,14 @@ export class SQLiteStorage implements IStorage {
     return { id: row.id, username: row.username, displayName: row.display_name, email: row.email, role: row.role, active: row.active, mustChangePassword: row.must_change_password, createdAt: row.created_at };
   }
 
-  deleteUser(id: number): void {
+  async deleteUser(id: number): Promise<void> {
     // Nullify references so history is preserved
     sqlite.prepare(`UPDATE audit_log_system SET user_id = NULL WHERE user_id = ?`).run(id);
     sqlite.prepare(`UPDATE service_call_visits SET technician_id = NULL WHERE technician_id = ?`).run(id);
     sqlite.prepare(`DELETE FROM users WHERE id = ?`).run(id);
   }
 
-  updateUser(id: number, data: { displayName?: string; email?: string; role?: string; active?: number; password?: string; mustChangePassword?: number }): Omit<User, "password"> | undefined {
+  async updateUser(id: number, data: { displayName?: string; email?: string; role?: string; active?: number; password?: string; mustChangePassword?: number }): Promise<Omit<User, "password"> | undefined> {
     const updates: string[] = [];
     const params: any[] = [];
     if (data.displayName !== undefined) { updates.push("display_name = ?"); params.push(data.displayName); }
@@ -1953,7 +1537,7 @@ export class SQLiteStorage implements IStorage {
       updates.push("must_change_password = 1");
     }
     if (data.mustChangePassword !== undefined) { updates.push("must_change_password = ?"); params.push(data.mustChangePassword); }
-    if (updates.length === 0) return this.getUserById(id) as any;
+    if (updates.length === 0) return (await this.getUserById(id)) as any;
     params.push(id);
     const row = sqlite.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ? RETURNING *`).get(...params) as any;
     if (!row) return undefined;
@@ -1966,7 +1550,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── System Audit Log ─────────────────────────────────────────────────────
 
-  createAuditEntry(data: { userId: number | null; username: string; action: string; entityType?: string; entityId?: number; details?: string }): void {
+  async createAuditEntry(data: { userId: number | null; username: string; action: string; entityType?: string; entityId?: number; details?: string }): Promise<void> {
     sqlite.prepare(
       `INSERT INTO audit_log_system (user_id, username, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(data.userId, data.username, data.action, data.entityType || null, data.entityId || null, data.details || null, new Date().toISOString());
@@ -1974,7 +1558,7 @@ export class SQLiteStorage implements IStorage {
 
   // ─── Invoices ───────────────────────────────────────────────────────────
 
-  generateInvoiceNumber(): string {
+  async generateInvoiceNumber(): Promise<string> {
     // Collision-safe: use MAX of the existing sequence numbers (not COUNT)
     // and never return a number that already exists. COUNT can collide if
     // an invoice was deleted, two requests arrive concurrently, or the
@@ -2022,7 +1606,7 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  getAllInvoices(filters?: { status?: string; billToType?: string; search?: string }): (Invoice & { itemCount: number })[] {
+  async getAllInvoices(filters?: { status?: string; billToType?: string; search?: string }): Promise<(Invoice & { itemCount: number })[]> {
     const conditions: string[] = [];
     const params: any[] = [];
     if (filters?.status) { conditions.push("status = ?"); params.push(filters.status); }
@@ -2039,19 +1623,19 @@ export class SQLiteStorage implements IStorage {
     return rows.map(r => ({ ...this.mapInvoiceRow(r), itemCount: r.item_count }));
   }
 
-  getInvoiceById(id: number): (Invoice & { items: InvoiceItem[] }) | undefined {
+  async getInvoiceById(id: number): Promise<(Invoice & { items: InvoiceItem[] }) | undefined> {
     const row = sqlite.prepare(`SELECT * FROM invoices WHERE id = ?`).get(id) as any;
     if (!row) return undefined;
     const items = sqlite.prepare(`SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sort_order ASC`).all(id) as any[];
     return { ...this.mapInvoiceRow(row), items: items.map(i => this.mapItemRow(i)) };
   }
 
-  getInvoicesByServiceCallId(serviceCallId: number): Invoice[] {
+  async getInvoicesByServiceCallId(serviceCallId: number): Promise<Invoice[]> {
     const rows = sqlite.prepare(`SELECT * FROM invoices WHERE service_call_id = ? ORDER BY created_at DESC`).all(serviceCallId) as any[];
     return rows.map(r => this.mapInvoiceRow(r));
   }
 
-  createInvoice(data: InsertInvoice): Invoice {
+  async createInvoice(data: InsertInvoice): Promise<Invoice> {
     const now = new Date().toISOString();
     const row = sqlite.prepare(`
       INSERT INTO invoices (invoice_number, service_call_id, bill_to_type, bill_to_name,
@@ -2072,7 +1656,7 @@ export class SQLiteStorage implements IStorage {
     return this.mapInvoiceRow(row);
   }
 
-  updateInvoice(id: number, data: Partial<InsertInvoice>): Invoice | undefined {
+  async updateInvoice(id: number, data: Partial<InsertInvoice>): Promise<Invoice | undefined> {
     const now = new Date().toISOString();
     const allowed = ["billToType","billToName","billToAddress","billToCity","billToState",
       "billToEmail","billToPhone","issueDate","dueDate","paymentTerms","status",
@@ -2094,20 +1678,20 @@ export class SQLiteStorage implements IStorage {
     return row ? this.mapInvoiceRow(row) : undefined;
   }
 
-  deleteInvoice(id: number): void {
+  async deleteInvoice(id: number): Promise<void> {
     sqlite.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(id);
     sqlite.prepare(`DELETE FROM invoices WHERE id = ?`).run(id);
   }
 
   // Mark any Sent invoice whose due_date < today as Overdue
-  markOverdueInvoices(today: string): void {
+  async markOverdueInvoices(today: string): Promise<void> {
     sqlite.prepare(
       `UPDATE invoices SET status = 'Overdue', updated_at = ? WHERE status = 'Sent' AND due_date IS NOT NULL AND due_date < ?`
     ).run(new Date().toISOString(), today);
   }
 
   // Invoice items
-  createInvoiceItem(data: InsertInvoiceItem): InvoiceItem {
+  async createInvoiceItem(data: InsertInvoiceItem): Promise<InvoiceItem> {
     const row = sqlite.prepare(`
       INSERT INTO invoice_items (invoice_id, type, description, quantity, unit_price, amount, sort_order, visit_number)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
@@ -2115,7 +1699,7 @@ export class SQLiteStorage implements IStorage {
     return this.mapItemRow(row);
   }
 
-  updateInvoiceItem(id: number, data: Partial<InsertInvoiceItem>): InvoiceItem | undefined {
+  async updateInvoiceItem(id: number, data: Partial<InsertInvoiceItem>): Promise<InvoiceItem | undefined> {
     const allowed = ["type","description","quantity","unitPrice","amount","sortOrder","visitNumber"];
     const colMap: Record<string,string> = { type:"type", description:"description", quantity:"quantity", unitPrice:"unit_price", amount:"amount", sortOrder:"sort_order", visitNumber:"visit_number" };
     const updates: string[] = [];
@@ -2129,13 +1713,17 @@ export class SQLiteStorage implements IStorage {
     return row ? this.mapItemRow(row) : undefined;
   }
 
-  deleteInvoiceItem(id: number): void {
+  async deleteInvoiceItem(id: number): Promise<void> {
     sqlite.prepare(`DELETE FROM invoice_items WHERE id = ?`).run(id);
   }
 
-  replaceInvoiceItems(invoiceId: number, items: InsertInvoiceItem[]): InvoiceItem[] {
+  async replaceInvoiceItems(invoiceId: number, items: InsertInvoiceItem[]): Promise<InvoiceItem[]> {
     sqlite.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(invoiceId);
-    return items.map((item, idx) => this.createInvoiceItem({ ...item, invoiceId, sortOrder: idx }));
+    const created: InvoiceItem[] = [];
+    for (let idx = 0; idx < items.length; idx++) {
+      created.push(await this.createInvoiceItem({ ...items[idx], invoiceId, sortOrder: idx }));
+    }
+    return created;
   }
 
   // ─── Service Call Visits (Return Visits) ──────────────────────────────────
@@ -2156,14 +1744,14 @@ export class SQLiteStorage implements IStorage {
     };
   }
 
-  getVisitsForCall(serviceCallId: number): ServiceCallVisit[] {
+  async getVisitsForCall(serviceCallId: number): Promise<ServiceCallVisit[]> {
     const rows = sqlite.prepare(
       `SELECT * FROM service_call_visits WHERE service_call_id = ? ORDER BY visit_number ASC`
     ).all(serviceCallId) as any[];
     return rows.map(r => this.mapVisitRow(r));
   }
 
-  createVisit(data: InsertServiceCallVisit & { hoursOnJob?: string; milesTraveled?: string }): ServiceCallVisit {
+  async createVisit(data: InsertServiceCallVisit & { hoursOnJob?: string; milesTraveled?: string }): Promise<ServiceCallVisit> {
     const nextNum = (sqlite.prepare(
       `SELECT COALESCE(MAX(visit_number), 1) + 1 AS next_num FROM service_call_visits WHERE service_call_id = ?`
     ).get(data.serviceCallId) as any).next_num;
@@ -2181,7 +1769,7 @@ export class SQLiteStorage implements IStorage {
     return this.mapVisitRow(row);
   }
 
-  updateVisit(id: number, data: Partial<Pick<ServiceCallVisit, 'visitDate' | 'technicianId' | 'notes' | 'status' | 'hoursOnJob' | 'milesTraveled'>>): ServiceCallVisit | undefined {
+  async updateVisit(id: number, data: Partial<Pick<ServiceCallVisit, 'visitDate' | 'technicianId' | 'notes' | 'status' | 'hoursOnJob' | 'milesTraveled'>>): Promise<ServiceCallVisit | undefined> {
     const allowed = ["visitDate", "technicianId", "notes", "status", "hoursOnJob", "milesTraveled"];
     const colMap: Record<string, string> = {
       visitDate: "visit_date", technicianId: "technician_id", notes: "notes", status: "status",
@@ -2202,16 +1790,16 @@ export class SQLiteStorage implements IStorage {
     return row ? this.mapVisitRow(row) : undefined;
   }
 
-  deleteVisit(id: number): void {
+  async deleteVisit(id: number): Promise<void> {
     sqlite.prepare(`DELETE FROM service_call_visits WHERE id = ?`).run(id);
   }
 
-  getVisitById(id: number): ServiceCallVisit | undefined {
+  async getVisitById(id: number): Promise<ServiceCallVisit | undefined> {
     const row = sqlite.prepare(`SELECT * FROM service_call_visits WHERE id = ?`).get(id) as any;
     return row ? this.mapVisitRow(row) : undefined;
   }
 
-  getAuditLog(filters?: { userId?: number; action?: string; entityType?: string; limit?: number; offset?: number }): { entries: AuditLogEntry[]; total: number } {
+  async getAuditLog(filters?: { userId?: number; action?: string; entityType?: string; limit?: number; offset?: number }): Promise<{ entries: AuditLogEntry[]; total: number }> {
     const conditions: string[] = [];
     const params: any[] = [];
     if (filters?.userId) { conditions.push("user_id = ?"); params.push(filters.userId); }
@@ -2230,7 +1818,7 @@ export class SQLiteStorage implements IStorage {
   }
 
   // ─── Executive Briefing ────────────────────────────────────────────────────
-  getExecutiveBriefing(): any {
+  async getExecutiveBriefing(): Promise<any> {
     // All dates computed in business timezone, not server-UTC. Previous
     // implementation used now.getFullYear()/getMonth() which run in the
     // server's local timezone — UTC on Render — causing the month
@@ -2370,7 +1958,7 @@ export class SQLiteStorage implements IStorage {
   }
 
   // ─── 90-Day Trend ──────────────────────────────────────────────────────────
-  getDashboardTrend90Days(): Array<{ date: string; calls: number; revenue: number; completed: number }> {
+  async getDashboardTrend90Days(): Promise<Array<{ date: string; calls: number; revenue: number; completed: number }>> {
     const now = new Date();
     const start = new Date(now.getTime() - 89 * 86400000);
     const startStr = start.toISOString().split("T")[0];
@@ -2414,7 +2002,7 @@ export class SQLiteStorage implements IStorage {
   }
 
   // ─── Watchlist ──────────────────────────────────────────────────────────
-  getDashboardWatchlist(): Array<{ kind: string; severity: string; title: string; subtitle: string; href: string; amount?: number; days?: number }> {
+  async getDashboardWatchlist(): Promise<Array<{ kind: string; severity: string; title: string; subtitle: string; href: string; amount?: number; days?: number }>> {
     const today = todayLocalISO();
     const out: Array<any> = [];
 
@@ -2504,65 +2092,3 @@ export class SQLiteStorage implements IStorage {
 }
 
 export const storage = new SQLiteStorage();
-// Migration 19: Import 40 contacts from Fitzpatrick Sales customer list
-{
-  const existingCount = (sqlite.prepare(`SELECT COUNT(*) as c FROM contacts WHERE company_name = 'Allreds Inc.'`).get() as any)?.c || 0;
-  if (existingCount === 0) {
-    console.log("Migration 19: Importing 40 contacts from Fitzpatrick Sales customer list...");
-    const stmt = sqlite.prepare(`INSERT INTO contacts (contact_type, company_name, contact_name, phone, email, address, city, state, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`);
-    stmt.run("wholesaler", "Allreds Inc.", "Allreds Inc.", "801-561-8300", null, "631 West Commerce Park Drive Midvale UT 84047", "Midvale", "UT", "Fax: 801-561-8383; ZIP: 84047");
-    stmt.run("contractor", "All States Mechanical", "All States Mechanical", null, null, null, null, null, null);
-    stmt.run("wholesaler", "Alpine Supply Company", "Alpine Supply Company", "(801) 768-8411", "aleda.gardner@alpinesc.com", "782 West State Street Lehi UT 84043 USA", "Lehi", "UT", "ZIP: 84043");
-    stmt.run("wholesaler", "Appliance Parts Company", "Appliance Parts Company", null, "darcy@appliancepartscompany.com", "6825 South Kyrene Rd 102 Tempe AZ 85283", "Tempe", "AZ", "ZIP: 85283");
-    stmt.run("wholesaler", "Applied Industrial Technologies, Inc.", "Applied Industrial Technologies, Inc.", null, "rgull@applied.com", "Applied Industrial Technologies, Inc. PO Box 93018 Cleveland Ohio 44101-5018", "Cleveland", "Ohio", "ZIP: 44101-5018");
-    stmt.run("wholesaler", "BJ Plumbing", "BJ Plumbing", "(801) 224-6600", "ap@bjplumbingsupply.com", "968 North 1200 West Orem UT 84057", "Orem", "UT", "Fax: (801) 224-6242; ZIP: 84057");
-    stmt.run("contractor", "Bowles Plumbing Inc.", "Bowles Plumbing Inc.", "(801) 699-2789", null, "14273 South Fort Pierce Way Herriman UT 84096", "Herriman", "UT", "ZIP: 84096");
-    stmt.run("contractor", "Buss Mechanical Services, Inc.", "Buss Mechanical Services, Inc.", "(208) 562-0600", "marggie@bussmechanical.com", "PO Box 190476 Boise ID 83719-0476 USA", "Boise", "ID", "Fax: (208) 562-0555; ZIP: 83719-0476");
-    stmt.run("contractor", "CL Wayman Piping, LLC", "CL Wayman Piping, LLC", null, null, "5565 West Leo Park RoadUt. West Jordan UT 84081", "West Jordan", "UT", "ZIP: 84081");
-    stmt.run("wholesaler", "Commercial Kitchen Supply", "Commercial Kitchen Supply", "(801) 292-1611", "cksinvoice@commercialkitchensupply.com", "1030 W 650 N Centerville UT 84104", "Centerville", "UT", "ZIP: 84104");
-    stmt.run("wholesaler", "Consolidated Supply, Co.", "Consolidated Supply, Co.", null, "trade@consolidatedsupply.com", "Consolidated Supply, Co. P.O. Box 5788 Portland Oregon 97228", "Portland", "Oregon", "ZIP: 97228");
-    stmt.run("wholesaler", "Decker Plumbing Supply", "Decker Plumbing Supply", null, "apadvantage.haj@pnc.com", "Hajoca Corporation Service Center PO Box 951 Baton Rouge, Baton Rouge LA 70821-0951", "Baton Rouge", "LA", "ZIP: 70821-0951");
-    stmt.run("wholesaler", "Durk's Plumbing Supply", "Durk's Plumbing Supply", null, null, "Durk's Plumbing Supply 1592 No. Main Street Layton Utah 84041 US", "Layton", "Utah", "ZIP: 84041");
-    stmt.run("wholesaler", "Falls Plumbing Supply", "Falls Plumbing Supply", null, null, "525 East Anderson Idaho Falls ID 83401", "Idaho Falls", "ID", "ZIP: 83401");
-    stmt.run("wholesaler", "Ferguson Enterprises", "Ferguson Enterprises", null, "sac266.vendorinvoices@ferguson.com", "Ferguson Enterprises PO Box 9285 Hampton Virginia 23670", "Hampton", "Virginia", "ZIP: 23670");
-    stmt.run("wholesaler", "Great Western Plumbing Supply, Inc.", "Great Western Plumbing Supply, Inc.", "801-621-5412", "ap@gwsupply.com", "PO Box 6151 Ogden UT 84402", "Ogden", "UT", "Fax: 801-621-5417; ZIP: 84402");
-    stmt.run("wholesaler", "Hajoca Corporation", "Hajoca Corporation", null, "vendorinvoices@hajoca.com", "Hajoca Corporation PO Box 842912 Boston Massachusetts 02284-2912", "Boston", "Massachusetts", "ZIP: 02284-2912");
-    stmt.run("wholesaler", "HD Supply Waterworks", "HD Supply Waterworks", null, "wwapinventory@hdsupply.com", "P.O. Box 28446 St. Louis MO 63146", "St. Louis", "MO", "ZIP: 63146");
-    stmt.run("wholesaler", "Heritage Landscape Supply Group", "Heritage Landscape Supply Group", "(214) 491-4149", "heritageinvoices@heritagelsg.com", "100 Enterprise Dr. STE 204 Rockaway NJ 07866 USA", "Rockaway", "NJ", "ZIP: 07866");
-    stmt.run("wholesaler", "Idaho Industrial Supply Co.", "Idaho Industrial Supply Co.", null, null, "P.O. Box 7793Idaho Boise ID 83707", "Boise", "ID", "ZIP: 83707");
-    stmt.run("wholesaler", "Jerry's Plumbing Specialties", "Jerry's Plumbing Specialties", null, "randyg@jpsonline.biz", "P.O. Box 1007 Ogden UT 84402-1007", "Ogden", "UT", "ZIP: 84402-1007");
-    stmt.run("wholesaler", "Johnstone Supply", "Johnstone Supply", null, null, "PO Box 3010 Portland OR 97208 USA", "Portland", "OR", "ZIP: 97208");
-    stmt.run("wholesaler", "Keller Supply", "Keller Supply", null, "ap@kellersupply.com", "Main OfficeP O Box 79014 Seattle WA 98119", "Seattle", "WA", "ZIP: 98119");
-    stmt.run("contractor", "Mark McBride Plumbing, Inc.", "Mark McBride Plumbing, Inc.", "801-261-4462", null, "5944 South 350 EastUt Murray UT 84107", "Murray", "UT", "ZIP: 84107");
-    stmt.run("wholesaler", "McCall Industrial Supply", "McCall Industrial Supply", null, null, "7614 West Lemhi #1Idaho Boise ID 83705", "Boise", "ID", "ZIP: 83705");
-    stmt.run("wholesaler", "MLSC Holding Co., Inc", "MLSC Holding Co., Inc", null, "mlsap@mountainland.com", "MLSC Holding Co., Inc P.O. Box 190 Orem Utah 84059", "Orem", "Utah", "ZIP: 84059");
-    stmt.run("wholesaler", "M-One Specialties", "M-One Specialties", null, "mone.payables@gmail.com", "974 West 100 South Salt Lake City UT 84115", "Salt Lake City", "UT", "ZIP: 84115");
-    stmt.run("wholesaler", "Morcon Industrial Specialty, Inc.", "Morcon Industrial Specialty, Inc.", "(307) 789-6235", "ap@morcon-ind.com", "PO Box 1670 Evanston WY 82931-1670", "Evanston", "WY", "ZIP: 82931-1670");
-    stmt.run("wholesaler", "Paramount Supply Co., Inc", "Paramount Supply Co., Inc", "(208) 345-5432", "accounts@paramountpipelc.com", "P.O. Box 5628 Boise ID 83705", "Boise", "ID", "Fax: (208) 338-9257; ZIP: 83705");
-    stmt.run("wholesaler", "Peterson Plumbing Supply", "Peterson Plumbing Supply", null, "ap@petersonplumbingsupply.com", "Peterson Plumbing Supply c/o Marci Stubblefield 1036 N 1430 W Orem Utah 84057 USA", "Orem", "Utah", "ZIP: 84057");
-    stmt.run("wholesaler", "Pipeco Inc.", "Pipeco Inc.", null, "ap@dbcirrigation.com", "8550 Chinden Blvd. Idaho Boise ID 83714", "Boise", "ID", "ZIP: 83714");
-    stmt.run("wholesaler", "Pipe Valve & Fitting Co.", "Pipe Valve & Fitting Co.", null, null, "P.O. Box 65765 Salt Lake City UT 84115", "Salt Lake City", "UT", "ZIP: 84115");
-    stmt.run("wholesaler", "Scholzen Products Co.", "Scholzen Products Co.", null, "ap@scholzens.com", "P.O. Box 628 Hurricane UT 84737", "Hurricane", "UT", "ZIP: 84737");
-    stmt.run("contractor", "Schoonover Plumbing & Heating", "Schoonover Plumbing & Heating", "801-768-4021", null, "1530 N. State Street, Unit D Lehi UT 84043", "Lehi", "UT", "ZIP: 84043");
-    stmt.run("contractor", "Shamrock Plumbing, LLC", "Shamrock Plumbing, LLC", "801-295-1690", null, "340 West 500 NorthUtah NSL UT 84054", "NSL", "UT", "Fax: 801-295-1699; ZIP: 84054");
-    stmt.run("wholesaler", "Southwest Plumbing Supply", "Southwest Plumbing Supply", "(435) 586-6464", "ap@swplumb.com", "Southwest Plumbing Supply 506 N. 200 West Cedar City Utah 84721", "Cedar City", "Utah", "Fax: (435) 865-7200; ZIP: 84721");
-    stmt.run("wholesaler", "Standard Plumbing Supply", "Standard Plumbing Supply", "(801) 255-7145", "abigail.ortiz@standardplumbing.com", "P O Box 708490 Sandy UT 84070", "Sandy", "UT", "ZIP: 84070");
-    stmt.run("contractor", "Valley Plumbing", "Valley Plumbing", null, null, "5698 Dannon WaySuite #11 West Jordan UT 84081", "West Jordan", "UT", "ZIP: 84081");
-    stmt.run("wholesaler", "Winston Water Cooler of Rigby, LP", "Winston Water Cooler of Rigby, LP", "(208) 709-9600", "acctg@winstonwatercooler.com", "6626 Oakbrrok Blvd. Dallas TX 75235", "Dallas", "TX", "ZIP: 75235");
-    stmt.run("wholesaler", "WinWholesale", "WinWholesale", "(866) 351-3493", "apcentral@winwholesale.com", "3110 Kettering Blvd Dayton OH 45439", "Dayton", "OH", "ZIP: 45439");
-    console.log("Migration 19: 40 contacts imported");
-  }
-}
-
-// Migration 23: Insert TEST CUSTOMER contact
-{
-  const testExists = (sqlite.prepare(`SELECT COUNT(*) as c FROM contacts WHERE company_name = 'TEST CUSTOMER'`).get() as any)?.c || 0;
-  if (testExists === 0) {
-    sqlite.prepare(
-      `INSERT INTO contacts (contact_type, company_name, contact_name, phone, email, address, city, state, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
-    ).run("customer", "TEST CUSTOMER", "Test Account", "000-000-0000", "test@test.com", "123 Test Street", "Test City", "UT", "Test account — excluded from reports");
-    console.log("Migration 23: TEST CUSTOMER contact inserted");
-  }
-}
-
-

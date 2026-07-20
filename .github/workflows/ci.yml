@@ -2,6 +2,7 @@
 #
 # Runs the same checks required before any production deploy:
 #   - npm run check  (tsc type-check)
+#   - npm run test   (node:test suite)
 #   - npm run build  (client + server bundle)
 #
 # WHY THIS MATTERS: Render auto-deploys on every push to `master`. Without a
@@ -50,6 +51,9 @@ jobs:
 
       - name: Type check (npm run check / tsc)
         run: npm run check
+
+      - name: Test (npm run test)
+        run: npm test
 
       - name: Build (npm run build)
         run: npm run build
